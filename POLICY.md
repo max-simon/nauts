@@ -45,7 +45,7 @@ NATS wildcard `>` is supported for:
 
 ### Variable interpolation
 
-NRNs supports variable interpolation using `{{ }}` to scope resources to given context objects. Currently, the following context objects can be used
+NRNs support variable interpolation using `{{ }}` to scope resources to given context objects. Currently, the following context objects can be used:
 
 #### User
 
@@ -64,6 +64,21 @@ Refers to the group this policy is attached to and contains:
 
 - group-wide subject for all members of a group: `nats:group.{{ group.name }}.>`
 - user-specific subject: `nats:user.{{ user.id }}`
+
+#### Variable Resolution
+
+If a variable cannot be resolved (e.g., `user.attr.department` when the user has no `department` attribute), the variable evaluates to `null` and the entire resource is excluded from the compiled permissions.
+
+#### Variable Sanitization
+
+To prevent injection attacks, interpolated values are validated:
+
+- Empty strings resolve to `null` (resource excluded)
+- The `>` wildcard character is **not allowed** in interpolated values
+- The `*` wildcard character is **not allowed** in interpolated values
+- Values must only contain valid NATS subject tokens (alphanumeric, `-`, `_`)
+
+If a value fails validation, the resource is excluded and a warning is logged.
 
 #### System
 
@@ -116,19 +131,29 @@ naut implements the following atomic actions:
 
 **Note:** All KV operations use request/reply and implicitly require `SUB _INBOX.>`.
 
+### Implicit Permissions
+
+Certain actions require implicit permissions that are automatically granted:
+
+#### Reply Inbox Subscription
+
+All JetStream (`js.*`) and KV (`kv.*`) actions use the request/reply pattern and require subscribing to reply inboxes. When **any** `js.*` or `kv.*` action is granted, nauts automatically adds `SUB _INBOX.>` to the compiled permissions.
+
+**Known limitation:** This grants access to all inbox subjects. A future enhancement will scope inboxes per-user (e.g., `_INBOX.<user-prefix>.*`) to prevent potential reply interception.
+
 ### Action Groups
 
-Actiion groups can be used to resolve multiple atomic actions using a single action name. The following action groups are defined:
+Action groups can be used to resolve multiple atomic actions using a single action name. The following action groups are defined:
 
-| Group       | Resolves To                                   |
-|---          |---                                            |
-| `nats.*`.   | All `nats.*` permissions                      |
-| `js.viewer` | `js.readStream`, `js.readConsumer`            |
-| `js.worker` | `js.viewer`, `js.writeConsumer`, `js.consume` |
-| `js.*    `  | All `js.*` permissions                        |
-| `kv.reader` | `kv.read`, `kv.watch`                         |
-| `kv.writer` | `kv.reader`, `kv.write`                       |
-| `kv.*.   `  | All `kv.*` permissions                        |
+| Group       | Resolves To                                        |
+|-------------|----------------------------------------------------|
+| `nats.*`    | All `nats.*` actions                               |
+| `js.viewer` | `js.readStream`, `js.readConsumer`                 |
+| `js.worker` | `js.viewer`, `js.writeConsumer`, `js.consume`      |
+| `js.*`      | All `js.*` actions                                 |
+| `kv.reader` | `kv.read`, `kv.watchBucket`                        |
+| `kv.writer` | `kv.reader`, `kv.write`                            |
+| `kv.*`      | All `kv.*` actions                                 |
 
 ## Policy
 

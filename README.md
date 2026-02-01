@@ -13,7 +13,7 @@ nauts simplifies permission and token management for NATS by granting NATS permi
 
 nauts policies are specified in [POLICY.md](./POLICY.md).
 
-Policies are not attached to users directly. Instead they are assigned to user `groups`. The users of a group inherit NATS permissions via the attached policies. An user can be part of multiple groups and inherits permissions from all its groups.
+Policies are not attached to users directly. Instead they are assigned to user `groups`. The users of a group inherit NATS permissions via the attached policies. A user can be part of multiple groups and inherits permissions from all its groups. Permissions from all groups and policies are merged (union of all allowed permissions).
 
 ```typescript
 interface Group {
@@ -23,12 +23,14 @@ interface Group {
 }
 ```
 
-Each NATS account has a default group with id `default`. All users are member of this group allowing to grant default permissions to all users of an account.
+Groups and policies are scoped to a specific NATS account. A user's account is determined by the identity resolver during authentication.
+
+Each NATS account has a default group with id `default`. All users are members of this group, allowing default permissions to be granted to all users of an account.
 
 ### Compilation Engine
 
-nauts provides an engine to compile NATS permissions for a given user identity. 
-To this end, it resolves the user's groups and policies from an external store and translates the policies to NATS core permissions. It deduplicates permissions to keep the permission set small.
+nauts provides an engine to compile NATS permissions for a given user identity.
+To this end, it resolves the user's groups and policies from an external store and translates the policies to NATS core permissions. It deduplicates permissions to keep the permission set small. Permissions might be cached (keyed by hash of authentication request parameters and a TTL).
 
 #### Policy and Group Store
 
@@ -43,6 +45,8 @@ Policies and groups are read from JSON files. The data is only read once during 
 > Not implemented yet
 
 Policies and groups are read from NATS Key-Value store. The bucket name defaults to `NAUTS` and can be configured. Policies are stored with key `policy.<policy id>`. Groups are stored with key `group.<group id>`. nauts watches changes on the bucket, so policies and groups can be modified without restart.
+
+Policy and group updates are incorporated on a best-effort basis (eventual consistency).
 
 ## Authentication Service
 
@@ -69,9 +73,10 @@ Static list of users and group assignments. Verification is based on username an
 
 ```typescript
 interface User {
+    account: str       // NATS account id
     groups: list[str]  // list of group ids the user belongs to
     passwordHash: str  // bcrypt hash of password
-    [attr: str]: str   // additional user attributes, available to policies 
+    [attr: str]: str   // additional user attributes, available to policies
 }
 
 interface UserList {
@@ -81,14 +86,14 @@ interface UserList {
 }
 ```
 
-#### JWT
+## Future Enhancements
 
-> Not implemented yet
+The following features are planned for future versions:
 
-#### nkeys
-
-> Not implemented yet
-
-## Control Plane
-
-> Not implemented yet
+- **Explicit deny rules**: Support `effect: "deny"` in policy statements with evaluation order: explicit deny > explicit allow > implicit deny.
+- **Resource limits**: Allow policies to specify connection limits (`maxSubscriptions`, `maxPayload`, `maxData`).
+- **Policy simulation API**: Dry-run endpoint to test compiled permissions without authenticating.
+- **Per-user inbox scoping**: Replace global `_INBOX.>` with user-specific prefixes to prevent reply interception.
+- **JWT based User Identity Resolver**
+- **nkey based User Identity Resolver**
+- **Control Plane**
