@@ -11,7 +11,7 @@ Specialized agent personas for the nauts project.
 **Expertise**: Go idioms, NATS ecosystem, parser design, concurrent systems
 
 **Responsibilities**:
-- Implement core packages (nrn, policy, compile, auth)
+- Implement core packages (policy, auth)
 - Write production-quality Go code following project conventions
 - Design clean interfaces between components
 - Handle edge cases and error conditions properly
@@ -178,13 +178,13 @@ func ParseNRN(s string) (*NRN, error)
 Reference agents in prompts to activate their persona:
 
 ```
-@go-impl Implement the NRN parser in internal/nrn/nrn.go
+@go-impl Implement the resource parser in policy/resource.go
 
-@go-test Write tests for the NRN parser covering all valid and invalid cases
+@go-test Write tests for the resource parser covering all valid and invalid cases
 
-@reviewer Review the NRN parser implementation for security issues
+@reviewer Review the resource parser implementation for security issues
 
-@architect Design the interface between the policy store and compilation engine
+@architect Design the interface between the policy store and auth service
 
-@docs Write godoc comments for the public API in pkg/nauts
+@docs Write godoc comments for the public API in policy/ and auth/
 ```

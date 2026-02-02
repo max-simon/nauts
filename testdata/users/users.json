@@ -1,0 +1,29 @@
+{
+  "users": {
+    "alice": {
+      "account": "ACME",
+      "groups": ["workers"],
+      "passwordHash": "$2a$10$abcdefghijklmnopqrstuvwxyz123456",
+      "attributes": {
+        "department": "engineering",
+        "team": "platform"
+      }
+    },
+    "bob": {
+      "account": "ACME",
+      "groups": ["viewers"],
+      "passwordHash": "$2a$10$abcdefghijklmnopqrstuvwxyz789012",
+      "attributes": {
+        "department": "operations"
+      }
+    },
+    "admin": {
+      "account": "ACME",
+      "groups": ["admins"],
+      "passwordHash": "$2a$10$adminpasswordhashhere12345678901",
+      "attributes": {
+        "role": "admin"
+      }
+    }
+  }
+}

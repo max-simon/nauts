@@ -1,0 +1,24 @@
+[
+  {
+    "id": "allow-orders",
+    "name": "Orders Access",
+    "statements": [
+      {
+        "effect": "allow",
+        "actions": ["nats.pub", "nats.sub"],
+        "resources": ["nats:orders.>"]
+      }
+    ]
+  },
+  {
+    "id": "allow-user-inbox",
+    "name": "User Inbox Access",
+    "statements": [
+      {
+        "effect": "allow",
+        "actions": ["nats.pub", "nats.sub"],
+        "resources": ["nats:user.{{ user.id }}.>"]
+      }
+    ]
+  }
+]

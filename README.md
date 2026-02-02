@@ -1,11 +1,17 @@
-# nauts
-
-**N**ATS **Aut**hentication **S**ervice
+<div style="display: flex; align-items: center;">
+  <div style="flex-shrink: 0;">
+    <img src="./docs/logo.png" alt="Logo" style="height: 100px; display: block; width: 100px">
+  </div>
+  <div style="margin-left: 20px">
+    <h1>NAUTS</h1>
+    <b>N</b>ATS <b>Aut</b>hentication <b>S</b>ervice
+  </div>
+</div>
 
 ## TL;DR
 
-nauts simplifies permission and token management for NATS by granting NATS permissions to external users using access policies. It contains the following components:
-- _policy specification and compilation engine_ for usecase driven access policies that provide a scalable abstraction of low-level NATS permissions.
+nauts simplifies permission and token management for NATS by granting NATS permissions to external users using access human-friendly policies. It contains the following components:
+- _permission compiler_: nauts uses policies as a scalable abstraction of low-level NATS permissions and provides a compiler to map them to NATS permissions
 - _authentication service_ for [NATS auth callout](https://docs.nats.io/running-a-nats-service/configuration/securing_nats/auth_callout) making use of nauts policies.
 - _control plane_ to manage policies, groups and accounts within NATS.
 
@@ -27,24 +33,41 @@ Groups and policies are scoped to a specific NATS account. A user's account is d
 
 Each NATS account has a default group with id `default`. All users are members of this group, allowing default permissions to be granted to all users of an account.
 
-### Compilation Engine
+### Permission Compiler
 
-nauts provides an engine to compile NATS permissions for a given user identity.
-To this end, it resolves the user's groups and policies from an external store and translates the policies to NATS core permissions. It deduplicates permissions to keep the permission set small. Permissions might be cached (keyed by hash of authentication request parameters and a TTL).
+nauts provides a compiler to map policies to NATS permissions for a given user identity.
 
-#### Policy and Group Store
+The compilation process:
+1. Resolve user's groups (including the default group)
+2. For each group, fetch policies from the store
+3. For each policy, expand action groups to atomic actions
+4. Interpolate variables in resources (e.g., `{{ user.id }}`)
+5. Map actions + resources to NATS PUB/SUB permissions
+6. Add implicit permissions (`_INBOX.>` for JetStream/KV actions)
+7. Deduplicate permissions using wildcard-aware logic
+8. Return final `NatsPermissions`
 
-nauts supports the following stores to read policies and groups:
+#### Store
+
+A Store contains policies and groups for a NATS account. The following store types can be used:
 
 ##### File-based
 
 Policies and groups are read from JSON files. The data is only read once during start, afterwards it is kept in memory.
 
+```typescript
+// Policy file (array of policies)
+type Policies = Policy[]
+
+// Group file (array of groups)
+type Groups = Group[]
+```
+
 ##### NATS KV
 
 > Not implemented yet
 
-Policies and groups are read from NATS Key-Value store. The bucket name defaults to `NAUTS` and can be configured. Policies are stored with key `policy.<policy id>`. Groups are stored with key `group.<group id>`. nauts watches changes on the bucket, so policies and groups can be modified without restart.
+Policies and groups are read from NATS Key-Value store. The bucket name defaults to `NAUTS` and can be configured. Policies are stored with key `policy.<account id>.<policy id>`. Groups are stored with key `group.<account id>.<group id>`. nauts watches changes on the bucket, so policies and groups can be modified without restart.
 
 Policy and group updates are incorporated on a best-effort basis (eventual consistency).
 
@@ -52,7 +75,7 @@ Policy and group updates are incorporated on a best-effort basis (eventual consi
 
 > Not implemented yet
 
-nauts can be deployed as an [auth callout service](https://docs.nats.io/running-a-nats-service/configuration/securing_nats/auth_callout) for NATS. 
+nauts can be deployed as an [auth callout service](https://docs.nats.io/running-a-nats-service/configuration/securing_nats/auth_callout) for NATS.
 
 ### Authentication Flow
 
@@ -84,6 +107,24 @@ interface UserList {
         [userId: str]: User
     }
 }
+```
+
+## Package Structure
+
+```
+nauts/
+├── policy/           # Policy types, compilation, interpolation
+│   ├── action.go     # Action types and group expansion
+│   ├── compile.go    # Compile() function
+│   ├── context.go    # UserContext, GroupContext
+│   ├── mapper.go     # Action+Resource to permissions
+│   ├── permissions.go # NatsPermissions with wildcard dedup
+│   └── resource.go   # Resource parsing
+├── auth/             # Authentication service
+│   ├── service.go    # AuthService
+│   ├── model/        # User, Group types
+│   └── store/        # Store interface and implementations
+└── testdata/         # Test fixtures
 ```
 
 ## Future Enhancements

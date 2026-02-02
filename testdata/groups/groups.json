@@ -1,0 +1,22 @@
+[
+  {
+    "id": "default",
+    "name": "Default",
+    "policies": []
+  },
+  {
+    "id": "workers",
+    "name": "Workers",
+    "policies": ["allow-orders", "js-worker"]
+  },
+  {
+    "id": "viewers",
+    "name": "Viewers",
+    "policies": ["js-viewer", "kv-config-read"]
+  },
+  {
+    "id": "admins",
+    "name": "Administrators",
+    "policies": ["allow-orders", "js-viewer", "kv-config-read", "kv-user-data"]
+  }
+]
