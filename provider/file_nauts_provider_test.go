@@ -1,4 +1,4 @@
-package grouppolicyprovider
+package provider
 
 import (
 	"context"
@@ -7,23 +7,20 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/msimon/nauts/auth/model"
-	"github.com/msimon/nauts/auth/provider"
 	"github.com/msimon/nauts/policy"
 )
 
-func TestNewFile_WithDirectory(t *testing.T) {
-	// Get the testdata directory path
+func TestNewFileNautsProvider_WithDirectory(t *testing.T) {
 	testdataDir := getTestdataDir(t)
 
-	cfg := FileConfig{
+	cfg := FileNautsProviderConfig{
 		PoliciesPath: filepath.Join(testdataDir, "policies.json"),
 		GroupsPath:   filepath.Join(testdataDir, "groups", "groups.json"),
 	}
 
-	fp, err := NewFile(cfg)
+	fp, err := NewFileNautsProvider(cfg)
 	if err != nil {
-		t.Fatalf("NewFile() error = %v", err)
+		t.Fatalf("NewFileNautsProvider() error = %v", err)
 	}
 
 	ctx := context.Background()
@@ -68,34 +65,34 @@ func TestNewFile_WithDirectory(t *testing.T) {
 	}
 }
 
-func TestGetPolicy_NotFound(t *testing.T) {
-	fp := &FileGroupPolicyProvider{
+func TestFileNautsProvider_GetPolicy_NotFound(t *testing.T) {
+	fp := &FileNautsProvider{
 		policies: make(map[string]*policy.Policy),
-		groups:   make(map[string]*model.Group),
+		groups:   make(map[string]*Group),
 	}
 
 	_, err := fp.GetPolicy(context.Background(), "nonexistent")
-	if !errors.Is(err, provider.ErrPolicyNotFound) {
-		t.Errorf("GetPolicy() error = %v, want %v", err, provider.ErrPolicyNotFound)
+	if !errors.Is(err, ErrPolicyNotFound) {
+		t.Errorf("GetPolicy() error = %v, want %v", err, ErrPolicyNotFound)
 	}
 }
 
-func TestGetGroup_NotFound(t *testing.T) {
-	fp := &FileGroupPolicyProvider{
+func TestFileNautsProvider_GetGroup_NotFound(t *testing.T) {
+	fp := &FileNautsProvider{
 		policies: make(map[string]*policy.Policy),
-		groups:   make(map[string]*model.Group),
+		groups:   make(map[string]*Group),
 	}
 
 	_, err := fp.GetGroup(context.Background(), "nonexistent")
-	if !errors.Is(err, provider.ErrGroupNotFound) {
-		t.Errorf("GetGroup() error = %v, want %v", err, provider.ErrGroupNotFound)
+	if !errors.Is(err, ErrGroupNotFound) {
+		t.Errorf("GetGroup() error = %v, want %v", err, ErrGroupNotFound)
 	}
 }
 
-func TestNewFile_EmptyConfig(t *testing.T) {
-	fp, err := NewFile(FileConfig{})
+func TestNewFileNautsProvider_EmptyConfig(t *testing.T) {
+	fp, err := NewFileNautsProvider(FileNautsProviderConfig{})
 	if err != nil {
-		t.Fatalf("NewFile() error = %v", err)
+		t.Fatalf("NewFileNautsProvider() error = %v", err)
 	}
 
 	ctx := context.Background()
@@ -111,16 +108,16 @@ func TestNewFile_EmptyConfig(t *testing.T) {
 	}
 }
 
-func TestNewFile_InvalidPoliciesPath(t *testing.T) {
-	_, err := NewFile(FileConfig{
+func TestNewFileNautsProvider_InvalidPoliciesPath(t *testing.T) {
+	_, err := NewFileNautsProvider(FileNautsProviderConfig{
 		PoliciesPath: "/nonexistent/path",
 	})
 	if err == nil {
-		t.Error("NewFile() expected error for nonexistent path")
+		t.Error("NewFileNautsProvider() expected error for nonexistent path")
 	}
 }
 
-func TestNewFile_InvalidJSON(t *testing.T) {
+func TestNewFileNautsProvider_InvalidJSON(t *testing.T) {
 	// Create a temp file with invalid JSON
 	tmpDir := t.TempDir()
 	invalidFile := filepath.Join(tmpDir, "invalid.json")
@@ -128,15 +125,15 @@ func TestNewFile_InvalidJSON(t *testing.T) {
 		t.Fatalf("Failed to write test file: %v", err)
 	}
 
-	_, err := NewFile(FileConfig{
+	_, err := NewFileNautsProvider(FileNautsProviderConfig{
 		PoliciesPath: invalidFile,
 	})
 	if err == nil {
-		t.Error("NewFile() expected error for invalid JSON")
+		t.Error("NewFileNautsProvider() expected error for invalid JSON")
 	}
 }
 
-func TestNewFile_InvalidPolicy(t *testing.T) {
+func TestNewFileNautsProvider_InvalidPolicy(t *testing.T) {
 	// Create a temp file with invalid policy (missing required fields)
 	tmpDir := t.TempDir()
 	invalidFile := filepath.Join(tmpDir, "invalid_policy.json")
@@ -145,11 +142,11 @@ func TestNewFile_InvalidPolicy(t *testing.T) {
 		t.Fatalf("Failed to write test file: %v", err)
 	}
 
-	_, err := NewFile(FileConfig{
+	_, err := NewFileNautsProvider(FileNautsProviderConfig{
 		PoliciesPath: invalidFile,
 	})
 	if err == nil {
-		t.Error("NewFile() expected error for invalid policy")
+		t.Error("NewFileNautsProvider() expected error for invalid policy")
 	}
 }
 
@@ -159,7 +156,7 @@ func getTestdataDir(t *testing.T) string {
 
 	// Try relative path from test file location
 	candidates := []string{
-		"../../../testdata",
+		"../testdata",
 		"testdata",
 	}
 

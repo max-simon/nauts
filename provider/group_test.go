@@ -1,4 +1,4 @@
-package model
+package provider
 
 import (
 	"encoding/json"
@@ -79,41 +79,5 @@ func TestGroup_JSON(t *testing.T) {
 func TestDefaultGroupID(t *testing.T) {
 	if DefaultGroupID != "default" {
 		t.Errorf("DefaultGroupID = %v, want %v", DefaultGroupID, "default")
-	}
-}
-
-func TestUser_GetAttribute(t *testing.T) {
-	tests := []struct {
-		name string
-		user *User
-		key  string
-		want string
-	}{
-		{
-			name: "existing attribute",
-			user: &User{Attributes: map[string]string{"dept": "eng"}},
-			key:  "dept",
-			want: "eng",
-		},
-		{
-			name: "missing attribute",
-			user: &User{Attributes: map[string]string{"dept": "eng"}},
-			key:  "team",
-			want: "",
-		},
-		{
-			name: "nil attributes",
-			user: &User{},
-			key:  "dept",
-			want: "",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.user.GetAttribute(tt.key); got != tt.want {
-				t.Errorf("GetAttribute(%q) = %q, want %q", tt.key, got, tt.want)
-			}
-		})
 	}
 }

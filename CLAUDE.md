@@ -15,9 +15,9 @@ See [README.md](./README.md) for architecture and [POLICY.md](./POLICY.md) for p
 ## Tech Stack
 
 - **Language**: Go 1.22+
-- **NATS Client**: github.com/nats-io/nats.go (future)
-- **JWT Handling**: github.com/nats-io/jwt/v2 (future)
-- **NKeys**: github.com/nats-io/nkeys (future)
+- **NATS Client**: github.com/nats-io/nats.go
+- **JWT Handling**: github.com/nats-io/jwt/v2
+- **NKeys**: github.com/nats-io/nkeys
 - **Password Hashing**: golang.org/x/crypto/bcrypt
 - **Testing**: Standard library
 - **Configuration**: Environment variables + JSON files
@@ -27,7 +27,8 @@ See [README.md](./README.md) for architecture and [POLICY.md](./POLICY.md) for p
 ```
 nauts/
 ├── cmd/
-│   └── nauts/              # Main entrypoint (future)
+│   └── nauts/              # CLI entrypoint
+│       └── main.go         # Authentication CLI
 ├── policy/                 # Policy types, compilation, interpolation, action mapping
 │   ├── action.go           # Action types and action group expansion
 │   ├── compile.go          # Policy compilation (Compile function)
@@ -38,25 +39,25 @@ nauts/
 │   ├── permissions.go      # NatsPermissions with Allow/Deny and wildcard dedup
 │   ├── policy.go           # Policy, Statement, Effect types
 │   └── resource.go         # Resource parsing and validation
-├── auth/                   # Authentication service
-│   ├── service.go          # AuthService (permission compilation orchestrator)
-│   ├── errors.go           # Auth errors (AuthError)
-│   ├── model/              # Core domain types
-│   │   ├── user.go         # User type
-│   │   └── group.go        # Group type, ValidationError
-│   ├── provider/           # Group and policy providers
-│   │   ├── provider.go     # GroupPolicyProvider interface
-│   │   ├── errors.go       # Provider errors (ErrPolicyNotFound, ErrGroupNotFound)
-│   │   └── grouppolicyprovider/
-│   │       └── file.go     # FileGroupPolicyProvider (JSON file backend)
-│   ├── identity/           # User identity providers
-│   │   ├── identity.go     # UserIdentityProvider interface, IdentityToken
-│   │   ├── errors.go       # Identity errors (ErrInvalidCredentials, ErrUserNotFound)
-│   │   └── static/
-│   │       └── static.go   # StaticProvider (bcrypt password verification)
-│   └── callout/            # Auth callout service
-│       ├── callout.go      # CalloutService (orchestrates auth flow)
-│       └── errors.go       # CalloutError
+├── provider/               # Entity and policy/group providers
+│   ├── entity.go           # Operator, Account types with Signer
+│   ├── entity_provider.go  # EntityProvider interface
+│   ├── nsc_entity_provider.go # NscEntityProvider (reads nsc directory)
+│   ├── nauts_provider.go   # NautsProvider interface (policies/groups)
+│   ├── file_nauts_provider.go # FileNautsProvider (JSON file backend)
+│   ├── group.go            # Group type with validation
+│   └── errors.go           # Provider errors (ErrNotFound, etc.)
+├── identity/               # User identity management
+│   ├── user.go             # User type
+│   ├── provider.go         # UserIdentityProvider interface, IdentityToken
+│   └── file_user_provider.go # FileUserIdentityProvider (bcrypt passwords)
+├── jwt/                    # JWT issuance
+│   ├── signer.go           # Signer interface
+│   ├── local_signer.go     # LocalSigner (nkeys-based signing)
+│   └── user.go             # IssueUserJWT function
+├── auth/                   # Authentication controller
+│   ├── controller.go       # AuthController (orchestrates auth flow)
+│   └── errors.go           # Auth errors (AuthError)
 ├── testdata/               # Test fixtures (policies, groups, users)
 └── docs/                   # Additional documentation
 ```
@@ -81,10 +82,11 @@ nauts/
 - Resource types: `Resource`, `ResourceType`, `ParseAndValidateResource()`
 - Policy types: `Policy`, `Statement`, `Effect`
 - Actions: `Action`, `ActionDef`, `ResolveActions()`
-- Auth service: `AuthService`, `NewAuthService()`, `GetNatsPermission()`
+- Auth controller: `AuthController`, `NewAuthController()`, `Authenticate()`, `ResolveUser()`, `ResolveNatsPermissions()`, `CreateUserJWT()`
 - Permissions: `NatsPermissions`, `Permission`, `PermissionSet`
-- Providers: `GroupPolicyProvider`, `FileGroupPolicyProvider`, `UserIdentityProvider`, `StaticProvider`
-- Callout: `CalloutService`, `AuthResult`, `CalloutError`
+- Providers: `EntityProvider`, `NscEntityProvider`, `NautsProvider`, `FileNautsProvider`, `UserIdentityProvider`, `FileUserIdentityProvider`
+- JWT: `Signer`, `LocalSigner`, `IssueUserJWT()`
+- Entities: `Operator`, `Account`, `Group`, `User`
 
 ### Testing
 
@@ -108,8 +110,10 @@ golangci-lint run
 # Build binary
 go build -o bin/nauts ./cmd/nauts
 
-# Run with file-based config
-./bin/nauts --config config.json
+# Authenticate and get JWT
+./bin/nauts -nsc-dir ~/.nsc -operator myop \
+  -policies policies.json -groups groups.json -users users.json \
+  -username alice -password secret -user-pubkey UABC123...
 ```
 
 ## Key Implementation Notes
@@ -153,12 +157,13 @@ The `policy.Compile()` function transforms policies to NATS permissions:
 6. Add `_INBOX.>` for actions that require it
 7. Merge into result permissions
 
-The `auth.AuthService` orchestrates compilation:
-1. Resolve user's groups (including default group)
-2. For each group, fetch policies from provider
-3. Call `policy.Compile()` with user/group context
+The `auth.AuthController` orchestrates the full authentication flow:
+1. Verify identity token via `UserIdentityProvider` → returns `*identity.User`
+2. Resolve user's groups (including default group) from `NautsProvider`
+3. For each group, fetch policies and call `policy.Compile()` with user/group context
 4. Deduplicate permissions with wildcard awareness
-5. Return final `NatsPermissions`
+5. Create signed JWT via `jwt.IssueUserJWT()` using account's signer from `EntityProvider`
+6. Return `AuthResult` containing user, permissions, and JWT
 
 ### Wildcard-Aware Deduplication
 
@@ -167,51 +172,59 @@ The `auth.AuthService` orchestrates compilation:
 - `foo.bar` covered by `foo.>` → remove `foo.bar`
 - `foo.*` covered by `foo.>` → remove `foo.*`
 
-### Auth Callout Service
+### Auth Controller
 
-The `callout.CalloutService` orchestrates the full authentication flow:
-1. Verify identity token via `UserIdentityProvider` → returns `*model.User`
-2. Compile permissions via `AuthService.GetNatsPermission()` → returns `*policy.NatsPermissions`
-3. Return `AuthResult` containing user and permissions
+The `auth.AuthController` orchestrates the full authentication flow, combining user resolution, permission compilation, and JWT creation:
 
 Usage:
 ```go
 // Setup providers
-policyProvider, _ := grouppolicyprovider.NewFile(grouppolicyprovider.FileConfig{
+entityProvider, _ := provider.NewNscEntityProvider(provider.NscConfig{
+    Dir:          "~/.nsc",
+    OperatorName: "myoperator",
+})
+
+nautsProvider, _ := provider.NewFileNautsProvider(provider.FileNautsProviderConfig{
     PoliciesPath: "policies.json",
     GroupsPath:   "groups.json",
 })
-identityProvider, _ := static.New(static.Config{UsersPath: "users.json"})
 
-// Create services
-authService := auth.NewAuthService(policyProvider)
-calloutService := callout.NewCalloutService(identityProvider, authService)
+identityProvider, _ := identity.NewFileUserIdentityProvider(identity.FileUserIdentityProviderConfig{
+    UsersPath: "users.json",
+})
 
-// Authenticate
-result, err := calloutService.Authenticate(ctx, static.UsernamePassword{
+// Create controller
+controller := auth.NewAuthController(entityProvider, nautsProvider, identityProvider)
+
+// Authenticate (combined flow)
+result, err := controller.Authenticate(ctx, identity.UsernamePassword{
     Username: "alice",
     Password: "secret",
-})
-// result.User, result.Permissions available
+}, userPublicKey, time.Hour)
+// result.User, result.Permissions, result.JWT available
+
+// Or use individual methods
+user, err := controller.ResolveUser(ctx, token)
+perms, err := controller.ResolveNatsPermissions(ctx, user)
+jwt, err := controller.CreateUserJWT(ctx, user, userPubKey, perms, ttl)
 ```
 
 ### Identity Providers
 
 Identity providers verify credentials and return user information:
 
-**StaticProvider** (`auth/identity/static`):
+**FileUserIdentityProvider** (`identity/`):
 - Loads users from JSON file
 - Verifies passwords using bcrypt
-- Token type: `static.UsernamePassword{Username, Password}`
+- Token type: `identity.UsernamePassword{Username, Password}`
 
 ## Dependencies
 
 ```go
 require (
     golang.org/x/crypto v0.x         // bcrypt for password hashing
-    github.com/nats-io/nats.go v1.x  // future
-    github.com/nats-io/jwt/v2 v2.x   // future
-    github.com/nats-io/nkeys v0.x    // future
+    github.com/nats-io/jwt/v2 v2.x   // JWT encoding/decoding
+    github.com/nats-io/nkeys v0.x    // cryptographic signing
 )
 ```
 
@@ -225,12 +238,16 @@ require (
 - [x] Action mapping: `policy/mapper.go` - Action+Resource to NATS permissions
 - [x] Permissions: `policy/permissions.go` - Allow/Deny with wildcard deduplication
 - [x] Compilation: `policy/compile.go` - `Compile()` function
-- [x] Auth service: `auth/service.go` - `AuthService` with `GetNatsPermission()`
-- [x] Group/Policy provider: `auth/provider/` - `GroupPolicyProvider` interface
-- [x] File-based provider: `auth/provider/grouppolicyprovider/` - JSON file backend
-- [x] Identity provider: `auth/identity/` - `UserIdentityProvider` interface
-- [x] Static identity provider: `auth/identity/static/` - Username/password with bcrypt
-- [x] Auth callout service: `auth/callout/` - `CalloutService` orchestrating auth flow
+- [x] Entity provider: `provider/entity_provider.go` - `EntityProvider` interface
+- [x] Nsc entity provider: `provider/nsc_entity_provider.go` - Reads nsc directory structure
+- [x] Nauts provider: `provider/nauts_provider.go` - `NautsProvider` interface (policies/groups)
+- [x] File nauts provider: `provider/file_nauts_provider.go` - JSON file backend
+- [x] Identity provider: `identity/provider.go` - `UserIdentityProvider` interface
+- [x] File identity provider: `identity/file_user_provider.go` - Username/password with bcrypt
+- [x] JWT issuance: `jwt/user.go` - `IssueUserJWT()` function
+- [x] Signer: `jwt/signer.go` - `Signer` interface and `LocalSigner`
+- [x] Auth controller: `auth/controller.go` - `AuthController` orchestrating full auth flow
+- [x] CLI: `cmd/nauts/main.go` - Authentication CLI
 - [ ] NATS auth callout integration: Wire up to NATS auth callout protocol
 - [ ] NATS KV provider: Future
 - [ ] JWT identity provider: Future

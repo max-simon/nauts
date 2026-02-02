@@ -1,4 +1,4 @@
-package static
+package identity
 
 import (
 	"context"
@@ -8,14 +8,12 @@ import (
 	"testing"
 
 	"golang.org/x/crypto/bcrypt"
-
-	"github.com/msimon/nauts/auth/identity"
 )
 
 func TestVerify_ValidCredentials(t *testing.T) {
-	sp := createTestProvider(t)
+	fp := createTestProvider(t)
 
-	user, err := sp.Verify(context.Background(), UsernamePassword{
+	user, err := fp.Verify(context.Background(), UsernamePassword{
 		Username: "alice",
 		Password: "secret123",
 	})
@@ -35,43 +33,43 @@ func TestVerify_ValidCredentials(t *testing.T) {
 }
 
 func TestVerify_InvalidPassword(t *testing.T) {
-	sp := createTestProvider(t)
+	fp := createTestProvider(t)
 
-	_, err := sp.Verify(context.Background(), UsernamePassword{
+	_, err := fp.Verify(context.Background(), UsernamePassword{
 		Username: "alice",
 		Password: "wrongpassword",
 	})
-	if !errors.Is(err, identity.ErrInvalidCredentials) {
-		t.Errorf("Verify() error = %v, want %v", err, identity.ErrInvalidCredentials)
+	if !errors.Is(err, ErrInvalidCredentials) {
+		t.Errorf("Verify() error = %v, want %v", err, ErrInvalidCredentials)
 	}
 }
 
 func TestVerify_UserNotFound(t *testing.T) {
-	sp := createTestProvider(t)
+	fp := createTestProvider(t)
 
-	_, err := sp.Verify(context.Background(), UsernamePassword{
+	_, err := fp.Verify(context.Background(), UsernamePassword{
 		Username: "nonexistent",
 		Password: "password",
 	})
-	if !errors.Is(err, identity.ErrUserNotFound) {
-		t.Errorf("Verify() error = %v, want %v", err, identity.ErrUserNotFound)
+	if !errors.Is(err, ErrUserNotFound) {
+		t.Errorf("Verify() error = %v, want %v", err, ErrUserNotFound)
 	}
 }
 
 func TestVerify_InvalidTokenType(t *testing.T) {
-	sp := createTestProvider(t)
+	fp := createTestProvider(t)
 
 	// Pass a string instead of UsernamePassword
-	_, err := sp.Verify(context.Background(), "invalid token")
-	if !errors.Is(err, identity.ErrInvalidTokenType) {
-		t.Errorf("Verify() error = %v, want %v", err, identity.ErrInvalidTokenType)
+	_, err := fp.Verify(context.Background(), "invalid token")
+	if !errors.Is(err, ErrInvalidTokenType) {
+		t.Errorf("Verify() error = %v, want %v", err, ErrInvalidTokenType)
 	}
 }
 
 func TestGetUser_Found(t *testing.T) {
-	sp := createTestProvider(t)
+	fp := createTestProvider(t)
 
-	user, err := sp.GetUser(context.Background(), "bob")
+	user, err := fp.GetUser(context.Background(), "bob")
 	if err != nil {
 		t.Fatalf("GetUser() error = %v", err)
 	}
@@ -82,52 +80,52 @@ func TestGetUser_Found(t *testing.T) {
 }
 
 func TestGetUser_NotFound(t *testing.T) {
-	sp := createTestProvider(t)
+	fp := createTestProvider(t)
 
-	_, err := sp.GetUser(context.Background(), "nonexistent")
-	if !errors.Is(err, identity.ErrUserNotFound) {
-		t.Errorf("GetUser() error = %v, want %v", err, identity.ErrUserNotFound)
+	_, err := fp.GetUser(context.Background(), "nonexistent")
+	if !errors.Is(err, ErrUserNotFound) {
+		t.Errorf("GetUser() error = %v, want %v", err, ErrUserNotFound)
 	}
 }
 
-func TestNew_EmptyConfig(t *testing.T) {
-	sp, err := New(Config{})
+func TestNewFileUserIdentityProvider_EmptyConfig(t *testing.T) {
+	fp, err := NewFileUserIdentityProvider(FileUserIdentityProviderConfig{})
 	if err != nil {
-		t.Fatalf("New() error = %v", err)
+		t.Fatalf("NewFileUserIdentityProvider() error = %v", err)
 	}
 
-	_, err = sp.GetUser(context.Background(), "any")
-	if !errors.Is(err, identity.ErrUserNotFound) {
-		t.Errorf("GetUser() error = %v, want %v", err, identity.ErrUserNotFound)
+	_, err = fp.GetUser(context.Background(), "any")
+	if !errors.Is(err, ErrUserNotFound) {
+		t.Errorf("GetUser() error = %v, want %v", err, ErrUserNotFound)
 	}
 }
 
-func TestNew_InvalidPath(t *testing.T) {
-	_, err := New(Config{
+func TestNewFileUserIdentityProvider_InvalidPath(t *testing.T) {
+	_, err := NewFileUserIdentityProvider(FileUserIdentityProviderConfig{
 		UsersPath: "/nonexistent/path",
 	})
 	if err == nil {
-		t.Error("New() expected error for nonexistent path")
+		t.Error("NewFileUserIdentityProvider() expected error for nonexistent path")
 	}
 }
 
-func TestNew_InvalidJSON(t *testing.T) {
+func TestNewFileUserIdentityProvider_InvalidJSON(t *testing.T) {
 	tmpDir := t.TempDir()
 	invalidFile := filepath.Join(tmpDir, "invalid.json")
 	if err := os.WriteFile(invalidFile, []byte("not json"), 0644); err != nil {
 		t.Fatalf("Failed to write test file: %v", err)
 	}
 
-	_, err := New(Config{
+	_, err := NewFileUserIdentityProvider(FileUserIdentityProviderConfig{
 		UsersPath: invalidFile,
 	})
 	if err == nil {
-		t.Error("New() expected error for invalid JSON")
+		t.Error("NewFileUserIdentityProvider() expected error for invalid JSON")
 	}
 }
 
-// createTestProvider creates a StaticProvider with test users.
-func createTestProvider(t *testing.T) *StaticProvider {
+// createTestProvider creates a FileUserIdentityProvider with test users.
+func createTestProvider(t *testing.T) *FileUserIdentityProvider {
 	t.Helper()
 
 	tmpDir := t.TempDir()
@@ -160,10 +158,10 @@ func createTestProvider(t *testing.T) *StaticProvider {
 		t.Fatalf("Failed to write test file: %v", err)
 	}
 
-	sp, err := New(Config{UsersPath: usersFile})
+	fp, err := NewFileUserIdentityProvider(FileUserIdentityProviderConfig{UsersPath: usersFile})
 	if err != nil {
-		t.Fatalf("New() error = %v", err)
+		t.Fatalf("NewFileUserIdentityProvider() error = %v", err)
 	}
 
-	return sp
+	return fp
 }

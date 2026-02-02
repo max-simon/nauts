@@ -73,46 +73,55 @@ Policy and group updates are incorporated on a best-effort basis (eventual consi
 
 ## Authentication Service
 
-nauts provides a `CalloutService` that orchestrates the authentication flow. It can be used as a building block for implementing a [NATS auth callout service](https://docs.nats.io/running-a-nats-service/configuration/securing_nats/auth_callout).
+nauts provides an `AuthController` that orchestrates the complete authentication flow. It can be used as a building block for implementing a [NATS auth callout service](https://docs.nats.io/running-a-nats-service/configuration/securing_nats/auth_callout).
 
 ### Authentication Flow
 
-The `CalloutService.Authenticate()` method performs the following steps:
+The `AuthController.Authenticate()` method performs the following steps:
 
 1. _Verify identity token_: The identity provider verifies the token and returns user information (user ID, account, groups, attributes).
-2. _Compile permissions_: The auth service compiles NATS permissions for the verified user based on their group memberships.
-3. _Return result_: Returns `AuthResult` containing the user and compiled permissions.
+2. _Compile permissions_: Compiles NATS permissions for the verified user based on their group memberships.
+3. _Create JWT_: Signs a NATS user JWT with the compiled permissions using the account's signing key.
+4. _Return result_: Returns `AuthResult` containing the user, permissions, and signed JWT.
 
 ```go
 // Setup providers
-policyProvider, _ := grouppolicyprovider.NewFile(grouppolicyprovider.FileConfig{
+entityProvider, _ := provider.NewNscEntityProvider(provider.NscConfig{
+    Dir:          "~/.nsc",
+    OperatorName: "myoperator",
+})
+
+nautsProvider, _ := provider.NewFileNautsProvider(provider.FileNautsProviderConfig{
     PoliciesPath: "policies.json",
     GroupsPath:   "groups.json",
 })
-identityProvider, _ := static.New(static.Config{UsersPath: "users.json"})
 
-// Create services
-authService := auth.NewAuthService(policyProvider)
-calloutService := callout.NewCalloutService(identityProvider, authService)
+identityProvider, _ := identity.NewFileUserIdentityProvider(identity.FileUserIdentityProviderConfig{
+    UsersPath: "users.json",
+})
+
+// Create controller
+controller := auth.NewAuthController(entityProvider, nautsProvider, identityProvider)
 
 // Authenticate
-result, err := calloutService.Authenticate(ctx, static.UsernamePassword{
+result, err := controller.Authenticate(ctx, identity.UsernamePassword{
     Username: "alice",
     Password: "secret",
-})
+}, userPublicKey, time.Hour)
 // result.User contains user info
 // result.Permissions contains compiled NATS permissions
+// result.JWT contains signed NATS user JWT
 ```
 
-> **Note**: NATS auth callout protocol integration (JWT signing and NATS message handling) is not yet implemented.
+> **Note**: NATS auth callout protocol integration (NATS message handling) is not yet implemented.
 
 ### User Identity Provider
 
 nauts uses identity providers to verify credentials and resolve user information. The following providers are available:
 
-#### Static
+#### File-based (FileUserIdentityProvider)
 
-Static list of users and group assignments. Verification is based on username and password check using bcrypt.
+Static list of users and group assignments stored in a JSON file. Verification is based on username and password check using bcrypt.
 
 ```typescript
 interface User {
@@ -133,10 +142,35 @@ interface UserList {
 
 > Not implemented yet
 
+### Entity Provider
+
+Entity providers supply NATS operator and account information, including signing keys for JWT issuance.
+
+#### Nsc-based (NscEntityProvider)
+
+Reads operator and account information from an [nsc](https://docs.nats.io/using-nats/nats-tools/nsc) directory structure:
+
+```
+~/.nsc/
+├── nats/
+│   └── <operator>/
+│       ├── <operator>.jwt
+│       └── accounts/
+│           └── <account>/
+│               └── <account>.jwt
+└── keys/
+    └── keys/
+        ├── O/<prefix>/<operator-pubkey>.nk
+        └── A/<prefix>/<account-pubkey>.nk
+```
+
 ## Package Structure
 
 ```
 nauts/
+├── cmd/
+│   └── nauts/              # CLI entrypoint
+│       └── main.go         # Authentication CLI
 ├── policy/                 # Policy types, compilation, interpolation
 │   ├── action.go           # Action types and group expansion
 │   ├── compile.go          # Compile() function
@@ -144,16 +178,173 @@ nauts/
 │   ├── mapper.go           # Action+Resource to permissions
 │   ├── permissions.go      # NatsPermissions with wildcard dedup
 │   └── resource.go         # Resource parsing
-├── auth/                   # Authentication service
-│   ├── service.go          # AuthService
-│   ├── model/              # User, Group types
-│   ├── provider/           # GroupPolicyProvider interface
-│   │   └── grouppolicyprovider/  # File-based implementation
-│   ├── identity/           # UserIdentityProvider interface
-│   │   └── static/         # Static provider (username/password)
-│   └── callout/            # CalloutService
+├── provider/               # Entity and policy/group providers
+│   ├── entity.go           # Operator, Account types
+│   ├── entity_provider.go  # EntityProvider interface
+│   ├── nsc_entity_provider.go # NscEntityProvider
+│   ├── nauts_provider.go   # NautsProvider interface
+│   ├── file_nauts_provider.go # FileNautsProvider
+│   └── group.go            # Group type
+├── identity/               # User identity management
+│   ├── user.go             # User type
+│   ├── provider.go         # UserIdentityProvider interface
+│   └── file_user_provider.go # FileUserIdentityProvider
+├── jwt/                    # JWT issuance
+│   ├── signer.go           # Signer interface
+│   ├── local_signer.go     # LocalSigner (nkeys)
+│   └── user.go             # IssueUserJWT()
+├── auth/                   # Authentication controller
+│   ├── controller.go       # AuthController
+│   └── errors.go           # AuthError
 └── testdata/               # Test fixtures
 ```
+
+## Components Diagram
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              AuthController                                  │
+│                                                                             │
+│  ┌─────────────┐    ┌──────────────────────┐    ┌─────────────────────┐    │
+│  │ ResolveUser │───▶│ ResolveNatsPermissions│───▶│   CreateUserJWT     │    │
+│  └──────┬──────┘    └──────────┬───────────┘    └──────────┬──────────┘    │
+│         │                      │                           │               │
+└─────────┼──────────────────────┼───────────────────────────┼───────────────┘
+          │                      │                           │
+          ▼                      ▼                           ▼
+┌─────────────────┐    ┌─────────────────┐         ┌─────────────────┐
+│    identity/    │    │    provider/    │         │      jwt/       │
+│                 │    │                 │         │                 │
+│ ┌─────────────┐ │    │ ┌─────────────┐ │         │ ┌─────────────┐ │
+│ │    User     │ │    │ │    Group    │ │         │ │   Signer    │ │
+│ │IdentityProv│ │    │ │ NautsProvider│ │         │ │ IssueUserJWT│ │
+│ └─────────────┘ │    │ └─────────────┘ │         │ └─────────────┘ │
+└─────────────────┘    │ ┌─────────────┐ │         └────────┬────────┘
+                       │ │EntityProvider│ │                  │
+                       │ │  (Operator,  │ │                  │
+                       │ │   Account)   │◀─────────────────┘
+                       │ └─────────────┘ │
+                       └─────────────────┘
+                                │
+                                ▼
+                       ┌─────────────────┐
+                       │     policy/     │
+                       │                 │
+                       │ ┌─────────────┐ │
+                       │ │   Compile   │ │
+                       │ │NatsPermissions│
+                       │ └─────────────┘ │
+                       └─────────────────┘
+```
+
+### Component Responsibilities
+
+| Package | Responsibility |
+|---------|---------------|
+| `policy/` | Policy specification, compilation, variable interpolation, action mapping |
+| `provider/` | NATS entity management (operators, accounts), policy/group storage |
+| `identity/` | User authentication and identity resolution |
+| `jwt/` | NATS JWT creation and signing |
+| `auth/` | Authentication orchestration combining all components |
+
+## CLI
+
+nauts provides a command-line interface for authenticating users and generating NATS JWTs.
+
+### Installation
+
+```bash
+go build -o bin/nauts ./cmd/nauts
+```
+
+### Usage
+
+```bash
+./bin/nauts [options]
+
+Options:
+  -nsc-dir string      Path to nsc directory (required)
+  -operator string     Operator name (required)
+  -policies string     Path to policies JSON file (required)
+  -groups string       Path to groups JSON file (required)
+  -users string        Path to users JSON file (required)
+  -username string     Username to authenticate (required)
+  -password string     Password for authentication (required)
+  -user-pubkey string  User's public key for JWT subject (optional, generates ephemeral key if omitted)
+  -ttl duration        JWT time-to-live (default 1h)
+```
+
+### Example
+
+```bash
+# Authenticate user and get JWT (with ephemeral key)
+./bin/nauts \
+  -nsc-dir ~/.nsc \
+  -operator myoperator \
+  -policies /path/to/policies.json \
+  -groups /path/to/groups.json \
+  -users /path/to/users.json \
+  -username alice \
+  -password secret123
+
+# Or with a specific user public key
+./bin/nauts \
+  -nsc-dir ~/.nsc \
+  -operator myoperator \
+  -policies /path/to/policies.json \
+  -groups /path/to/groups.json \
+  -users /path/to/users.json \
+  -username alice \
+  -password secret123 \
+  -user-pubkey UABC123XYZ...
+
+# Output: eyJ0eXAiOiJKV1QiLCJhbGciOiJlZDI1NTE5LW5rZXkifQ...
+```
+
+The CLI outputs the signed JWT to stdout on success. The JWT can be used with NATS clients that support JWT-based authentication.
+
+### Test Environment Setup
+
+A setup script is provided to quickly create a test environment with all required components:
+
+```bash
+# Run the setup script
+./scripts/setup-test-env.sh ./testenv
+
+# This creates:
+# ./testenv/
+# ├── nsc/              # nsc operator and accounts
+# ├── user-keys/        # Test user nkeys
+# ├── users.json        # User credentials (alice, bob, charlie)
+# ├── policies.json     # Sample policies
+# └── groups.json       # Sample groups (admin, workers, readonly)
+```
+
+The script creates three test users:
+| User | Password | Groups |
+|------|----------|--------|
+| alice | alice123 | admin, workers |
+| bob | bob456 | workers |
+| charlie | charlie789 | readonly |
+
+After running the setup script, authenticate with:
+
+```bash
+# Build the CLI
+go build -o bin/nauts ./cmd/nauts
+
+# Get JWT for alice (admin + workers permissions)
+./bin/nauts \
+  -nsc-dir ./testenv/nsc \
+  -operator test-operator \
+  -policies ./testenv/policies.json \
+  -groups ./testenv/groups.json \
+  -users ./testenv/users.json \
+  -username alice \
+  -password alice123
+```
+
+**Requirements**: The setup script requires `nsc` and `go` to be installed.
 
 ## Future Enhancements
 

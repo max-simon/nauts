@@ -1,24 +1,22 @@
-package grouppolicyprovider
+package provider
 
 import (
 	"context"
 	"encoding/json"
 	"os"
 
-	"github.com/msimon/nauts/auth/model"
-	"github.com/msimon/nauts/auth/provider"
 	"github.com/msimon/nauts/policy"
 )
 
-// FileGroupPolicyProvider implements provider.GroupPolicyProvider using JSON files.
+// FileNautsProvider implements NautsProvider using JSON files.
 // Data is loaded once during initialization and cached in memory.
-type FileGroupPolicyProvider struct {
+type FileNautsProvider struct {
 	policies map[string]*policy.Policy
-	groups   map[string]*model.Group
+	groups   map[string]*Group
 }
 
-// FileConfig holds configuration for FileGroupPolicyProvider.
-type FileConfig struct {
+// FileNautsProviderConfig holds configuration for FileNautsProvider.
+type FileNautsProviderConfig struct {
 	// PoliciesPath is the path to policies JSON file.
 	PoliciesPath string
 
@@ -26,11 +24,11 @@ type FileConfig struct {
 	GroupsPath string
 }
 
-// NewFile creates a new FileGroupPolicyProvider from the given configuration.
-func NewFile(cfg FileConfig) (*FileGroupPolicyProvider, error) {
-	fp := &FileGroupPolicyProvider{
+// NewFileNautsProvider creates a new FileNautsProvider from the given configuration.
+func NewFileNautsProvider(cfg FileNautsProviderConfig) (*FileNautsProvider, error) {
+	fp := &FileNautsProvider{
 		policies: make(map[string]*policy.Policy),
-		groups:   make(map[string]*model.Group),
+		groups:   make(map[string]*Group),
 	}
 
 	// Load policies
@@ -51,7 +49,7 @@ func NewFile(cfg FileConfig) (*FileGroupPolicyProvider, error) {
 }
 
 // loadPolicies loads policies from a JSON file.
-func (fp *FileGroupPolicyProvider) loadPolicies(path string) error {
+func (fp *FileNautsProvider) loadPolicies(path string) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return err
@@ -74,13 +72,13 @@ func (fp *FileGroupPolicyProvider) loadPolicies(path string) error {
 
 // loadGroups loads groups from a JSON file.
 // The file should contain an array of groups.
-func (fp *FileGroupPolicyProvider) loadGroups(path string) error {
+func (fp *FileNautsProvider) loadGroups(path string) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return err
 	}
 
-	var groups []*model.Group
+	var groups []*Group
 	if err := json.Unmarshal(data, &groups); err != nil {
 		return err
 	}
@@ -96,25 +94,25 @@ func (fp *FileGroupPolicyProvider) loadGroups(path string) error {
 }
 
 // GetPolicy retrieves a policy by ID.
-func (fp *FileGroupPolicyProvider) GetPolicy(_ context.Context, id string) (*policy.Policy, error) {
+func (fp *FileNautsProvider) GetPolicy(_ context.Context, id string) (*policy.Policy, error) {
 	p, ok := fp.policies[id]
 	if !ok {
-		return nil, provider.ErrPolicyNotFound
+		return nil, ErrPolicyNotFound
 	}
 	return p, nil
 }
 
 // GetGroup retrieves a group by ID.
-func (fp *FileGroupPolicyProvider) GetGroup(_ context.Context, id string) (*model.Group, error) {
+func (fp *FileNautsProvider) GetGroup(_ context.Context, id string) (*Group, error) {
 	g, ok := fp.groups[id]
 	if !ok {
-		return nil, provider.ErrGroupNotFound
+		return nil, ErrGroupNotFound
 	}
 	return g, nil
 }
 
 // ListPolicies returns all policies.
-func (fp *FileGroupPolicyProvider) ListPolicies(_ context.Context) ([]*policy.Policy, error) {
+func (fp *FileNautsProvider) ListPolicies(_ context.Context) ([]*policy.Policy, error) {
 	result := make([]*policy.Policy, 0, len(fp.policies))
 	for _, p := range fp.policies {
 		result = append(result, p)
@@ -123,8 +121,8 @@ func (fp *FileGroupPolicyProvider) ListPolicies(_ context.Context) ([]*policy.Po
 }
 
 // ListGroups returns all groups.
-func (fp *FileGroupPolicyProvider) ListGroups(_ context.Context) ([]*model.Group, error) {
-	result := make([]*model.Group, 0, len(fp.groups))
+func (fp *FileNautsProvider) ListGroups(_ context.Context) ([]*Group, error) {
+	result := make([]*Group, 0, len(fp.groups))
 	for _, g := range fp.groups {
 		result = append(result, g)
 	}
