@@ -1,5 +1,5 @@
-// Package store defines storage interfaces for nauts policies, groups, and users.
-package store
+// Package provider defines interfaces for group and policy data providers.
+package provider
 
 import (
 	"context"
@@ -8,12 +8,14 @@ import (
 	"github.com/msimon/nauts/policy"
 )
 
-// Store provides read access to policies, groups, and users.
-type Store interface {
+// GroupPolicyProvider provides read access to groups and policies.
+type GroupPolicyProvider interface {
 	// GetPolicy retrieves a policy by ID.
+	// Returns ErrPolicyNotFound if the policy does not exist.
 	GetPolicy(ctx context.Context, id string) (*policy.Policy, error)
 
 	// GetGroup retrieves a group by ID.
+	// Returns ErrGroupNotFound if the group does not exist.
 	GetGroup(ctx context.Context, id string) (*model.Group, error)
 
 	// ListPolicies returns all policies.

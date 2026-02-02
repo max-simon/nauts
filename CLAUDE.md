@@ -15,9 +15,10 @@ See [README.md](./README.md) for architecture and [POLICY.md](./POLICY.md) for p
 ## Tech Stack
 
 - **Language**: Go 1.22+
-- **NATS Client**: github.com/nats-io/nats.go
-- **JWT Handling**: github.com/nats-io/jwt/v2
-- **NKeys**: github.com/nats-io/nkeys
+- **NATS Client**: github.com/nats-io/nats.go (future)
+- **JWT Handling**: github.com/nats-io/jwt/v2 (future)
+- **NKeys**: github.com/nats-io/nkeys (future)
+- **Password Hashing**: golang.org/x/crypto/bcrypt
 - **Testing**: Standard library
 - **Configuration**: Environment variables + JSON files
 
@@ -43,12 +44,20 @@ nauts/
 │   ├── model/              # Core domain types
 │   │   ├── user.go         # User type
 │   │   └── group.go        # Group type, ValidationError
-│   └── store/              # Policy/group storage backends
-│       ├── store.go        # Store interface
-│       ├── errors.go       # Store errors (ErrPolicyNotFound, etc.)
-│       └── filestore/      # JSON file storage backend
-│           └── filestore.go
-├── testdata/               # Test fixtures (policies, groups)
+│   ├── provider/           # Group and policy providers
+│   │   ├── provider.go     # GroupPolicyProvider interface
+│   │   ├── errors.go       # Provider errors (ErrPolicyNotFound, ErrGroupNotFound)
+│   │   └── grouppolicyprovider/
+│   │       └── file.go     # FileGroupPolicyProvider (JSON file backend)
+│   ├── identity/           # User identity providers
+│   │   ├── identity.go     # UserIdentityProvider interface, IdentityToken
+│   │   ├── errors.go       # Identity errors (ErrInvalidCredentials, ErrUserNotFound)
+│   │   └── static/
+│   │       └── static.go   # StaticProvider (bcrypt password verification)
+│   └── callout/            # Auth callout service
+│       ├── callout.go      # CalloutService (orchestrates auth flow)
+│       └── errors.go       # CalloutError
+├── testdata/               # Test fixtures (policies, groups, users)
 └── docs/                   # Additional documentation
 ```
 
@@ -74,6 +83,8 @@ nauts/
 - Actions: `Action`, `ActionDef`, `ResolveActions()`
 - Auth service: `AuthService`, `NewAuthService()`, `GetNatsPermission()`
 - Permissions: `NatsPermissions`, `Permission`, `PermissionSet`
+- Providers: `GroupPolicyProvider`, `FileGroupPolicyProvider`, `UserIdentityProvider`, `StaticProvider`
+- Callout: `CalloutService`, `AuthResult`, `CalloutError`
 
 ### Testing
 
@@ -144,7 +155,7 @@ The `policy.Compile()` function transforms policies to NATS permissions:
 
 The `auth.AuthService` orchestrates compilation:
 1. Resolve user's groups (including default group)
-2. For each group, fetch policies from store
+2. For each group, fetch policies from provider
 3. Call `policy.Compile()` with user/group context
 4. Deduplicate permissions with wildcard awareness
 5. Return final `NatsPermissions`
@@ -156,21 +167,51 @@ The `auth.AuthService` orchestrates compilation:
 - `foo.bar` covered by `foo.>` → remove `foo.bar`
 - `foo.*` covered by `foo.>` → remove `foo.*`
 
-### Auth Callout (Future)
+### Auth Callout Service
 
-The auth service will receive NATS auth requests and:
-1. Extract credentials from the request
-2. Resolve identity via configured resolver
-3. Compile permissions for the user
-4. Sign and return a NATS JWT
+The `callout.CalloutService` orchestrates the full authentication flow:
+1. Verify identity token via `UserIdentityProvider` → returns `*model.User`
+2. Compile permissions via `AuthService.GetNatsPermission()` → returns `*policy.NatsPermissions`
+3. Return `AuthResult` containing user and permissions
+
+Usage:
+```go
+// Setup providers
+policyProvider, _ := grouppolicyprovider.NewFile(grouppolicyprovider.FileConfig{
+    PoliciesPath: "policies.json",
+    GroupsPath:   "groups.json",
+})
+identityProvider, _ := static.New(static.Config{UsersPath: "users.json"})
+
+// Create services
+authService := auth.NewAuthService(policyProvider)
+calloutService := callout.NewCalloutService(identityProvider, authService)
+
+// Authenticate
+result, err := calloutService.Authenticate(ctx, static.UsernamePassword{
+    Username: "alice",
+    Password: "secret",
+})
+// result.User, result.Permissions available
+```
+
+### Identity Providers
+
+Identity providers verify credentials and return user information:
+
+**StaticProvider** (`auth/identity/static`):
+- Loads users from JSON file
+- Verifies passwords using bcrypt
+- Token type: `static.UsernamePassword{Username, Password}`
 
 ## Dependencies
 
 ```go
 require (
-    github.com/nats-io/nats.go v1.x    // future
-    github.com/nats-io/jwt/v2 v2.x     // future
-    github.com/nats-io/nkeys v0.x      // future
+    golang.org/x/crypto v0.x         // bcrypt for password hashing
+    github.com/nats-io/nats.go v1.x  // future
+    github.com/nats-io/jwt/v2 v2.x   // future
+    github.com/nats-io/nkeys v0.x    // future
 )
 ```
 
@@ -185,9 +226,12 @@ require (
 - [x] Permissions: `policy/permissions.go` - Allow/Deny with wildcard deduplication
 - [x] Compilation: `policy/compile.go` - `Compile()` function
 - [x] Auth service: `auth/service.go` - `AuthService` with `GetNatsPermission()`
-- [x] File-based store: `auth/store/filestore/` - JSON file storage backend
-- [ ] Static identity resolver: Not implemented
-- [ ] Auth callout service: Not implemented
-- [ ] NATS KV store: Future
-- [ ] JWT identity resolver: Future
+- [x] Group/Policy provider: `auth/provider/` - `GroupPolicyProvider` interface
+- [x] File-based provider: `auth/provider/grouppolicyprovider/` - JSON file backend
+- [x] Identity provider: `auth/identity/` - `UserIdentityProvider` interface
+- [x] Static identity provider: `auth/identity/static/` - Username/password with bcrypt
+- [x] Auth callout service: `auth/callout/` - `CalloutService` orchestrating auth flow
+- [ ] NATS auth callout integration: Wire up to NATS auth callout protocol
+- [ ] NATS KV provider: Future
+- [ ] JWT identity provider: Future
 - [ ] Control plane: Future

@@ -7,7 +7,7 @@ import (
 	"log"
 
 	"github.com/msimon/nauts/auth/model"
-	"github.com/msimon/nauts/auth/store"
+	"github.com/msimon/nauts/auth/provider"
 	"github.com/msimon/nauts/policy"
 )
 
@@ -25,8 +25,8 @@ func (l *defaultLogger) Warn(msg string, args ...any) {
 
 // AuthService compiles permissions for users based on their groups and policies.
 type AuthService struct {
-	store  store.Store
-	logger Logger
+	provider provider.GroupPolicyProvider
+	logger   Logger
 }
 
 // ServiceOption configures an AuthService.
@@ -39,11 +39,11 @@ func WithLogger(l Logger) ServiceOption {
 	}
 }
 
-// NewAuthService creates a new AuthService with the given store.
-func NewAuthService(s store.Store, opts ...ServiceOption) *AuthService {
+// NewAuthService creates a new AuthService with the given provider.
+func NewAuthService(p provider.GroupPolicyProvider, opts ...ServiceOption) *AuthService {
 	svc := &AuthService{
-		store:  s,
-		logger: &defaultLogger{},
+		provider: p,
+		logger:   &defaultLogger{},
 	}
 	for _, opt := range opts {
 		opt(svc)
@@ -71,9 +71,9 @@ func (s *AuthService) GetNatsPermission(ctx context.Context, user *model.User) (
 
 	// Process each group
 	for _, groupID := range groupIDs {
-		group, err := s.store.GetGroup(ctx, groupID)
+		group, err := s.provider.GetGroup(ctx, groupID)
 		if err != nil {
-			if errors.Is(err, store.ErrGroupNotFound) {
+			if errors.Is(err, provider.ErrGroupNotFound) {
 				s.logger.Warn("group not found: %s (user: %s)", groupID, user.ID)
 				continue
 			}
@@ -83,9 +83,9 @@ func (s *AuthService) GetNatsPermission(ctx context.Context, user *model.User) (
 		// Collect policies for this group
 		var policies []*policy.Policy
 		for _, policyID := range group.Policies {
-			pol, err := s.store.GetPolicy(ctx, policyID)
+			pol, err := s.provider.GetPolicy(ctx, policyID)
 			if err != nil {
-				if errors.Is(err, store.ErrPolicyNotFound) {
+				if errors.Is(err, provider.ErrPolicyNotFound) {
 					s.logger.Warn("policy not found: %s (group: %s)", policyID, groupID)
 					continue
 				}

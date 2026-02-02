@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/msimon/nauts/auth/model"
-	"github.com/msimon/nauts/auth/store/filestore"
+	"github.com/msimon/nauts/auth/provider/grouppolicyprovider"
 )
 
 // testLogger captures warnings for testing
@@ -17,25 +17,25 @@ func (l *testLogger) Warn(msg string, args ...any) {
 	l.warnings = append(l.warnings, msg)
 }
 
-func newTestStore(t *testing.T) *filestore.FileStore {
+func newTestProvider(t *testing.T) *grouppolicyprovider.FileGroupPolicyProvider {
 	t.Helper()
 
-	cfg := filestore.Config{
+	cfg := grouppolicyprovider.FileConfig{
 		PoliciesPath: "../testdata/policies.json",
 		GroupsPath:   "../testdata/groups/groups.json",
 	}
 
-	fs, err := filestore.New(cfg)
+	fp, err := grouppolicyprovider.NewFile(cfg)
 	if err != nil {
-		t.Fatalf("Failed to create filestore: %v", err)
+		t.Fatalf("Failed to create provider: %v", err)
 	}
-	return fs
+	return fp
 }
 
 func TestGetNatsPermission_Basic(t *testing.T) {
-	store := newTestStore(t)
+	provider := newTestProvider(t)
 	logger := &testLogger{}
-	svc := NewAuthService(store, WithLogger(logger))
+	svc := NewAuthService(provider, WithLogger(logger))
 
 	// Create test user
 	user := &model.User{
@@ -59,8 +59,8 @@ func TestGetNatsPermission_Basic(t *testing.T) {
 }
 
 func TestGetNatsPermission_NilUser(t *testing.T) {
-	store := newTestStore(t)
-	svc := NewAuthService(store)
+	provider := newTestProvider(t)
+	svc := NewAuthService(provider)
 
 	_, err := svc.GetNatsPermission(context.Background(), nil)
 	if err == nil {
@@ -69,8 +69,8 @@ func TestGetNatsPermission_NilUser(t *testing.T) {
 }
 
 func TestGetNatsPermission_DefaultGroup(t *testing.T) {
-	store := newTestStore(t)
-	svc := NewAuthService(store)
+	provider := newTestProvider(t)
+	svc := NewAuthService(provider)
 
 	// User with no explicit groups should still get default group
 	user := &model.User{
@@ -87,13 +87,4 @@ func TestGetNatsPermission_DefaultGroup(t *testing.T) {
 	// Default group should be processed (even if it doesn't exist or has no policies)
 	// The result may be empty, but should not error
 	_ = perms
-}
-
-func contains(slice []string, item string) bool {
-	for _, s := range slice {
-		if s == item {
-			return true
-		}
-	}
-	return false
 }

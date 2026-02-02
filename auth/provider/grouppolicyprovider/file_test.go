@@ -1,4 +1,4 @@
-package filestore
+package grouppolicyprovider
 
 import (
 	"context"
@@ -8,28 +8,28 @@ import (
 	"testing"
 
 	"github.com/msimon/nauts/auth/model"
-	"github.com/msimon/nauts/auth/store"
+	"github.com/msimon/nauts/auth/provider"
 	"github.com/msimon/nauts/policy"
 )
 
-func TestNew_WithDirectory(t *testing.T) {
+func TestNewFile_WithDirectory(t *testing.T) {
 	// Get the testdata directory path
 	testdataDir := getTestdataDir(t)
 
-	cfg := Config{
+	cfg := FileConfig{
 		PoliciesPath: filepath.Join(testdataDir, "policies.json"),
 		GroupsPath:   filepath.Join(testdataDir, "groups", "groups.json"),
 	}
 
-	fs, err := New(cfg)
+	fp, err := NewFile(cfg)
 	if err != nil {
-		t.Fatalf("New() error = %v", err)
+		t.Fatalf("NewFile() error = %v", err)
 	}
 
 	ctx := context.Background()
 
 	// Check policies loaded from file
-	policies, err := fs.ListPolicies(ctx)
+	policies, err := fp.ListPolicies(ctx)
 	if err != nil {
 		t.Fatalf("ListPolicies() error = %v", err)
 	}
@@ -38,7 +38,7 @@ func TestNew_WithDirectory(t *testing.T) {
 	}
 
 	// Check specific policy
-	p, err := fs.GetPolicy(ctx, "allow-orders")
+	p, err := fp.GetPolicy(ctx, "allow-orders")
 	if err != nil {
 		t.Fatalf("GetPolicy(allow-orders) error = %v", err)
 	}
@@ -47,7 +47,7 @@ func TestNew_WithDirectory(t *testing.T) {
 	}
 
 	// Check groups loaded
-	groups, err := fs.ListGroups(ctx)
+	groups, err := fp.ListGroups(ctx)
 	if err != nil {
 		t.Fatalf("ListGroups() error = %v", err)
 	}
@@ -56,7 +56,7 @@ func TestNew_WithDirectory(t *testing.T) {
 	}
 
 	// Check specific group
-	g, err := fs.GetGroup(ctx, "workers")
+	g, err := fp.GetGroup(ctx, "workers")
 	if err != nil {
 		t.Fatalf("GetGroup(workers) error = %v", err)
 	}
@@ -69,58 +69,58 @@ func TestNew_WithDirectory(t *testing.T) {
 }
 
 func TestGetPolicy_NotFound(t *testing.T) {
-	fs := &FileStore{
+	fp := &FileGroupPolicyProvider{
 		policies: make(map[string]*policy.Policy),
 		groups:   make(map[string]*model.Group),
 	}
 
-	_, err := fs.GetPolicy(context.Background(), "nonexistent")
-	if !errors.Is(err, store.ErrPolicyNotFound) {
-		t.Errorf("GetPolicy() error = %v, want %v", err, store.ErrPolicyNotFound)
+	_, err := fp.GetPolicy(context.Background(), "nonexistent")
+	if !errors.Is(err, provider.ErrPolicyNotFound) {
+		t.Errorf("GetPolicy() error = %v, want %v", err, provider.ErrPolicyNotFound)
 	}
 }
 
 func TestGetGroup_NotFound(t *testing.T) {
-	fs := &FileStore{
+	fp := &FileGroupPolicyProvider{
 		policies: make(map[string]*policy.Policy),
 		groups:   make(map[string]*model.Group),
 	}
 
-	_, err := fs.GetGroup(context.Background(), "nonexistent")
-	if !errors.Is(err, store.ErrGroupNotFound) {
-		t.Errorf("GetGroup() error = %v, want %v", err, store.ErrGroupNotFound)
+	_, err := fp.GetGroup(context.Background(), "nonexistent")
+	if !errors.Is(err, provider.ErrGroupNotFound) {
+		t.Errorf("GetGroup() error = %v, want %v", err, provider.ErrGroupNotFound)
 	}
 }
 
-func TestNew_EmptyConfig(t *testing.T) {
-	fs, err := New(Config{})
+func TestNewFile_EmptyConfig(t *testing.T) {
+	fp, err := NewFile(FileConfig{})
 	if err != nil {
-		t.Fatalf("New() error = %v", err)
+		t.Fatalf("NewFile() error = %v", err)
 	}
 
 	ctx := context.Background()
 
-	policies, _ := fs.ListPolicies(ctx)
+	policies, _ := fp.ListPolicies(ctx)
 	if len(policies) != 0 {
 		t.Errorf("Expected 0 policies, got %d", len(policies))
 	}
 
-	groups, _ := fs.ListGroups(ctx)
+	groups, _ := fp.ListGroups(ctx)
 	if len(groups) != 0 {
 		t.Errorf("Expected 0 groups, got %d", len(groups))
 	}
 }
 
-func TestNew_InvalidPoliciesPath(t *testing.T) {
-	_, err := New(Config{
+func TestNewFile_InvalidPoliciesPath(t *testing.T) {
+	_, err := NewFile(FileConfig{
 		PoliciesPath: "/nonexistent/path",
 	})
 	if err == nil {
-		t.Error("New() expected error for nonexistent path")
+		t.Error("NewFile() expected error for nonexistent path")
 	}
 }
 
-func TestNew_InvalidJSON(t *testing.T) {
+func TestNewFile_InvalidJSON(t *testing.T) {
 	// Create a temp file with invalid JSON
 	tmpDir := t.TempDir()
 	invalidFile := filepath.Join(tmpDir, "invalid.json")
@@ -128,15 +128,15 @@ func TestNew_InvalidJSON(t *testing.T) {
 		t.Fatalf("Failed to write test file: %v", err)
 	}
 
-	_, err := New(Config{
+	_, err := NewFile(FileConfig{
 		PoliciesPath: invalidFile,
 	})
 	if err == nil {
-		t.Error("New() expected error for invalid JSON")
+		t.Error("NewFile() expected error for invalid JSON")
 	}
 }
 
-func TestNew_InvalidPolicy(t *testing.T) {
+func TestNewFile_InvalidPolicy(t *testing.T) {
 	// Create a temp file with invalid policy (missing required fields)
 	tmpDir := t.TempDir()
 	invalidFile := filepath.Join(tmpDir, "invalid_policy.json")
@@ -145,11 +145,11 @@ func TestNew_InvalidPolicy(t *testing.T) {
 		t.Fatalf("Failed to write test file: %v", err)
 	}
 
-	_, err := New(Config{
+	_, err := NewFile(FileConfig{
 		PoliciesPath: invalidFile,
 	})
 	if err == nil {
-		t.Error("New() expected error for invalid policy")
+		t.Error("NewFile() expected error for invalid policy")
 	}
 }
 

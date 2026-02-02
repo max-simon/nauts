@@ -39,7 +39,7 @@ nauts provides a compiler to map policies to NATS permissions for a given user i
 
 The compilation process:
 1. Resolve user's groups (including the default group)
-2. For each group, fetch policies from the store
+2. For each group, fetch policies from the provider
 3. For each policy, expand action groups to atomic actions
 4. Interpolate variables in resources (e.g., `{{ user.id }}`)
 5. Map actions + resources to NATS PUB/SUB permissions
@@ -47,13 +47,13 @@ The compilation process:
 7. Deduplicate permissions using wildcard-aware logic
 8. Return final `NatsPermissions`
 
-#### Store
+#### Group/Policy Provider
 
-A Store contains policies and groups for a NATS account. The following store types can be used:
+A provider supplies policies and groups for a NATS account. The following provider types are available:
 
 ##### File-based
 
-Policies and groups are read from JSON files. The data is only read once during start, afterwards it is kept in memory.
+Policies and groups are read from JSON files. The data is only read once during initialization, afterwards it is kept in memory.
 
 ```typescript
 // Policy file (array of policies)
@@ -73,26 +73,46 @@ Policy and group updates are incorporated on a best-effort basis (eventual consi
 
 ## Authentication Service
 
-> Not implemented yet
-
-nauts can be deployed as an [auth callout service](https://docs.nats.io/running-a-nats-service/configuration/securing_nats/auth_callout) for NATS.
+nauts provides a `CalloutService` that orchestrates the authentication flow. It can be used as a building block for implementing a [NATS auth callout service](https://docs.nats.io/running-a-nats-service/configuration/securing_nats/auth_callout).
 
 ### Authentication Flow
 
-When a client connects to NATS, the authentication is delegated to nauts which performs the following steps:
+The `CalloutService.Authenticate()` method performs the following steps:
 
-1. _Resolve user identity_: nauts verfies an _identity token_ provided by the connecting client and resolves the user id, the target NATS account id and optional group assignments.
-2. _Compile permissions_: nauts uses its compilation engine to compile NATS permissions for the verified user.
-3. _Audit logs_: for any connection attempt an audit log is sent to NATS containing the user id and result
-4. _Sign JWT for NATS_: nauts signs a JWT encoding the compiled core NATS permissions and returns it.
+1. _Verify identity token_: The identity provider verifies the token and returns user information (user ID, account, groups, attributes).
+2. _Compile permissions_: The auth service compiles NATS permissions for the verified user based on their group memberships.
+3. _Return result_: Returns `AuthResult` containing the user and compiled permissions.
 
-### User Identity Resolver
+```go
+// Setup providers
+policyProvider, _ := grouppolicyprovider.NewFile(grouppolicyprovider.FileConfig{
+    PoliciesPath: "policies.json",
+    GroupsPath:   "groups.json",
+})
+identityProvider, _ := static.New(static.Config{UsersPath: "users.json"})
 
-nauts implements the following identity resolvers used to verify an _identity token_ provided by the client:
+// Create services
+authService := auth.NewAuthService(policyProvider)
+calloutService := callout.NewCalloutService(identityProvider, authService)
+
+// Authenticate
+result, err := calloutService.Authenticate(ctx, static.UsernamePassword{
+    Username: "alice",
+    Password: "secret",
+})
+// result.User contains user info
+// result.Permissions contains compiled NATS permissions
+```
+
+> **Note**: NATS auth callout protocol integration (JWT signing and NATS message handling) is not yet implemented.
+
+### User Identity Provider
+
+nauts uses identity providers to verify credentials and resolve user information. The following providers are available:
 
 #### Static
 
-Static list of users and group assignments. Verification is based on username and password check.
+Static list of users and group assignments. Verification is based on username and password check using bcrypt.
 
 ```typescript
 interface User {
@@ -109,32 +129,42 @@ interface UserList {
 }
 ```
 
+#### JWT-based
+
+> Not implemented yet
+
 ## Package Structure
 
 ```
 nauts/
-├── policy/           # Policy types, compilation, interpolation
-│   ├── action.go     # Action types and group expansion
-│   ├── compile.go    # Compile() function
-│   ├── context.go    # UserContext, GroupContext
-│   ├── mapper.go     # Action+Resource to permissions
-│   ├── permissions.go # NatsPermissions with wildcard dedup
-│   └── resource.go   # Resource parsing
-├── auth/             # Authentication service
-│   ├── service.go    # AuthService
-│   ├── model/        # User, Group types
-│   └── store/        # Store interface and implementations
-└── testdata/         # Test fixtures
+├── policy/                 # Policy types, compilation, interpolation
+│   ├── action.go           # Action types and group expansion
+│   ├── compile.go          # Compile() function
+│   ├── context.go          # UserContext, GroupContext
+│   ├── mapper.go           # Action+Resource to permissions
+│   ├── permissions.go      # NatsPermissions with wildcard dedup
+│   └── resource.go         # Resource parsing
+├── auth/                   # Authentication service
+│   ├── service.go          # AuthService
+│   ├── model/              # User, Group types
+│   ├── provider/           # GroupPolicyProvider interface
+│   │   └── grouppolicyprovider/  # File-based implementation
+│   ├── identity/           # UserIdentityProvider interface
+│   │   └── static/         # Static provider (username/password)
+│   └── callout/            # CalloutService
+└── testdata/               # Test fixtures
 ```
 
 ## Future Enhancements
 
 The following features are planned for future versions:
 
+- **NATS auth callout integration**: Wire up `CalloutService` to NATS auth callout protocol with JWT signing.
 - **Explicit deny rules**: Support `effect: "deny"` in policy statements with evaluation order: explicit deny > explicit allow > implicit deny.
 - **Resource limits**: Allow policies to specify connection limits (`maxSubscriptions`, `maxPayload`, `maxData`).
 - **Policy simulation API**: Dry-run endpoint to test compiled permissions without authenticating.
 - **Per-user inbox scoping**: Replace global `_INBOX.>` with user-specific prefixes to prevent reply interception.
-- **JWT based User Identity Resolver**
-- **nkey based User Identity Resolver**
+- **JWT based User Identity Provider**
+- **nkey based User Identity Provider**
+- **NATS KV Group/Policy Provider**
 - **Control Plane**
