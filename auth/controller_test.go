@@ -39,7 +39,7 @@ func (l *testLogger) Debug(msg string, args ...any) {
 func TestResolveUser_ValidCredentials(t *testing.T) {
 	ctrl := createTestController(t)
 
-	user, err := ctrl.ResolveUser(context.Background(), "alice:secret123")
+	user, err := ctrl.ResolveUser(context.Background(), `{"token":"alice:secret123"}`)
 	if err != nil {
 		t.Fatalf("ResolveUser() error = %v", err)
 	}
@@ -55,7 +55,7 @@ func TestResolveUser_ValidCredentials(t *testing.T) {
 func TestResolveUser_InvalidCredentials(t *testing.T) {
 	ctrl := createTestController(t)
 
-	_, err := ctrl.ResolveUser(context.Background(), "alice:wrongpassword")
+	_, err := ctrl.ResolveUser(context.Background(), `{"token":"alice:wrongpassword"}`)
 	if err == nil {
 		t.Fatal("ResolveUser() expected error")
 	}
@@ -190,7 +190,7 @@ func TestAuthenticate_Success(t *testing.T) {
 	}
 
 	result, err := ctrl.Authenticate(context.Background(), natsjwt.ConnectOptions{
-		Token: "alice:secret123",
+		Token: `{"token":"alice:secret123"}`,
 	}, userPub, time.Hour)
 	if err != nil {
 		t.Fatalf("Authenticate() error = %v", err)
@@ -223,7 +223,7 @@ func TestAuthenticate_InvalidCredentials(t *testing.T) {
 	}
 
 	_, err = ctrl.Authenticate(context.Background(), natsjwt.ConnectOptions{
-		Token: "alice:wrongpassword",
+		Token: `{"token":"alice:wrongpassword"}`,
 	}, userPub, time.Hour)
 	if err == nil {
 		t.Fatal("Authenticate() expected error")
@@ -235,7 +235,7 @@ func TestAuthenticate_EphemeralKey(t *testing.T) {
 
 	// Authenticate with empty userPublicKey - should generate ephemeral key
 	result, err := ctrl.Authenticate(context.Background(), natsjwt.ConnectOptions{
-		Token: "alice:secret123",
+		Token: `{"token":"alice:secret123"}`,
 	}, "", time.Hour) // Empty userPublicKey
 	if err != nil {
 		t.Fatalf("Authenticate() error = %v", err)
@@ -390,7 +390,7 @@ func createTestIdentityProvider(t *testing.T, tmpDir string) identity.UserIdenti
 	usersContent := `{
   "users": {
     "alice": {
-      "account": "test-account",
+      "accounts": ["test-account"],
       "roles": ["workers"],
       "passwordHash": "` + string(aliceHash) + `",
       "attributes": {

@@ -139,8 +139,10 @@ golangci-lint run
 go build -o bin/nauts ./cmd/nauts
 
 # One-shot authentication (get JWT)
-# Token format is provider-specific (e.g., "username:password" for file identity provider)
-./bin/nauts auth -c nauts.json -token alice:secret
+# Token is JSON format: { "account"?: string, "token": string }
+./bin/nauts auth -c nauts.json -token '{"token":"alice:secret"}'
+# For multi-account users, specify the account:
+./bin/nauts auth -c nauts.json -token '{"account":"APP","token":"alice:secret"}'
 
 # Run auth callout service
 ./bin/nauts serve -c nauts.json
@@ -238,16 +240,23 @@ nauts supports two account provider modes:
 
 ### Client Authentication
 
-Clients authenticate differently depending on the mode:
+Clients authenticate using a JSON token with the following structure:
+```json
+{ "account": "APP", "token": "username:password" }
+```
+
+The `account` field is optional if the user has only one account configured. If the user has multiple accounts, the `account` field is required to specify which account to authenticate to.
 
 **Static mode**: Clients connect with just a token:
 ```bash
-nats --token alice:secret pub test "hello"
+nats --token '{"token":"alice:secret"}' pub test "hello"
+# Or with account specified:
+nats --token '{"account":"APP","token":"alice:secret"}' pub test "hello"
 ```
 
 **Operator mode**: Clients must use sentinel credentials + token. The sentinel user authenticates to the AUTH account, which triggers auth callout with the provided token:
 ```bash
-nats --creds sentinel.creds --token alice:secret pub test "hello"
+nats --creds sentinel.creds --token '{"token":"alice:secret"}' pub test "hello"
 ```
 
 The sentinel user is a special user in the AUTH account that:
@@ -328,10 +337,16 @@ config, _ := auth.LoadConfig("nauts.json")
 controller, _ := auth.NewAuthControllerWithConfig(config)
 
 // Authenticate using ConnectOptions (same as auth callout)
+// Token is JSON: { "account"?: string, "token": string }
 result, err := controller.Authenticate(ctx, jwt.ConnectOptions{
-    Token: "alice:secret",  // Token format depends on identity provider
+    Token: `{"token":"alice:secret"}`,  // JSON token format
 }, userPublicKey, time.Hour)
 // result.User, result.Permissions, result.JWT available
+
+// For multi-account users, specify the account:
+result, err := controller.Authenticate(ctx, jwt.ConnectOptions{
+    Token: `{"account":"CORP","token":"bob:secret"}`,
+}, userPublicKey, time.Hour)
 ```
 
 **Manual provider setup (operator mode)**:
@@ -416,12 +431,50 @@ service.Start(ctx)
 
 ### Identity Providers
 
-Identity providers verify credentials and return user information:
+Identity providers verify credentials and return user information.
+
+**AuthRequest Type** (`identity/provider.go`):
+The authentication token is expected to be a JSON object:
+```go
+type AuthRequest struct {
+    Account string `json:"account,omitempty"` // Optional if user has single account
+    Token   string `json:"token"`             // Provider-specific token (e.g., "user:pass")
+}
+```
 
 **FileUserIdentityProvider** (`identity/`):
 - Loads users from JSON file
 - Verifies passwords using bcrypt
-- Token format: `"username:password"` (colon-separated)
+- Token format within AuthRequest: `"username:password"` (colon-separated)
+- **Multi-account support**: Users can have multiple accounts
+  - Single account: `account` field in AuthRequest is optional (user's account is used)
+  - Multiple accounts: `account` field is required and validated against user's accounts list
+
+**Users JSON file format**:
+```json
+{
+  "users": {
+    "alice": {
+      "accounts": ["APP"],
+      "roles": ["readonly"],
+      "passwordHash": "$2a$10$...",
+      "attributes": { "department": "engineering" }
+    },
+    "bob": {
+      "accounts": ["APP", "CORP"],
+      "roles": ["full"],
+      "passwordHash": "$2a$10$..."
+    }
+  }
+}
+```
+
+**Errors**:
+- `ErrInvalidCredentials`: Password verification failed
+- `ErrUserNotFound`: User does not exist
+- `ErrInvalidTokenType`: Token format is wrong
+- `ErrInvalidAccount`: Requested account is not valid for user
+- `ErrAccountRequired`: User has multiple accounts but no account specified
 
 ## Dependencies
 

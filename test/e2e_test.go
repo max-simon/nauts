@@ -108,13 +108,23 @@ func (e *testEnv) stopNats() {
 }
 
 func (e *testEnv) connect(username, password string) (*nats.Conn, error) {
+	return e.connectWithAccount(username, password, "")
+}
+
+func (e *testEnv) connectWithAccount(username, password, account string) (*nats.Conn, error) {
 	opts := []nats.Option{
 		nats.Name("nauts-e2e-test"),
 		nats.Timeout(5 * time.Second),
 	}
 
-	// Use token-based authentication for auth callout
-	token := username + ":" + password
+	// Build JSON token: { "account"?: string, "token": "username:password" }
+	innerToken := username + ":" + password
+	var token string
+	if account != "" {
+		token = fmt.Sprintf(`{"account":%q,"token":%q}`, account, innerToken)
+	} else {
+		token = fmt.Sprintf(`{"token":%q}`, innerToken)
+	}
 	opts = append(opts, nats.Token(token))
 
 	// In operator mode, use sentinel credentials file

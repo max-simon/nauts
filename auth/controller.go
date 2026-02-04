@@ -3,6 +3,7 @@ package auth
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log"
 	"time"
@@ -84,15 +85,36 @@ func (c *AuthController) AccountProvider() provider.AccountProvider {
 }
 
 // ResolveUser verifies the identity token and returns the user.
+// The token should be a JSON object with the structure: { "account"?: string, "token": string }
 // Returns identity.ErrInvalidCredentials if the credentials are invalid.
 // Returns identity.ErrUserNotFound if the user does not exist.
 // Returns identity.ErrInvalidTokenType if the token type is wrong for the provider.
+// Returns identity.ErrInvalidAccount if the requested account is not valid for the user.
+// Returns identity.ErrAccountRequired if user has multiple accounts but no account was specified.
 func (c *AuthController) ResolveUser(ctx context.Context, token string) (*identity.User, error) {
-	user, err := c.identityProvider.Verify(ctx, token)
+	authReq, err := parseAuthRequest(token)
+	if err != nil {
+		return nil, NewAuthError("", "resolve_user", "failed to parse auth request", err)
+	}
+
+	user, err := c.identityProvider.Verify(ctx, authReq)
 	if err != nil {
 		return nil, NewAuthError("", "resolve_user", "failed to verify identity", err)
 	}
 	return user, nil
+}
+
+// parseAuthRequest parses the JSON token into an AuthRequest.
+// Expected format: { "account"?: string, "token": string }
+func parseAuthRequest(token string) (identity.AuthRequest, error) {
+	var req identity.AuthRequest
+	if err := json.Unmarshal([]byte(token), &req); err != nil {
+		return identity.AuthRequest{}, err
+	}
+	if req.Token == "" {
+		return identity.AuthRequest{}, errors.New("token field is required")
+	}
+	return req, nil
 }
 
 // ResolveNatsPermissions compiles NATS permissions for a user based on their roles and policies.

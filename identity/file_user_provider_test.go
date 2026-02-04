@@ -13,7 +13,7 @@ import (
 func TestVerify_ValidCredentials(t *testing.T) {
 	fp := createTestProvider(t)
 
-	user, err := fp.Verify(context.Background(), "alice:secret123")
+	user, err := fp.Verify(context.Background(), AuthRequest{Token: "alice:secret123"})
 	if err != nil {
 		t.Fatalf("Verify() error = %v", err)
 	}
@@ -32,7 +32,7 @@ func TestVerify_ValidCredentials(t *testing.T) {
 func TestVerify_InvalidPassword(t *testing.T) {
 	fp := createTestProvider(t)
 
-	_, err := fp.Verify(context.Background(), "alice:wrongpassword")
+	_, err := fp.Verify(context.Background(), AuthRequest{Token: "alice:wrongpassword"})
 	if !errors.Is(err, ErrInvalidCredentials) {
 		t.Errorf("Verify() error = %v, want %v", err, ErrInvalidCredentials)
 	}
@@ -41,7 +41,7 @@ func TestVerify_InvalidPassword(t *testing.T) {
 func TestVerify_UserNotFound(t *testing.T) {
 	fp := createTestProvider(t)
 
-	_, err := fp.Verify(context.Background(), "nonexistent:password")
+	_, err := fp.Verify(context.Background(), AuthRequest{Token: "nonexistent:password"})
 	if !errors.Is(err, ErrUserNotFound) {
 		t.Errorf("Verify() error = %v, want %v", err, ErrUserNotFound)
 	}
@@ -50,8 +50,8 @@ func TestVerify_UserNotFound(t *testing.T) {
 func TestVerify_InvalidTokenType(t *testing.T) {
 	fp := createTestProvider(t)
 
-	// Pass a string instead of UsernamePassword
-	_, err := fp.Verify(context.Background(), "invalid token")
+	// Pass a token without colon separator
+	_, err := fp.Verify(context.Background(), AuthRequest{Token: "invalid token"})
 	if !errors.Is(err, ErrInvalidTokenType) {
 		t.Errorf("Verify() error = %v, want %v", err, ErrInvalidTokenType)
 	}
@@ -115,6 +115,98 @@ func TestNewFileUserIdentityProvider_InvalidJSON(t *testing.T) {
 	}
 }
 
+func TestVerify_MultipleAccounts_WithAccountSpecified(t *testing.T) {
+	fp := createMultiAccountProvider(t)
+
+	user, err := fp.Verify(context.Background(), AuthRequest{
+		Account: "CORP",
+		Token:   "charlie:secret789",
+	})
+	if err != nil {
+		t.Fatalf("Verify() error = %v", err)
+	}
+
+	if user.ID != "charlie" {
+		t.Errorf("user.ID = %q, want %q", user.ID, "charlie")
+	}
+	if user.Account != "CORP" {
+		t.Errorf("user.Account = %q, want %q", user.Account, "CORP")
+	}
+}
+
+func TestVerify_MultipleAccounts_InvalidAccount(t *testing.T) {
+	fp := createMultiAccountProvider(t)
+
+	_, err := fp.Verify(context.Background(), AuthRequest{
+		Account: "INVALID",
+		Token:   "charlie:secret789",
+	})
+	if !errors.Is(err, ErrInvalidAccount) {
+		t.Errorf("Verify() error = %v, want %v", err, ErrInvalidAccount)
+	}
+}
+
+func TestVerify_MultipleAccounts_NoAccountSpecified(t *testing.T) {
+	fp := createMultiAccountProvider(t)
+
+	_, err := fp.Verify(context.Background(), AuthRequest{
+		Token: "charlie:secret789",
+	})
+	if !errors.Is(err, ErrAccountRequired) {
+		t.Errorf("Verify() error = %v, want %v", err, ErrAccountRequired)
+	}
+}
+
+func TestVerify_SingleAccount_AccountSpecifiedIgnored(t *testing.T) {
+	fp := createTestProvider(t)
+
+	// When user has single account, the specified account is ignored
+	user, err := fp.Verify(context.Background(), AuthRequest{
+		Account: "IGNORED",
+		Token:   "alice:secret123",
+	})
+	if err != nil {
+		t.Fatalf("Verify() error = %v", err)
+	}
+
+	// Should use the user's single account, not the requested one
+	if user.Account != "ACME" {
+		t.Errorf("user.Account = %q, want %q (single account should be used)", user.Account, "ACME")
+	}
+}
+
+// createMultiAccountProvider creates a provider with a user having multiple accounts.
+func createMultiAccountProvider(t *testing.T) *FileUserIdentityProvider {
+	t.Helper()
+
+	tmpDir := t.TempDir()
+	usersFile := filepath.Join(tmpDir, "users.json")
+
+	charlieHash, _ := bcrypt.GenerateFromPassword([]byte("secret789"), bcrypt.DefaultCost)
+
+	content := `{
+  "users": {
+    "charlie": {
+      "accounts": ["ACME", "CORP"],
+      "roles": ["admin"],
+      "passwordHash": "` + string(charlieHash) + `",
+      "attributes": {}
+    }
+  }
+}`
+
+	if err := os.WriteFile(usersFile, []byte(content), 0644); err != nil {
+		t.Fatalf("Failed to write test file: %v", err)
+	}
+
+	fp, err := NewFileUserIdentityProvider(FileUserIdentityProviderConfig{UsersPath: usersFile})
+	if err != nil {
+		t.Fatalf("NewFileUserIdentityProvider() error = %v", err)
+	}
+
+	return fp
+}
+
 // createTestProvider creates a FileUserIdentityProvider with test users.
 func createTestProvider(t *testing.T) *FileUserIdentityProvider {
 	t.Helper()
@@ -129,7 +221,7 @@ func createTestProvider(t *testing.T) *FileUserIdentityProvider {
 	content := `{
   "users": {
     "alice": {
-      "account": "ACME",
+      "accounts": ["ACME"],
       "roles": ["workers"],
       "passwordHash": "` + string(aliceHash) + `",
       "attributes": {
@@ -137,7 +229,7 @@ func createTestProvider(t *testing.T) *FileUserIdentityProvider {
       }
     },
     "bob": {
-      "account": "ACME",
+      "accounts": ["ACME"],
       "roles": ["viewers"],
       "passwordHash": "` + string(bobHash) + `",
       "attributes": {}
