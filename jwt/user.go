@@ -50,17 +50,25 @@ func IssueUserJWT(userName string, userPublicKey string, ttl time.Duration, perm
 }
 
 // permissionsToNats converts policy.NatsPermissions to natsjwt.Permissions.
+// When no permissions are granted, we explicitly deny all to prevent
+// NATS default behavior of allowing everything when permissions are unset.
 func permissionsToNats(perms *policy.NatsPermissions) natsjwt.Permissions {
 	var natsPerms natsjwt.Permissions
 
 	pubList := perms.PubList()
 	if len(pubList) > 0 {
 		natsPerms.Pub.Allow = pubList
+	} else {
+		// No publish permissions means deny all
+		natsPerms.Pub.Deny = []string{">"}
 	}
 
 	subList := perms.SubList()
 	if len(subList) > 0 {
 		natsPerms.Sub.Allow = subList
+	} else {
+		// No subscribe permissions means deny all
+		natsPerms.Sub.Deny = []string{">"}
 	}
 
 	return natsPerms

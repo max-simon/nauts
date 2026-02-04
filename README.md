@@ -345,8 +345,18 @@ nauts/
 | `policy/` | Policy specification, compilation, variable interpolation, action mapping |
 | `provider/` | NATS account management, policy storage, group storage |
 | `identity/` | User authentication and identity resolution |
-| `jwt/` | NATS JWT creation and signing |
+| `jwt/` | NATS JWT creation and signing (with explicit deny for empty permissions) |
 | `auth/` | Authentication orchestration and NATS auth callout service |
+
+### JWT Permission Encoding
+
+NATS JWT defaults to allowing everything when no permissions are specified. nauts handles this by explicitly denying all (`">"`)) when no allow permissions are granted:
+
+- Empty pub permissions → `Pub.Deny: [">"]` (user cannot publish)
+- Empty sub permissions → `Sub.Deny: [">"]` (user cannot subscribe)
+- Non-empty permissions → only `Allow` list is set
+
+This ensures the principle of least privilege: users are denied access by default unless explicitly granted.
 
 ## CLI
 
@@ -506,27 +516,31 @@ Pre-configured test environments are provided in the `test/` directory for both 
 
 ```
 test/
-├── policies.json       # Shared policies
-├── groups.json         # Shared groups (admin, workers, readonly)
-├── users.json          # Shared users (alice, bob, charlie)
+├── e2e_test.go         # Go e2e test suite
+├── client/             # Test client for manual testing
+│   └── main.go
+├── policies.json       # Shared policies (read-access, write-access)
+├── groups.json         # Shared groups (readonly, full)
+├── users.json          # Shared users (alice, bob)
 ├── operator/           # Operator mode setup
 │   ├── README.md       # Setup instructions
 │   ├── nauts.json      # nauts configuration
-│   ├── nats-server.conf
-│   └── *.nk            # Signing keys
+│   ├── nats-server.conf# NATS server config with operator JWTs
+│   ├── auth.creds      # Auth service credentials
+│   ├── sentinel.creds  # Sentinel credentials for client auth
+│   └── *.nk            # Signing keys and xkey
 └── static/             # Static mode setup
     ├── README.md       # Setup instructions
     ├── nauts.json      # nauts configuration
-    ├── nats-server.conf
-    └── *.nk            # Account and user keys
+    ├── nats-server.conf# NATS server config with accounts
+    └── *.nk            # Account key and xkey
 ```
 
 The test users are:
-| User | Token | Groups | Account |
-|------|-------|--------|---------|
-| alice | alice:secret | admin, workers | APP |
-| bob | bob:secret | workers | APP |
-| charlie | charlie:secret | readonly | APP |
+| User | Token | Groups | Account | Permissions |
+|------|-------|--------|---------|-------------|
+| alice | alice:secret | readonly | APP | Subscribe to `public.>` |
+| bob | bob:secret | full | APP | Pub/Sub to `public.>` |
 
 #### Quick Start (Static Mode)
 
@@ -534,7 +548,7 @@ The test users are:
 # Build the CLI
 go build -o bin/nauts ./cmd/nauts
 
-# Get JWT for alice (admin + workers permissions)
+# Get JWT for alice
 ./bin/nauts auth -c ./test/static/nauts.json -token alice:secret
 
 # Or run the auth callout service
@@ -545,7 +559,30 @@ nats-server -c ./test/static/nats-server.conf
 ./bin/nauts serve -c ./test/static/nauts.json
 
 # 3. Test with nats CLI (token format: username:password)
-nats --user token --password alice:secret pub test.subject 'Hello World'
+nats --token alice:secret sub "public.>"
+nats --token bob:secret pub public.test "Hello World"
+```
+
+#### Quick Start (Operator Mode)
+
+```bash
+# 1. Start NATS server
+nats-server -c ./test/operator/nats-server.conf
+
+# 2. Start nauts serve (in another terminal)
+./bin/nauts serve -c ./test/operator/nauts.json
+
+# 3. Test with nats CLI (requires sentinel credentials + token)
+nats --creds ./test/operator/sentinel.creds --token alice:secret sub "public.>"
+nats --creds ./test/operator/sentinel.creds --token bob:secret pub public.test "Hello"
+```
+
+#### Running E2E Tests
+
+```bash
+cd test
+go test -v -static .   # Run static mode e2e tests
+go test -v -operator . # Run operator mode e2e tests
 ```
 
 See `test/operator/README.md` and `test/static/README.md` for detailed setup instructions for each mode.

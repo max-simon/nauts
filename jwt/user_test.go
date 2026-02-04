@@ -175,3 +175,97 @@ func TestIssueUserJWT_ZeroTTL(t *testing.T) {
 		t.Errorf("expires = %d, want 0", claims.Expires)
 	}
 }
+
+// TestPermissionsToNats_EmptyDenyAll verifies that empty permission lists
+// result in explicit deny all. This is critical because NATS JWT defaults
+// to allowing everything when no permissions are specified.
+func TestPermissionsToNats_EmptyDenyAll(t *testing.T) {
+	tests := []struct {
+		name         string
+		perms        *policy.NatsPermissions
+		wantPubAllow []string
+		wantPubDeny  []string
+		wantSubAllow []string
+		wantSubDeny  []string
+	}{
+		{
+			name:         "empty permissions should deny all pub and sub",
+			perms:        policy.NewNatsPermissions(),
+			wantPubAllow: nil,
+			wantPubDeny:  []string{">"},
+			wantSubAllow: nil,
+			wantSubDeny:  []string{">"},
+		},
+		{
+			name: "pub only should deny all sub",
+			perms: func() *policy.NatsPermissions {
+				p := policy.NewNatsPermissions()
+				p.Allow(policy.Permission{Type: policy.PermPub, Subject: "foo.>"})
+				return p
+			}(),
+			wantPubAllow: []string{"foo.>"},
+			wantPubDeny:  nil,
+			wantSubAllow: nil,
+			wantSubDeny:  []string{">"},
+		},
+		{
+			name: "sub only should deny all pub",
+			perms: func() *policy.NatsPermissions {
+				p := policy.NewNatsPermissions()
+				p.Allow(policy.Permission{Type: policy.PermSub, Subject: "foo.>"})
+				return p
+			}(),
+			wantPubAllow: nil,
+			wantPubDeny:  []string{">"},
+			wantSubAllow: []string{"foo.>"},
+			wantSubDeny:  nil,
+		},
+		{
+			name: "both pub and sub should not have any denies",
+			perms: func() *policy.NatsPermissions {
+				p := policy.NewNatsPermissions()
+				p.Allow(policy.Permission{Type: policy.PermPub, Subject: "foo.>"})
+				p.Allow(policy.Permission{Type: policy.PermSub, Subject: "bar.>"})
+				return p
+			}(),
+			wantPubAllow: []string{"foo.>"},
+			wantPubDeny:  nil,
+			wantSubAllow: []string{"bar.>"},
+			wantSubDeny:  nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := permissionsToNats(tt.perms)
+
+			if !stringSliceEqual(got.Pub.Allow, tt.wantPubAllow) {
+				t.Errorf("Pub.Allow = %v, want %v", got.Pub.Allow, tt.wantPubAllow)
+			}
+			if !stringSliceEqual(got.Pub.Deny, tt.wantPubDeny) {
+				t.Errorf("Pub.Deny = %v, want %v", got.Pub.Deny, tt.wantPubDeny)
+			}
+			if !stringSliceEqual(got.Sub.Allow, tt.wantSubAllow) {
+				t.Errorf("Sub.Allow = %v, want %v", got.Sub.Allow, tt.wantSubAllow)
+			}
+			if !stringSliceEqual(got.Sub.Deny, tt.wantSubDeny) {
+				t.Errorf("Sub.Deny = %v, want %v", got.Sub.Deny, tt.wantSubDeny)
+			}
+		})
+	}
+}
+
+func stringSliceEqual(a, b []string) bool {
+	if len(a) == 0 && len(b) == 0 {
+		return true
+	}
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}

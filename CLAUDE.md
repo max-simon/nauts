@@ -63,7 +63,21 @@ nauts/
 │   ├── callout.go          # CalloutService (NATS auth callout handler)
 │   ├── config.go           # Config types and NewAuthControllerWithConfig
 │   └── errors.go           # Auth errors (AuthError)
-├── test/                   # Test fixtures and environments
+├── test/                   # Test fixtures and e2e tests
+│   ├── e2e_test.go         # Go e2e test suite for both modes
+│   ├── operator/           # Operator mode test environment
+│   │   ├── nauts.json      # nauts configuration
+│   │   ├── nats-server.conf# NATS server config with operator JWTs
+│   │   ├── auth.creds      # Auth service credentials
+│   │   ├── sentinel.creds  # Sentinel user credentials for client auth
+│   │   └── *.nk            # Signing keys and xkey
+│   ├── static/             # Static mode test environment
+│   │   ├── nauts.json      # nauts configuration
+│   │   ├── nats-server.conf# NATS server config with accounts
+│   │   └── *.nk            # Account key and xkey
+│   ├── users.json          # Test users (alice, bob)
+│   ├── groups.json         # Test groups (readonly, full)
+│   └── policies.json       # Test policies (read-access, write-access)
 └── docs/                   # Additional documentation
 ```
 
@@ -102,6 +116,13 @@ nauts/
 - Use testdata/ for fixture files
 - Aim for >80% coverage on core logic (policy, auth packages)
 
+**E2E Tests** (`test/e2e_test.go`):
+- Tests both static and operator modes
+- Starts NATS server and nauts service automatically
+- Verifies authentication, authorization, and permission enforcement
+- Run with `-static` or `-operator` flag to select mode
+- Test users: alice (readonly), bob (full access), password: "secret"
+
 ## Common Commands
 
 ```bash
@@ -123,6 +144,11 @@ go build -o bin/nauts ./cmd/nauts
 
 # Run auth callout service
 ./bin/nauts serve -c nauts.json
+
+# Run e2e tests (from test/ directory)
+cd test
+go test -v -static .   # Run static mode e2e tests
+go test -v -operator . # Run operator mode e2e tests
 ```
 
 ### Configuration File Format
@@ -210,6 +236,25 @@ nauts supports two account provider modes:
 - User JWTs include audience set to account name
 - `IsOperatorMode()` returns `false`
 
+### Client Authentication
+
+Clients authenticate differently depending on the mode:
+
+**Static mode**: Clients connect with just a token:
+```bash
+nats --token alice:secret pub test "hello"
+```
+
+**Operator mode**: Clients must use sentinel credentials + token. The sentinel user authenticates to the AUTH account, which triggers auth callout with the provided token:
+```bash
+nats --creds sentinel.creds --token alice:secret pub test "hello"
+```
+
+The sentinel user is a special user in the AUTH account that:
+- Has minimal permissions (pub/sub denied on `>`)
+- Is listed in the account's `auth_users` to trigger auth callout
+- Allows the NATS server to accept the connection and invoke auth callout
+
 ### Resource Parsing
 
 Resources follow pattern `<type>:<identifier>[:<sub-identifier>]`. Parser must:
@@ -248,6 +293,14 @@ The `policy.Compile()` function transforms policies to NATS permissions:
 5. Map actions + resources to NATS permissions
 6. Add `_INBOX.>` for actions that require it
 7. Merge into result permissions
+
+### JWT Permission Encoding
+
+**Important:** NATS JWT defaults to allowing everything when no permissions are specified. The `jwt.IssueUserJWT()` function handles this by explicitly setting `Deny: [">"]` when no allow permissions are granted for a permission type (pub/sub). This ensures users without explicit permissions are denied access rather than granted full access.
+
+- Empty pub permissions → `Pub.Deny: [">"]`
+- Empty sub permissions → `Sub.Deny: [">"]`
+- Non-empty permissions → only `Allow` list is set (no `Deny`)
 
 The `auth.AuthController` orchestrates the full authentication flow:
 1. Verify identity token via `UserIdentityProvider` → returns `*identity.User`
@@ -406,6 +459,7 @@ require (
 - [x] Configuration: `auth/config.go` - `Config` types and `NewAuthControllerWithConfig()`
 - [x] CLI: `cmd/nauts/main.go` - CLI with `auth` and `serve` subcommands (config file based)
 - [x] NATS auth callout: `auth/callout.go` - `CalloutService` implementing auth callout protocol
+- [x] E2E tests: `test/e2e_test.go` - End-to-end tests for static and operator modes
 - [ ] NATS KV provider: Future
 - [ ] JWT identity provider: Future
 - [ ] Control plane: Future

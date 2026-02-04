@@ -11,9 +11,9 @@ nats-server -c nats-server.conf
 # 2. Start nauts auth callout service (in another terminal)
 ../../bin/nauts serve -c nauts.json
 
-# 3. Test authentication
-nats --user token --password alice:secret sub "public.>"
-nats --user token --password bob:secret pub public.test "Hello"
+# 3. Test authentication (uses sentinel credentials + token)
+nats --creds sentinel.creds --token alice:secret sub "public.>"
+nats --creds sentinel.creds --token bob:secret pub public.test "Hello"
 ```
 
 ## Test Users

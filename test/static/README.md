@@ -12,8 +12,8 @@ nats-server -c nats-server.conf
 ../../bin/nauts serve -c nauts.json
 
 # 3. Test authentication
-nats --user token --password alice:secret sub "public.>"
-nats --user token --password bob:secret pub public.test "Hello"
+nats --token alice:secret sub "public.>"
+nats --token bob:secret pub public.test "Hello"
 ```
 
 ## Test Users
