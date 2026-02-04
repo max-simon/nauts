@@ -3,19 +3,17 @@ package provider
 import (
 	"context"
 	"fmt"
-
-	"github.com/msimon/nauts/jwt"
 )
 
-// OperatorEntityProvider implements EntityProvider for NATS operator mode.
+// OperatorAccountProvider implements AccountProvider for NATS operator mode.
 // In operator mode, the auth service runs in the AUTH account but authenticates
 // users across all accounts using account signing keys.
-type OperatorEntityProvider struct {
+type OperatorAccountProvider struct {
 	accounts map[string]*Account
 }
 
-// OperatorEntityProviderConfig holds configuration for the OperatorEntityProvider.
-type OperatorEntityProviderConfig struct {
+// OperatorAccountProviderConfig holds configuration for the OperatorAccountProvider.
+type OperatorAccountProviderConfig struct {
 	// Accounts maps account names to their signing configuration.
 	Accounts map[string]AccountSigningConfig `json:"accounts"`
 }
@@ -29,13 +27,13 @@ type AccountSigningConfig struct {
 	SigningKeyPath string `json:"signingKeyPath"`
 }
 
-// NewOperatorEntityProvider creates a new OperatorEntityProvider from configuration.
-func NewOperatorEntityProvider(cfg OperatorEntityProviderConfig) (*OperatorEntityProvider, error) {
+// NewOperatorAccountProvider creates a new OperatorAccountProvider from configuration.
+func NewOperatorAccountProvider(cfg OperatorAccountProviderConfig) (*OperatorAccountProvider, error) {
 	if len(cfg.Accounts) == 0 {
 		return nil, fmt.Errorf("at least one account is required")
 	}
 
-	provider := &OperatorEntityProvider{
+	provider := &OperatorAccountProvider{
 		accounts: make(map[string]*Account),
 	}
 
@@ -65,14 +63,8 @@ func NewOperatorEntityProvider(cfg OperatorEntityProviderConfig) (*OperatorEntit
 	return provider, nil
 }
 
-// GetOperator returns an error as OperatorEntityProvider does not provide operator access.
-// In operator mode, only account signing keys are needed for auth callout.
-func (p *OperatorEntityProvider) GetOperator(ctx context.Context) (*Operator, error) {
-	return nil, fmt.Errorf("operator not available in operator entity provider")
-}
-
 // GetAccount retrieves an account by name.
-func (p *OperatorEntityProvider) GetAccount(ctx context.Context, name string) (*Account, error) {
+func (p *OperatorAccountProvider) GetAccount(ctx context.Context, name string) (*Account, error) {
 	account, ok := p.accounts[name]
 	if !ok {
 		return nil, fmt.Errorf("%w: %s", ErrAccountNotFound, name)
@@ -81,7 +73,7 @@ func (p *OperatorEntityProvider) GetAccount(ctx context.Context, name string) (*
 }
 
 // ListAccounts returns all accounts.
-func (p *OperatorEntityProvider) ListAccounts(ctx context.Context) ([]*Account, error) {
+func (p *OperatorAccountProvider) ListAccounts(ctx context.Context) ([]*Account, error) {
 	accounts := make([]*Account, 0, len(p.accounts))
 	for _, account := range p.accounts {
 		accounts = append(accounts, account)
@@ -90,16 +82,6 @@ func (p *OperatorEntityProvider) ListAccounts(ctx context.Context) ([]*Account, 
 }
 
 // IsOperatorMode returns true as this provider operates in NATS operator mode.
-func (p *OperatorEntityProvider) IsOperatorMode() bool {
+func (p *OperatorAccountProvider) IsOperatorMode() bool {
 	return true
-}
-
-// SigningKeyPublicKey returns the public key of the signing key for the given account.
-// This is useful for setting IssuerAccount in auth callout responses.
-func (p *OperatorEntityProvider) SigningKeyPublicKey(accountName string) (string, error) {
-	account, ok := p.accounts[accountName]
-	if !ok {
-		return "", fmt.Errorf("%w: %s", ErrAccountNotFound, accountName)
-	}
-	return account.Signer().(jwt.Signer).PublicKey(), nil
 }

@@ -9,14 +9,13 @@ import (
 	"github.com/msimon/nauts/jwt"
 )
 
-// StaticEntityProvider implements EntityProvider using a static configuration.
-// It does not support operators (GetOperator always returns an error).
-type StaticEntityProvider struct {
+// StaticAccountProvider implements AccountProvider using a static configuration.
+type StaticAccountProvider struct {
 	accounts map[string]*Account
 }
 
-// StaticEntityProviderConfig holds configuration for the StaticEntityProvider.
-type StaticEntityProviderConfig struct {
+// StaticAccountProviderConfig holds configuration for the StaticAccountProvider.
+type StaticAccountProviderConfig struct {
 	// PublicKey is the public key used for all accounts.
 	PublicKey string `json:"publicKey"`
 
@@ -27,8 +26,8 @@ type StaticEntityProviderConfig struct {
 	Accounts []string `json:"accounts"`
 }
 
-// NewStaticEntityProvider creates a new StaticEntityProvider from configuration.
-func NewStaticEntityProvider(cfg StaticEntityProviderConfig) (*StaticEntityProvider, error) {
+// NewStaticAccountProvider creates a new StaticAccountProvider from configuration.
+func NewStaticAccountProvider(cfg StaticAccountProviderConfig) (*StaticAccountProvider, error) {
 	if len(cfg.Accounts) == 0 {
 		return nil, fmt.Errorf("at least one account is required")
 	}
@@ -44,7 +43,7 @@ func NewStaticEntityProvider(cfg StaticEntityProviderConfig) (*StaticEntityProvi
 		return nil, fmt.Errorf("loading signer: %w", err)
 	}
 
-	provider := &StaticEntityProvider{
+	provider := &StaticAccountProvider{
 		accounts: make(map[string]*Account),
 	}
 
@@ -73,13 +72,8 @@ func loadSignerFromFile(path string) (*jwt.LocalSigner, error) {
 	return jwt.NewLocalSigner(seed)
 }
 
-// GetOperator returns an error as StaticEntityProvider does not support operators.
-func (p *StaticEntityProvider) GetOperator(ctx context.Context) (*Operator, error) {
-	return nil, fmt.Errorf("operator not supported by static entity provider")
-}
-
 // GetAccount retrieves an account by name.
-func (p *StaticEntityProvider) GetAccount(ctx context.Context, name string) (*Account, error) {
+func (p *StaticAccountProvider) GetAccount(ctx context.Context, name string) (*Account, error) {
 	account, ok := p.accounts[name]
 	if !ok {
 		return nil, fmt.Errorf("%w: %s", ErrAccountNotFound, name)
@@ -88,7 +82,7 @@ func (p *StaticEntityProvider) GetAccount(ctx context.Context, name string) (*Ac
 }
 
 // ListAccounts returns all accounts.
-func (p *StaticEntityProvider) ListAccounts(ctx context.Context) ([]*Account, error) {
+func (p *StaticAccountProvider) ListAccounts(ctx context.Context) ([]*Account, error) {
 	accounts := make([]*Account, 0, len(p.accounts))
 	for _, account := range p.accounts {
 		accounts = append(accounts, account)
@@ -96,7 +90,7 @@ func (p *StaticEntityProvider) ListAccounts(ctx context.Context) ([]*Account, er
 	return accounts, nil
 }
 
-// IsOperatorMode returns false as StaticEntityProvider does not operate in operator mode.
-func (p *StaticEntityProvider) IsOperatorMode() bool {
+// IsOperatorMode returns false as StaticAccountProvider does not operate in operator mode.
+func (p *StaticAccountProvider) IsOperatorMode() bool {
 	return false
 }

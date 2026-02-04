@@ -32,10 +32,7 @@ const (
 	ResourceTypeKVBucketEntry ResourceType = "kv:bucket:entry" // kv:<bucket>:<key>
 )
 
-// ValidResourceTypes contains all valid basic resource types.
-var ValidResourceTypes = []ResourceType{ResourceTypeNATS, ResourceTypeJS, ResourceTypeKV}
-
-// IsValid checks if the type is a valid NRN type.
+// IsValid checks if the type is a valid resource type (nats, js, kv).
 func (t ResourceType) IsValid() bool {
 	switch t {
 	case ResourceTypeNATS, ResourceTypeJS, ResourceTypeKV:
@@ -43,11 +40,6 @@ func (t ResourceType) IsValid() bool {
 	default:
 		return false
 	}
-}
-
-// IsBasicType returns true if this is a basic type (nats, js, kv).
-func (t ResourceType) IsBasicType() bool {
-	return t.IsValid()
 }
 
 // Resource represents a parsed NATS Resource Name.

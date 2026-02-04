@@ -41,7 +41,7 @@ func IssueUserJWT(userName string, userPublicKey string, ttl time.Duration, perm
 		claims.IssuerAccount = issuerAccount
 	}
 
-	token, err := claims.Encode(signerAdapter{issuerSigner})
+	token, err := claims.Encode(NewSignerAdapter(issuerSigner))
 	if err != nil {
 		return "", fmt.Errorf("encoding user JWT: %w", err)
 	}
@@ -50,57 +50,71 @@ func IssueUserJWT(userName string, userPublicKey string, ttl time.Duration, perm
 }
 
 // permissionsToNats converts policy.NatsPermissions to natsjwt.Permissions.
+// When no permissions are granted, we explicitly deny all to prevent
+// NATS default behavior of allowing everything when permissions are unset.
 func permissionsToNats(perms *policy.NatsPermissions) natsjwt.Permissions {
 	var natsPerms natsjwt.Permissions
 
 	pubList := perms.PubList()
 	if len(pubList) > 0 {
 		natsPerms.Pub.Allow = pubList
+	} else {
+		// No publish permissions means deny all
+		natsPerms.Pub.Deny = []string{">"}
 	}
 
 	subList := perms.SubList()
 	if len(subList) > 0 {
 		natsPerms.Sub.Allow = subList
+	} else {
+		// No subscribe permissions means deny all
+		natsPerms.Sub.Deny = []string{">"}
 	}
 
 	return natsPerms
 }
 
-// signerAdapter adapts our Signer interface to nkeys.KeyPair for JWT encoding.
-type signerAdapter struct {
+// SignerAdapter adapts a Signer interface to nkeys.KeyPair for JWT encoding.
+// This allows using our Signer interface with the nats-io/jwt library.
+type SignerAdapter struct {
 	signer Signer
 }
 
-func (s signerAdapter) Seed() ([]byte, error) {
+// NewSignerAdapter creates a new SignerAdapter from a Signer.
+func NewSignerAdapter(s Signer) SignerAdapter {
+	return SignerAdapter{signer: s}
+}
+
+func (s SignerAdapter) Seed() ([]byte, error) {
 	return nil, fmt.Errorf("seed not available")
 }
 
-func (s signerAdapter) PublicKey() (string, error) {
+func (s SignerAdapter) PublicKey() (string, error) {
 	return s.signer.PublicKey(), nil
 }
 
-func (s signerAdapter) PrivateKey() ([]byte, error) {
+func (s SignerAdapter) PrivateKey() ([]byte, error) {
 	return nil, fmt.Errorf("private key not available")
 }
 
-func (s signerAdapter) Sign(input []byte) ([]byte, error) {
+func (s SignerAdapter) Sign(input []byte) ([]byte, error) {
 	return s.signer.Sign(input)
 }
 
-func (s signerAdapter) Verify(input, sig []byte) error {
+func (s SignerAdapter) Verify(input, sig []byte) error {
 	return fmt.Errorf("verify not implemented")
 }
 
-func (s signerAdapter) Wipe() {}
+func (s SignerAdapter) Wipe() {}
 
-func (s signerAdapter) Open(input []byte, sender string) ([]byte, error) {
+func (s SignerAdapter) Open(input []byte, sender string) ([]byte, error) {
 	return nil, fmt.Errorf("open not implemented")
 }
 
-func (s signerAdapter) Seal(input []byte, recipient string) ([]byte, error) {
+func (s SignerAdapter) Seal(input []byte, recipient string) ([]byte, error) {
 	return nil, fmt.Errorf("seal not implemented")
 }
 
-func (s signerAdapter) SealWithRand(input []byte, recipient string, rr io.Reader) ([]byte, error) {
+func (s SignerAdapter) SealWithRand(input []byte, recipient string, rr io.Reader) ([]byte, error) {
 	return nil, fmt.Errorf("seal with rand not implemented")
 }

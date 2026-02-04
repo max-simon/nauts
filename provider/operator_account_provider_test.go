@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestNewOperatorEntityProvider(t *testing.T) {
+func TestNewOperatorAccountProvider(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create valid account signing key files
@@ -29,13 +29,13 @@ func TestNewOperatorEntityProvider(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		cfg     OperatorEntityProviderConfig
+		cfg     OperatorAccountProviderConfig
 		wantErr bool
 		errMsg  string
 	}{
 		{
 			name: "valid configuration with multiple accounts",
-			cfg: OperatorEntityProviderConfig{
+			cfg: OperatorAccountProviderConfig{
 				Accounts: map[string]AccountSigningConfig{
 					"AUTH": {
 						PublicKey:      "AAUTH1234567890123456789012345678901234567890123456789012345",
@@ -51,7 +51,7 @@ func TestNewOperatorEntityProvider(t *testing.T) {
 		},
 		{
 			name: "valid configuration with single account",
-			cfg: OperatorEntityProviderConfig{
+			cfg: OperatorAccountProviderConfig{
 				Accounts: map[string]AccountSigningConfig{
 					"AUTH": {
 						PublicKey:      "AAUTH1234567890123456789012345678901234567890123456789012345",
@@ -63,7 +63,7 @@ func TestNewOperatorEntityProvider(t *testing.T) {
 		},
 		{
 			name: "empty accounts",
-			cfg: OperatorEntityProviderConfig{
+			cfg: OperatorAccountProviderConfig{
 				Accounts: map[string]AccountSigningConfig{},
 			},
 			wantErr: true,
@@ -71,7 +71,7 @@ func TestNewOperatorEntityProvider(t *testing.T) {
 		},
 		{
 			name: "missing public key",
-			cfg: OperatorEntityProviderConfig{
+			cfg: OperatorAccountProviderConfig{
 				Accounts: map[string]AccountSigningConfig{
 					"AUTH": {
 						PublicKey:      "",
@@ -84,7 +84,7 @@ func TestNewOperatorEntityProvider(t *testing.T) {
 		},
 		{
 			name: "missing signing key path",
-			cfg: OperatorEntityProviderConfig{
+			cfg: OperatorAccountProviderConfig{
 				Accounts: map[string]AccountSigningConfig{
 					"AUTH": {
 						PublicKey:      "AAUTH1234567890123456789012345678901234567890123456789012345",
@@ -97,7 +97,7 @@ func TestNewOperatorEntityProvider(t *testing.T) {
 		},
 		{
 			name: "non-existent key file",
-			cfg: OperatorEntityProviderConfig{
+			cfg: OperatorAccountProviderConfig{
 				Accounts: map[string]AccountSigningConfig{
 					"AUTH": {
 						PublicKey:      "AAUTH1234567890123456789012345678901234567890123456789012345",
@@ -112,7 +112,7 @@ func TestNewOperatorEntityProvider(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			provider, err := NewOperatorEntityProvider(tt.cfg)
+			provider, err := NewOperatorAccountProvider(tt.cfg)
 			if tt.wantErr {
 				if err == nil {
 					t.Errorf("expected error containing %q, got nil", tt.errMsg)
@@ -133,24 +133,8 @@ func TestNewOperatorEntityProvider(t *testing.T) {
 	}
 }
 
-func TestOperatorEntityProvider_GetOperator(t *testing.T) {
-	provider := createTestOperatorProvider(t)
-
-	ctx := context.Background()
-	op, err := provider.GetOperator(ctx)
-	if err == nil {
-		t.Error("expected error from GetOperator, got nil")
-	}
-	if op != nil {
-		t.Error("expected nil operator")
-	}
-	if !contains(err.Error(), "operator not available") {
-		t.Errorf("expected error about operator not available, got: %v", err)
-	}
-}
-
-func TestOperatorEntityProvider_GetAccount(t *testing.T) {
-	provider := createTestOperatorProvider(t)
+func TestOperatorAccountProvider_GetAccount(t *testing.T) {
+	provider := createTestOperatorAccountProvider(t)
 
 	ctx := context.Background()
 
@@ -179,8 +163,8 @@ func TestOperatorEntityProvider_GetAccount(t *testing.T) {
 	}
 }
 
-func TestOperatorEntityProvider_ListAccounts(t *testing.T) {
-	provider := createTestOperatorProvider(t)
+func TestOperatorAccountProvider_ListAccounts(t *testing.T) {
+	provider := createTestOperatorAccountProvider(t)
 
 	ctx := context.Background()
 	accounts, err := provider.ListAccounts(ctx)
@@ -201,38 +185,15 @@ func TestOperatorEntityProvider_ListAccounts(t *testing.T) {
 	}
 }
 
-func TestOperatorEntityProvider_IsOperatorMode(t *testing.T) {
-	provider := createTestOperatorProvider(t)
+func TestOperatorAccountProvider_IsOperatorMode(t *testing.T) {
+	provider := createTestOperatorAccountProvider(t)
 
 	if !provider.IsOperatorMode() {
 		t.Error("expected IsOperatorMode() to return true")
 	}
 }
 
-func TestOperatorEntityProvider_SigningKeyPublicKey(t *testing.T) {
-	provider := createTestOperatorProvider(t)
-
-	// Test getting signing key public key for existing account
-	pubKey, err := provider.SigningKeyPublicKey("AUTH")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if pubKey == "" {
-		t.Error("expected non-empty public key")
-	}
-	// The public key should start with 'A' (account key)
-	if len(pubKey) > 0 && pubKey[0] != 'A' {
-		t.Errorf("expected public key to start with 'A', got %q", pubKey)
-	}
-
-	// Test getting signing key public key for non-existent account
-	_, err = provider.SigningKeyPublicKey("nonexistent")
-	if err == nil {
-		t.Error("expected error for non-existent account")
-	}
-}
-
-func createTestOperatorProvider(t *testing.T) *OperatorEntityProvider {
+func createTestOperatorAccountProvider(t *testing.T) *OperatorAccountProvider {
 	t.Helper()
 
 	tmpDir := t.TempDir()
@@ -252,7 +213,7 @@ func createTestOperatorProvider(t *testing.T) *OperatorEntityProvider {
 		t.Fatalf("failed to write app key: %v", err)
 	}
 
-	provider, err := NewOperatorEntityProvider(OperatorEntityProviderConfig{
+	provider, err := NewOperatorAccountProvider(OperatorAccountProviderConfig{
 		Accounts: map[string]AccountSigningConfig{
 			"AUTH": {
 				PublicKey:      "AAUTH1234567890123456789012345678901234567890123456789012345",

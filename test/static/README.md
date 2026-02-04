@@ -1,112 +1,106 @@
-# Static Mode
+# Static Mode Test Environment
 
-## Setup
+Static mode uses a single signing key for all accounts. This is simpler to set up and suitable for development or single-account deployments.
 
-### Setup AUTH Account
-
-1. Create nkey user for callout service
+## Quick Start
 
 ```bash
-nk -gen user > user-auth.nk
-AUTH_USER_PUB=$(nk -pubout -inkey user-auth.nk)
+# 1. Start NATS server
+nats-server -c nats-server.conf
+
+# 2. Start nauts auth callout service (in another terminal)
+../../bin/nauts serve -c nauts.json
+
+# 3. Test authentication
+nats --token alice:secret sub "public.>"
+nats --token bob:secret pub public.test "Hello"
 ```
 
-2. Add `AUTH` account to server config
+## Test Users
 
-```
-accounts {
-    AUTH {
-        users: [
-            { nkey: $AUTH_USER_PUB }
-        ]
-    }
+| User  | Password | Groups   | Permissions |
+|-------|----------|----------|-------------|
+| alice | secret   | readonly | Subscribe to `public.>` |
+| bob   | secret   | full     | Pub/Sub to `public.>` |
 
-    APP {} # no explicit users
-    
-    # ...
-}
-```
+## Files
 
-3. Create nkey for `AUTH` account
+| File | Description |
+|------|-------------|
+| `nauts.json` | nauts configuration |
+| `nats-server.conf` | NATS server configuration |
+| `account-AUTH.nk` | Account signing key (signs user JWTs) |
+| `user-auth.nk` | User nkey for callout service connection |
+| `server-xkey.nk` | Curve key for request encryption |
 
-```bash
-nk -gen account > account-auth.nk
-AUTH_ACC_PUB=$(nk -pubout -inkey account-auth.nk)
-```
-
-4. Generate xkey file for request encryption
-
-```bash
-nk -gen curve > server-xkey.nk
-# save public key
-XKEY_PUB=$(nk -pubout -inkey server-xkey.nk)
-```
-
-5. Add callout authorization block to server config
-
-```
-authorization {
-    auth_callout {
-        issuer: $AUTH_ACC_PUB
-        account: AUTH
-        xkey: $XKEY_PUB
-        # these users can login without auth callout service
-        users: [ 
-            $AUTH_USER_PUB, 
-            # other system users, i.e. for SYS account
-        ] 
-    }
-}
-```
-
-### Setup NAUTS
-
-#### Setup groups 
-
-See [groups.json](../groups.json)
-
-#### Setup policies
-
-See [policies.json](../policies.json)
-
-#### Setup users 
-
-See [users.json](../users.json)
-
-#### Setup nauts configuration
-
-See [nauts.json](./nauts.json)
+## Configuration
 
 ```json
 {
-  "entity": {
+  "account": {
     "type": "static",
     "static": {
-      "publicKey": "$AUTH_ACC_PUB",
-      "privateKeyPath": "./account-auth.nk",
-      "accounts": [
-        "APP"
-        // list of supported account names
-      ]
+      "publicKey": "<account-public-key>",
+      "privateKeyPath": "./account-AUTH.nk",
+      "accounts": ["AUTH", "APP"]
     }
   },
-  "nauts": {
+  "group": {
     "type": "file",
-    "file": {
-      "policiesPath": "./policies.json",
-      "groupsPath": "./groups.json"
-    }
+    "file": { "path": "../groups.json" }
+  },
+  "policy": {
+    "type": "file",
+    "file": { "path": "../policies.json" }
   },
   "identity": {
     "type": "file",
-    "file": {
-      "usersPath": "./users.json"
-    }
+    "file": { "usersPath": "../users.json" }
   },
   "server": {
     "natsUrl": "nats://localhost:4222",
-    "natsNkey": "$XKEY_PUB",
-    "xkeySeedFile": "./server-xkey.nk",
+    "natsNkey": "./user-auth.nk",
+    "xkeySeedFile": "./server-xkey.nk"
   }
 }
 ```
+
+## Setup from Scratch
+
+### 1. Create Keys
+
+```bash
+# Account signing key (signs user JWTs)
+nk -gen account > account-AUTH.nk
+AUTH_ACC_PUB=$(nk -pubout -inkey account-AUTH.nk)
+
+# User nkey for callout service
+nk -gen user > user-auth.nk
+AUTH_USER_PUB=$(nk -pubout -inkey user-auth.nk)
+
+# Curve key for encryption
+nk -gen curve > server-xkey.nk
+XKEY_PUB=$(nk -pubout -inkey server-xkey.nk)
+```
+
+### 2. Configure NATS Server
+
+```
+accounts {
+    AUTH { users: [ { nkey: <AUTH_USER_PUB> } ] }
+    APP {}
+}
+
+authorization {
+    auth_callout {
+        issuer: <AUTH_ACC_PUB>
+        account: AUTH
+        xkey: <XKEY_PUB>
+        users: [ <AUTH_USER_PUB> ]
+    }
+}
+```
+
+### 3. Update nauts.json
+
+Set `account.static.publicKey` to `<AUTH_ACC_PUB>`.

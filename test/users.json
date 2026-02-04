@@ -3,13 +3,12 @@
     "alice": {
       "account": "APP",
       "groups": ["readonly"],
-      "passwordHash": "$2a$10$5ys4HzQxWWr4.hUKVK4Hdu/E/gGM8dghr8Rnh6Y88UmGuAhdhVtnG"
-    }
-,
+      "passwordHash": "$2a$10$yRjAZrdk2RhF0LB/Hf2b5./.06Alk8Zy1Pis8acjM298NPSTB/iwi"
+    },
     "bob": {
       "account": "APP",
       "groups": ["full"],
-      "passwordHash": "$2a$10$x9fxfH0M7xrnu5/l0MPcR.4a6rE2JDp3gouxEdzAPryuwtBWhB9O6"
+      "passwordHash": "$2a$10$yRjAZrdk2RhF0LB/Hf2b5./.06Alk8Zy1Pis8acjM298NPSTB/iwi"
     }
   }
 }

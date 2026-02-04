@@ -40,8 +40,9 @@ func (l *defaultLogger) Debug(msg string, args ...any) {
 
 // AuthController orchestrates user authentication, permission compilation, and JWT issuance.
 type AuthController struct {
-	entityProvider   provider.EntityProvider
-	nautsProvider    provider.NautsProvider
+	accountProvider  provider.AccountProvider
+	groupProvider    provider.GroupProvider
+	policyProvider   provider.PolicyProvider
 	identityProvider identity.UserIdentityProvider
 	logger           Logger
 }
@@ -58,14 +59,16 @@ func WithLogger(l Logger) ControllerOption {
 
 // NewAuthController creates a new AuthController with the given providers.
 func NewAuthController(
-	entityProvider provider.EntityProvider,
-	nautsProvider provider.NautsProvider,
+	accountProvider provider.AccountProvider,
+	groupProvider provider.GroupProvider,
+	policyProvider provider.PolicyProvider,
 	identityProvider identity.UserIdentityProvider,
 	opts ...ControllerOption,
 ) *AuthController {
 	c := &AuthController{
-		entityProvider:   entityProvider,
-		nautsProvider:    nautsProvider,
+		accountProvider:  accountProvider,
+		groupProvider:    groupProvider,
+		policyProvider:   policyProvider,
 		identityProvider: identityProvider,
 		logger:           &defaultLogger{},
 	}
@@ -75,9 +78,9 @@ func NewAuthController(
 	return c
 }
 
-// EntityProvider returns the entity provider used by this controller.
-func (c *AuthController) EntityProvider() provider.EntityProvider {
-	return c.entityProvider
+// AccountProvider returns the account provider used by this controller.
+func (c *AuthController) AccountProvider() provider.AccountProvider {
+	return c.accountProvider
 }
 
 // ResolveUser verifies the identity token and returns the user.
@@ -112,7 +115,7 @@ func (c *AuthController) ResolveNatsPermissions(ctx context.Context, user *ident
 
 	// Process each group
 	for _, groupID := range groupIDs {
-		group, err := c.nautsProvider.GetGroup(ctx, groupID)
+		group, err := c.groupProvider.GetGroup(ctx, groupID)
 		if err != nil {
 			if errors.Is(err, provider.ErrGroupNotFound) {
 				c.logger.Warn("group not found: %s (user: %s)", groupID, user.ID)
@@ -124,7 +127,7 @@ func (c *AuthController) ResolveNatsPermissions(ctx context.Context, user *ident
 		// Collect policies for this group
 		var policies []*policy.Policy
 		for _, policyID := range group.Policies {
-			pol, err := c.nautsProvider.GetPolicy(ctx, policyID)
+			pol, err := c.policyProvider.GetPolicy(ctx, policyID)
 			if err != nil {
 				if errors.Is(err, provider.ErrPolicyNotFound) {
 					c.logger.Warn("policy not found: %s (group: %s)", policyID, groupID)
@@ -219,7 +222,7 @@ func generateEphemeralUserKey() (string, error) {
 }
 
 // CreateUserJWT creates a signed JWT for the user with the given permissions.
-// The JWT is signed by the account's signer retrieved from the EntityProvider.
+// The JWT is signed by the account's signer retrieved from the AccountProvider.
 // Parameters:
 //   - ctx: context for the operation
 //   - user: the user to create the JWT for
@@ -237,8 +240,8 @@ func (c *AuthController) CreateUserJWT(
 		return "", NewAuthError("", "create_jwt", "user is nil", nil)
 	}
 
-	// Get the account from the entity provider
-	account, err := c.entityProvider.GetAccount(ctx, user.Account)
+	// Get the account from the account provider
+	account, err := c.accountProvider.GetAccount(ctx, user.Account)
 	if err != nil {
 		return "", NewAuthError(user.ID, "create_jwt", "failed to get account", err)
 	}
@@ -247,13 +250,13 @@ func (c *AuthController) CreateUserJWT(
 	// In operator mode, don't set audience (account determined by auth response's IssuerAccount)
 	// In non-operator mode, set audience to account name
 	audienceAccount := ""
-	if !c.entityProvider.IsOperatorMode() {
+	if !c.accountProvider.IsOperatorMode() {
 		audienceAccount = user.Account
 	}
 
 	// In operator mode, the issuerAccount has to be set to support signing keys
 	issuerAccount := ""
-	if c.entityProvider.IsOperatorMode() {
+	if c.accountProvider.IsOperatorMode() {
 		issuerAccount = account.PublicKey()
 	}
 

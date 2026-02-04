@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestNewStaticEntityProvider(t *testing.T) {
+func TestNewStaticAccountProvider(t *testing.T) {
 	// Create a temp directory for test key files
 	tmpDir := t.TempDir()
 
@@ -21,13 +21,13 @@ func TestNewStaticEntityProvider(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		cfg     StaticEntityProviderConfig
+		cfg     StaticAccountProviderConfig
 		wantErr bool
 		errMsg  string
 	}{
 		{
 			name: "valid configuration",
-			cfg: StaticEntityProviderConfig{
+			cfg: StaticAccountProviderConfig{
 				PublicKey:      "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
 				PrivateKeyPath: accountKeyPath,
 				Accounts:       []string{"test-account"},
@@ -36,7 +36,7 @@ func TestNewStaticEntityProvider(t *testing.T) {
 		},
 		{
 			name: "empty accounts",
-			cfg: StaticEntityProviderConfig{
+			cfg: StaticAccountProviderConfig{
 				PublicKey:      "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
 				PrivateKeyPath: accountKeyPath,
 				Accounts:       []string{},
@@ -46,7 +46,7 @@ func TestNewStaticEntityProvider(t *testing.T) {
 		},
 		{
 			name: "empty account name",
-			cfg: StaticEntityProviderConfig{
+			cfg: StaticAccountProviderConfig{
 				PublicKey:      "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
 				PrivateKeyPath: accountKeyPath,
 				Accounts:       []string{""},
@@ -56,7 +56,7 @@ func TestNewStaticEntityProvider(t *testing.T) {
 		},
 		{
 			name: "missing public key",
-			cfg: StaticEntityProviderConfig{
+			cfg: StaticAccountProviderConfig{
 				PublicKey:      "",
 				PrivateKeyPath: accountKeyPath,
 				Accounts:       []string{"test-account"},
@@ -66,7 +66,7 @@ func TestNewStaticEntityProvider(t *testing.T) {
 		},
 		{
 			name: "missing private key path",
-			cfg: StaticEntityProviderConfig{
+			cfg: StaticAccountProviderConfig{
 				PublicKey:      "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
 				PrivateKeyPath: "",
 				Accounts:       []string{"test-account"},
@@ -76,7 +76,7 @@ func TestNewStaticEntityProvider(t *testing.T) {
 		},
 		{
 			name: "non-existent key file",
-			cfg: StaticEntityProviderConfig{
+			cfg: StaticAccountProviderConfig{
 				PublicKey:      "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
 				PrivateKeyPath: "/nonexistent/path/key.nk",
 				Accounts:       []string{"test-account"},
@@ -88,7 +88,7 @@ func TestNewStaticEntityProvider(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			provider, err := NewStaticEntityProvider(tt.cfg)
+			provider, err := NewStaticAccountProvider(tt.cfg)
 			if tt.wantErr {
 				if err == nil {
 					t.Errorf("expected error containing %q, got nil", tt.errMsg)
@@ -109,7 +109,7 @@ func TestNewStaticEntityProvider(t *testing.T) {
 	}
 }
 
-func TestStaticEntityProvider_GetOperator(t *testing.T) {
+func TestStaticAccountProvider_GetAccount(t *testing.T) {
 	tmpDir := t.TempDir()
 	accountSeed := "SAANJIBNEKGCRUWJCPIWUXFBFJLR36FJTFKGBGKAT7AQXH2LVFNQWZJMQU"
 	accountKeyPath := filepath.Join(tmpDir, "account.nk")
@@ -117,37 +117,7 @@ func TestStaticEntityProvider_GetOperator(t *testing.T) {
 		t.Fatalf("failed to write account key: %v", err)
 	}
 
-	provider, err := NewStaticEntityProvider(StaticEntityProviderConfig{
-		PublicKey:      "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-		PrivateKeyPath: accountKeyPath,
-		Accounts:       []string{"test-account"},
-	})
-	if err != nil {
-		t.Fatalf("failed to create provider: %v", err)
-	}
-
-	ctx := context.Background()
-	op, err := provider.GetOperator(ctx)
-	if err == nil {
-		t.Error("expected error from GetOperator, got nil")
-	}
-	if op != nil {
-		t.Error("expected nil operator")
-	}
-	if !contains(err.Error(), "operator not supported") {
-		t.Errorf("expected error about operator not supported, got: %v", err)
-	}
-}
-
-func TestStaticEntityProvider_GetAccount(t *testing.T) {
-	tmpDir := t.TempDir()
-	accountSeed := "SAANJIBNEKGCRUWJCPIWUXFBFJLR36FJTFKGBGKAT7AQXH2LVFNQWZJMQU"
-	accountKeyPath := filepath.Join(tmpDir, "account.nk")
-	if err := os.WriteFile(accountKeyPath, []byte(accountSeed), 0600); err != nil {
-		t.Fatalf("failed to write account key: %v", err)
-	}
-
-	provider, err := NewStaticEntityProvider(StaticEntityProviderConfig{
+	provider, err := NewStaticAccountProvider(StaticAccountProviderConfig{
 		PublicKey:      "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
 		PrivateKeyPath: accountKeyPath,
 		Accounts:       []string{"test-account"},
@@ -183,7 +153,7 @@ func TestStaticEntityProvider_GetAccount(t *testing.T) {
 	}
 }
 
-func TestStaticEntityProvider_ListAccounts(t *testing.T) {
+func TestStaticAccountProvider_ListAccounts(t *testing.T) {
 	tmpDir := t.TempDir()
 	accountSeed := "SAANJIBNEKGCRUWJCPIWUXFBFJLR36FJTFKGBGKAT7AQXH2LVFNQWZJMQU"
 	accountKeyPath := filepath.Join(tmpDir, "account.nk")
@@ -191,7 +161,7 @@ func TestStaticEntityProvider_ListAccounts(t *testing.T) {
 		t.Fatalf("failed to write account key: %v", err)
 	}
 
-	provider, err := NewStaticEntityProvider(StaticEntityProviderConfig{
+	provider, err := NewStaticAccountProvider(StaticAccountProviderConfig{
 		PublicKey:      "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
 		PrivateKeyPath: accountKeyPath,
 		Accounts:       []string{"account1", "account2"},
@@ -219,7 +189,7 @@ func TestStaticEntityProvider_ListAccounts(t *testing.T) {
 	}
 }
 
-func TestStaticEntityProvider_IsOperatorMode(t *testing.T) {
+func TestStaticAccountProvider_IsOperatorMode(t *testing.T) {
 	tmpDir := t.TempDir()
 	accountSeed := "SAANJIBNEKGCRUWJCPIWUXFBFJLR36FJTFKGBGKAT7AQXH2LVFNQWZJMQU"
 	accountKeyPath := filepath.Join(tmpDir, "account.nk")
@@ -227,7 +197,7 @@ func TestStaticEntityProvider_IsOperatorMode(t *testing.T) {
 		t.Fatalf("failed to write account key: %v", err)
 	}
 
-	provider, err := NewStaticEntityProvider(StaticEntityProviderConfig{
+	provider, err := NewStaticAccountProvider(StaticAccountProviderConfig{
 		PublicKey:      "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
 		PrivateKeyPath: accountKeyPath,
 		Accounts:       []string{"test-account"},

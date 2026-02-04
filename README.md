@@ -90,25 +90,26 @@ config, _ := auth.LoadConfig("nauts.json")
 controller, _ := auth.NewAuthControllerWithConfig(config)
 
 // Or setup providers manually (operator mode)
-entityProvider, _ := provider.NewOperatorEntityProvider(provider.OperatorEntityProviderConfig{
+accountProvider, _ := provider.NewOperatorAccountProvider(provider.OperatorAccountProviderConfig{
     Accounts: map[string]provider.AccountSigningConfig{
         "AUTH": {PublicKey: "AAUTH...", SigningKeyPath: "/path/to/auth-signing.nk"},
         "APP":  {PublicKey: "AAPP...", SigningKeyPath: "/path/to/app-signing.nk"},
     },
 })
-nautsProvider, _ := provider.NewFileNautsProvider(provider.FileNautsProviderConfig{
+groupProvider, _ := provider.NewFileGroupProvider(provider.FileGroupProviderConfig{
+    GroupsPath: "groups.json",
+})
+policyProvider, _ := provider.NewFilePolicyProvider(provider.FilePolicyProviderConfig{
     PoliciesPath: "policies.json",
-    GroupsPath:   "groups.json",
 })
 identityProvider, _ := identity.NewFileUserIdentityProvider(identity.FileUserIdentityProviderConfig{
     UsersPath: "users.json",
 })
-controller := auth.NewAuthController(entityProvider, nautsProvider, identityProvider)
+controller := auth.NewAuthController(accountProvider, groupProvider, policyProvider, identityProvider)
 
-// Authenticate
-result, err := controller.Authenticate(ctx, identity.UsernamePassword{
-    Username: "alice",
-    Password: "secret",
+// Authenticate using ConnectOptions (used by auth callout)
+result, err := controller.Authenticate(ctx, jwt.ConnectOptions{
+    Token: "alice:secret",  // Token format depends on identity provider
 }, userPublicKey, time.Hour)
 // result.User contains user info
 // result.Permissions contains compiled NATS permissions
@@ -194,17 +195,17 @@ interface UserList {
 
 > Not implemented yet
 
-### Entity Provider
+### Account Provider
 
-Entity providers supply NATS account information and signing keys for JWT issuance. nauts supports two entity provider modes:
+Account providers supply NATS account information and signing keys for JWT issuance. nauts supports two account provider modes:
 
-#### Operator Mode (OperatorEntityProvider)
+#### Operator Mode (OperatorAccountProvider)
 
 For NATS deployments with operator/account hierarchy where the auth service runs in the AUTH account but authenticates users for all accounts. Each account has its own signing key.
 
 ```json
 {
-  "entity": {
+  "account": {
     "type": "operator",
     "operator": {
       "accounts": {
@@ -233,13 +234,13 @@ In operator mode:
 - User JWTs don't include audience (account determined by `IssuerAccount`)
 - `IsOperatorMode()` returns `true`
 
-#### Static Mode (StaticEntityProvider)
+#### Static Mode (StaticAccountProvider)
 
 A simplified provider that uses a single signing key for all accounts. Useful for development and simple deployments where all accounts share the same credentials.
 
 ```json
 {
-  "entity": {
+  "account": {
     "type": "static",
     "static": {
       "publicKey": "AXXXXX...",
@@ -274,13 +275,15 @@ nauts/
 │   ├── mapper.go           # Action+Resource to permissions
 │   ├── permissions.go      # NatsPermissions with wildcard dedup
 │   └── resource.go         # Resource parsing
-├── provider/               # Entity and policy/group providers
-│   ├── entity.go           # Operator, Account types
-│   ├── entity_provider.go  # EntityProvider interface
-│   ├── operator_entity_provider.go # OperatorEntityProvider (operator mode)
-│   ├── static_entity_provider.go # StaticEntityProvider
-│   ├── nauts_provider.go   # NautsProvider interface
-│   ├── file_nauts_provider.go # FileNautsProvider
+├── provider/               # Account, group, and policy providers
+│   ├── entity.go           # Account type with Signer
+│   ├── account_provider.go # AccountProvider interface
+│   ├── operator_account_provider.go # OperatorAccountProvider (operator mode)
+│   ├── static_account_provider.go # StaticAccountProvider
+│   ├── group_provider.go   # GroupProvider interface
+│   ├── file_group_provider.go # FileGroupProvider
+│   ├── policy_provider.go  # PolicyProvider interface
+│   ├── file_policy_provider.go # FilePolicyProvider
 │   └── group.go            # Group type
 ├── identity/               # User identity management
 │   ├── user.go             # User type
@@ -295,7 +298,7 @@ nauts/
 │   ├── callout.go          # CalloutService (NATS auth callout)
 │   ├── config.go           # Config, LoadConfig, NewAuthControllerWithConfig
 │   └── errors.go           # AuthError
-└── testdata/               # Test fixtures
+└── test/                   # Test fixtures and environments
 ```
 
 ## Components Diagram
@@ -315,13 +318,12 @@ nauts/
 │    identity/    │    │    provider/    │         │      jwt/       │
 │                 │    │                 │         │                 │
 │ ┌─────────────┐ │    │ ┌─────────────┐ │         │ ┌─────────────┐ │
-│ │    User     │ │    │ │    Group    │ │         │ │   Signer    │ │
-│ │IdentityProv│ │    │ │ NautsProvider│ │         │ │ IssueUserJWT│ │
+│ │    User     │ │    │ │GroupProvider│ │         │ │   Signer    │ │
+│ │IdentityProv│ │    │ │PolicyProvider│ │         │ │ IssueUserJWT│ │
 │ └─────────────┘ │    │ └─────────────┘ │         │ └─────────────┘ │
 └─────────────────┘    │ ┌─────────────┐ │         └────────┬────────┘
-                       │ │EntityProvider│ │                  │
-                       │ │  (Operator,  │ │                  │
-                       │ │   Account)   │◀─────────────────┘
+                       │ │AccountProvider│                  │
+                       │ │   (Account)  │◀─────────────────┘
                        │ └─────────────┘ │
                        └─────────────────┘
                                 │
@@ -341,10 +343,20 @@ nauts/
 | Package | Responsibility |
 |---------|---------------|
 | `policy/` | Policy specification, compilation, variable interpolation, action mapping |
-| `provider/` | NATS entity management (operators, accounts), policy/group storage |
+| `provider/` | NATS account management, policy storage, group storage |
 | `identity/` | User authentication and identity resolution |
-| `jwt/` | NATS JWT creation and signing |
+| `jwt/` | NATS JWT creation and signing (with explicit deny for empty permissions) |
 | `auth/` | Authentication orchestration and NATS auth callout service |
+
+### JWT Permission Encoding
+
+NATS JWT defaults to allowing everything when no permissions are specified. nauts handles this by explicitly denying all (`">"`)) when no allow permissions are granted:
+
+- Empty pub permissions → `Pub.Deny: [">"]` (user cannot publish)
+- Empty sub permissions → `Sub.Deny: [">"]` (user cannot subscribe)
+- Non-empty permissions → only `Allow` list is set
+
+This ensures the principle of least privilege: users are denied access by default unless explicitly granted.
 
 ## CLI
 
@@ -368,7 +380,7 @@ The CLI uses a JSON configuration file that specifies all providers and server s
 
 ```json
 {
-  "entity": {
+  "account": {
     "type": "operator",
     "operator": {
       "accounts": {
@@ -383,11 +395,16 @@ The CLI uses a JSON configuration file that specifies all providers and server s
       }
     }
   },
-  "nauts": {
+  "group": {
     "type": "file",
     "file": {
-      "policiesPath": "policies.json",
-      "groupsPath": "groups.json"
+      "path": "groups.json"
+    }
+  },
+  "policy": {
+    "type": "file",
+    "file": {
+      "path": "policies.json"
     }
   },
   "identity": {
@@ -409,7 +426,7 @@ The CLI uses a JSON configuration file that specifies all providers and server s
 
 ```json
 {
-  "entity": {
+  "account": {
     "type": "static",
     "static": {
       "publicKey": "AXXXXX...",
@@ -417,7 +434,8 @@ The CLI uses a JSON configuration file that specifies all providers and server s
       "accounts": ["AUTH", "APP"]
     }
   },
-  "nauts": { ... },
+  "group": { ... },
+  "policy": { ... },
   "identity": { ... },
   "server": { ... }
 }
@@ -427,8 +445,9 @@ The CLI uses a JSON configuration file that specifies all providers and server s
 
 | Section | Description |
 |---------|-------------|
-| `entity` | Entity provider configuration (operator/account info) |
-| `nauts` | Nauts provider configuration (policies/groups) |
+| `account` | Account provider configuration (operator/account info) |
+| `group` | Group provider configuration (user groups) |
+| `policy` | Policy provider configuration (access policies) |
 | `identity` | Identity provider configuration (user credentials) |
 | `server` | Server settings for auth callout service (only needed for `serve`) |
 
@@ -451,9 +470,8 @@ Authenticate a user and output a signed NATS JWT.
 
 Options:
   -c, --config string    Path to configuration file (required)
-  -username string       Username to authenticate (required)
-  -password string       Password for authentication (required)
-  -user-pubkey string    User's public key for JWT subject (optional)
+  -token string          Token to authenticate (required, format depends on identity provider)
+  -user-pubkey string    User's public key for JWT subject (optional, generates ephemeral key if not provided)
   -ttl duration          JWT time-to-live (default 1h, overrides config)
 
 Environment variables:
@@ -462,7 +480,8 @@ Environment variables:
 
 **Example**:
 ```bash
-./bin/nauts auth -c nauts.json -username alice -password secret123
+# For file identity provider, token format is "username:password"
+./bin/nauts auth -c nauts.json -token alice:secret123
 
 # Output: eyJ0eXAiOiJKV1QiLCJhbGciOiJlZDI1NTE5LW5rZXkifQ...
 ```
@@ -491,54 +510,82 @@ Environment variables:
 
 The service handles SIGINT/SIGTERM for graceful shutdown.
 
-### Test Environment Setup
+### Test Environments
 
-A setup script is provided to quickly create a test environment with all required components:
+Pre-configured test environments are provided in the `test/` directory for both operator and static modes:
 
-```bash
-# Run the setup script
-./scripts/setup-test-env.sh ./testenv
-
-# This creates:
-# ./testenv/
-# ├── nsc/              # nsc operator and accounts
-# ├── user-keys/        # Test user nkeys
-# ├── users.json        # User credentials (alice, bob, charlie)
-# ├── policies.json     # Sample policies
-# ├── groups.json       # Sample groups (admin, workers, readonly)
-# ├── nauts.json        # nauts configuration file
-# ├── nats-server.conf  # NATS server configuration
-# └── xkey.seed         # XKey for encrypted auth (if nk is installed)
+```
+test/
+├── e2e_test.go         # Go e2e test suite
+├── client/             # Test client for manual testing
+│   └── main.go
+├── policies.json       # Shared policies (read-access, write-access)
+├── groups.json         # Shared groups (readonly, full)
+├── users.json          # Shared users (alice, bob)
+├── operator/           # Operator mode setup
+│   ├── README.md       # Setup instructions
+│   ├── nauts.json      # nauts configuration
+│   ├── nats-server.conf# NATS server config with operator JWTs
+│   ├── auth.creds      # Auth service credentials
+│   ├── sentinel.creds  # Sentinel credentials for client auth
+│   └── *.nk            # Signing keys and xkey
+└── static/             # Static mode setup
+    ├── README.md       # Setup instructions
+    ├── nauts.json      # nauts configuration
+    ├── nats-server.conf# NATS server config with accounts
+    └── *.nk            # Account key and xkey
 ```
 
-The script creates three test users:
-| User | Password | Groups |
-|------|----------|--------|
-| alice | alice123 | admin, workers |
-| bob | bob456 | workers |
-| charlie | charlie789 | readonly |
+The test users are:
+| User | Token | Groups | Account | Permissions |
+|------|-------|--------|---------|-------------|
+| alice | alice:secret | readonly | APP | Subscribe to `public.>` |
+| bob | bob:secret | full | APP | Pub/Sub to `public.>` |
 
-After running the setup script:
+#### Quick Start (Static Mode)
 
 ```bash
 # Build the CLI
 go build -o bin/nauts ./cmd/nauts
 
-# Get JWT for alice (admin + workers permissions)
-./bin/nauts auth -c ./testenv/nauts.json -username alice -password alice123
+# Get JWT for alice
+./bin/nauts auth -c ./test/static/nauts.json -token alice:secret
 
 # Or run the auth callout service
 # 1. Start NATS server
-nats-server -c ./testenv/nats-server.conf
+nats-server -c ./test/static/nats-server.conf
 
-# 2. Start nauts serve
-./bin/nauts serve -c ./testenv/nauts.json
+# 2. Start nauts serve (in another terminal)
+./bin/nauts serve -c ./test/static/nauts.json
 
-# 3. Test with nats CLI
-nats --user alice --password alice123 pub test.subject 'Hello World'
+# 3. Test with nats CLI (token format: username:password)
+nats --token alice:secret sub "public.>"
+nats --token bob:secret pub public.test "Hello World"
 ```
 
-**Requirements**: The setup script requires `nsc` and `go` to be installed. For xkey generation, `nk` is optional.
+#### Quick Start (Operator Mode)
+
+```bash
+# 1. Start NATS server
+nats-server -c ./test/operator/nats-server.conf
+
+# 2. Start nauts serve (in another terminal)
+./bin/nauts serve -c ./test/operator/nauts.json
+
+# 3. Test with nats CLI (requires sentinel credentials + token)
+nats --creds ./test/operator/sentinel.creds --token alice:secret sub "public.>"
+nats --creds ./test/operator/sentinel.creds --token bob:secret pub public.test "Hello"
+```
+
+#### Running E2E Tests
+
+```bash
+cd test
+go test -v -static .   # Run static mode e2e tests
+go test -v -operator . # Run operator mode e2e tests
+```
+
+See `test/operator/README.md` and `test/static/README.md` for detailed setup instructions for each mode.
 
 ## Future Enhancements
 
