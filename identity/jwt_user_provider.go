@@ -5,6 +5,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -99,8 +100,13 @@ func NewJwtUserIdentityProvider(cfg JwtUserIdentityProviderConfig) (*JwtUserIden
 }
 
 // parsePublicKey parses a PEM-encoded public key.
-func parsePublicKey(pemData string) (any, error) {
-	block, _ := pem.Decode([]byte(pemData))
+// pemDataB64 is base64 encoded
+func parsePublicKey(pemDataB64 string) (any, error) {
+	pemData, err := base64.StdEncoding.DecodeString(pemDataB64)
+	if err != nil {
+		return nil, errors.New("failed to decode base64 PEM block")
+	}
+	block, _ := pem.Decode(pemData)
 	if block == nil {
 		return nil, errors.New("failed to decode PEM block")
 	}

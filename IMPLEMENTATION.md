@@ -248,7 +248,7 @@ Verify JWTs from external identity providers (Keycloak, Auth0, etc.).
     "jwt": {
       "issuers": {
         "https://keycloak.example.com/realms/myrealm": {
-          "publicKey": "-----BEGIN PUBLIC KEY-----\n...",
+          "publicKey": "<base64 encoded public key>",
           "accounts": ["tenant-*", "shared"],
           "rolesClaimPath": "resource_access.nauts.roles"
         }

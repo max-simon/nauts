@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/pem"
 	"errors"
 	"testing"
@@ -32,7 +33,9 @@ func generateTestKeyPair(t *testing.T) (*rsa.PrivateKey, string) {
 		Bytes: pubKeyBytes,
 	})
 
-	return privateKey, string(pubKeyPEM)
+	pubKeyPEMB64 := base64.StdEncoding.EncodeToString(pubKeyPEM)
+
+	return privateKey, pubKeyPEMB64
 }
 
 // createTestJWT creates a signed JWT for testing.

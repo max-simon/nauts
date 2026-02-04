@@ -176,7 +176,7 @@ Verify JWTs from external identity providers like Keycloak or Auth0. Configure i
     "jwt": {
       "issuers": {
         "https://keycloak.example.com/realms/myrealm": {
-          "publicKey": "-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----",
+          "publicKey": "<base64 encoded public key>",
           "accounts": ["tenant-*"],
           "rolesClaimPath": "resource_access.nauts.roles"
         }
