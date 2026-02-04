@@ -4,12 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"strings"
 
 	"golang.org/x/crypto/bcrypt"
 )
 
 // UsernamePassword is the identity token type for the file user provider.
-type UsernamePassword struct {
+type usernamePassword struct {
 	Username string
 	Password string
 }
@@ -69,13 +70,25 @@ func (fp *FileUserIdentityProvider) loadUsers(path string) error {
 	return nil
 }
 
+// parseUsernamePassword parses a UsernamePassword token from basic auth format.
+func parseUsernamePassword(token string) (*usernamePassword, error) {
+	parts := strings.SplitN(token, ":", 2)
+	if len(parts) != 2 {
+		return nil, ErrInvalidTokenType
+	}
+	return &usernamePassword{
+		Username: parts[0],
+		Password: parts[1],
+	}, nil
+}
+
 // Verify validates UsernamePassword token and returns the user.
 // Returns ErrInvalidTokenType if token is not UsernamePassword.
 // Returns ErrUserNotFound if the user does not exist.
 // Returns ErrInvalidCredentials if the password is incorrect.
-func (fp *FileUserIdentityProvider) Verify(_ context.Context, token IdentityToken) (*User, error) {
-	creds, ok := token.(UsernamePassword)
-	if !ok {
+func (fp *FileUserIdentityProvider) Verify(_ context.Context, token string) (*User, error) {
+	creds, err := parseUsernamePassword(token)
+	if err != nil {
 		return nil, ErrInvalidTokenType
 	}
 

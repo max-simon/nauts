@@ -1,0 +1,272 @@
+package provider
+
+import (
+	"context"
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+func TestNewOperatorEntityProvider(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create valid account signing key files
+	// These are test account seeds (SA prefix)
+	// Use the same valid account seed for both - the seed itself is valid,
+	// and we just need two separate account entries for testing
+	authSeed := "SAANJIBNEKGCRUWJCPIWUXFBFJLR36FJTFKGBGKAT7AQXH2LVFNQWZJMQU"
+	appSeed := "SAANJIBNEKGCRUWJCPIWUXFBFJLR36FJTFKGBGKAT7AQXH2LVFNQWZJMQU"
+
+	authKeyPath := filepath.Join(tmpDir, "auth-signing.nk")
+	appKeyPath := filepath.Join(tmpDir, "app-signing.nk")
+
+	if err := os.WriteFile(authKeyPath, []byte(authSeed), 0600); err != nil {
+		t.Fatalf("failed to write auth key: %v", err)
+	}
+	if err := os.WriteFile(appKeyPath, []byte(appSeed), 0600); err != nil {
+		t.Fatalf("failed to write app key: %v", err)
+	}
+
+	tests := []struct {
+		name    string
+		cfg     OperatorEntityProviderConfig
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name: "valid configuration with multiple accounts",
+			cfg: OperatorEntityProviderConfig{
+				Accounts: map[string]AccountSigningConfig{
+					"AUTH": {
+						PublicKey:      "AAUTH1234567890123456789012345678901234567890123456789012345",
+						SigningKeyPath: authKeyPath,
+					},
+					"APP": {
+						PublicKey:      "AAPP12345678901234567890123456789012345678901234567890123456",
+						SigningKeyPath: appKeyPath,
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid configuration with single account",
+			cfg: OperatorEntityProviderConfig{
+				Accounts: map[string]AccountSigningConfig{
+					"AUTH": {
+						PublicKey:      "AAUTH1234567890123456789012345678901234567890123456789012345",
+						SigningKeyPath: authKeyPath,
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "empty accounts",
+			cfg: OperatorEntityProviderConfig{
+				Accounts: map[string]AccountSigningConfig{},
+			},
+			wantErr: true,
+			errMsg:  "at least one account is required",
+		},
+		{
+			name: "missing public key",
+			cfg: OperatorEntityProviderConfig{
+				Accounts: map[string]AccountSigningConfig{
+					"AUTH": {
+						PublicKey:      "",
+						SigningKeyPath: authKeyPath,
+					},
+				},
+			},
+			wantErr: true,
+			errMsg:  "publicKey is required",
+		},
+		{
+			name: "missing signing key path",
+			cfg: OperatorEntityProviderConfig{
+				Accounts: map[string]AccountSigningConfig{
+					"AUTH": {
+						PublicKey:      "AAUTH1234567890123456789012345678901234567890123456789012345",
+						SigningKeyPath: "",
+					},
+				},
+			},
+			wantErr: true,
+			errMsg:  "signingKeyPath is required",
+		},
+		{
+			name: "non-existent key file",
+			cfg: OperatorEntityProviderConfig{
+				Accounts: map[string]AccountSigningConfig{
+					"AUTH": {
+						PublicKey:      "AAUTH1234567890123456789012345678901234567890123456789012345",
+						SigningKeyPath: "/nonexistent/path/key.nk",
+					},
+				},
+			},
+			wantErr: true,
+			errMsg:  "loading signer",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			provider, err := NewOperatorEntityProvider(tt.cfg)
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("expected error containing %q, got nil", tt.errMsg)
+					return
+				}
+				if tt.errMsg != "" && !contains(err.Error(), tt.errMsg) {
+					t.Errorf("expected error containing %q, got %q", tt.errMsg, err.Error())
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if provider == nil {
+				t.Fatal("expected provider to be non-nil")
+			}
+		})
+	}
+}
+
+func TestOperatorEntityProvider_GetOperator(t *testing.T) {
+	provider := createTestOperatorProvider(t)
+
+	ctx := context.Background()
+	op, err := provider.GetOperator(ctx)
+	if err == nil {
+		t.Error("expected error from GetOperator, got nil")
+	}
+	if op != nil {
+		t.Error("expected nil operator")
+	}
+	if !contains(err.Error(), "operator not available") {
+		t.Errorf("expected error about operator not available, got: %v", err)
+	}
+}
+
+func TestOperatorEntityProvider_GetAccount(t *testing.T) {
+	provider := createTestOperatorProvider(t)
+
+	ctx := context.Background()
+
+	// Test getting existing account
+	account, err := provider.GetAccount(ctx, "AUTH")
+	if err != nil {
+		t.Fatalf("unexpected error getting account: %v", err)
+	}
+	if account.Name() != "AUTH" {
+		t.Errorf("expected account name 'AUTH', got %q", account.Name())
+	}
+	if account.PublicKey() != "AAUTH1234567890123456789012345678901234567890123456789012345" {
+		t.Errorf("unexpected public key: %s", account.PublicKey())
+	}
+	if account.Signer() == nil {
+		t.Error("expected signer to be non-nil")
+	}
+
+	// Test getting non-existent account
+	_, err = provider.GetAccount(ctx, "nonexistent")
+	if err == nil {
+		t.Error("expected error getting non-existent account")
+	}
+	if !contains(err.Error(), "account not found") {
+		t.Errorf("expected account not found error, got: %v", err)
+	}
+}
+
+func TestOperatorEntityProvider_ListAccounts(t *testing.T) {
+	provider := createTestOperatorProvider(t)
+
+	ctx := context.Background()
+	accounts, err := provider.ListAccounts(ctx)
+	if err != nil {
+		t.Fatalf("unexpected error listing accounts: %v", err)
+	}
+	if len(accounts) != 2 {
+		t.Errorf("expected 2 accounts, got %d", len(accounts))
+	}
+
+	// Check that both accounts are present
+	names := make(map[string]bool)
+	for _, acct := range accounts {
+		names[acct.Name()] = true
+	}
+	if !names["AUTH"] || !names["APP"] {
+		t.Errorf("expected accounts AUTH and APP, got %v", names)
+	}
+}
+
+func TestOperatorEntityProvider_IsOperatorMode(t *testing.T) {
+	provider := createTestOperatorProvider(t)
+
+	if !provider.IsOperatorMode() {
+		t.Error("expected IsOperatorMode() to return true")
+	}
+}
+
+func TestOperatorEntityProvider_SigningKeyPublicKey(t *testing.T) {
+	provider := createTestOperatorProvider(t)
+
+	// Test getting signing key public key for existing account
+	pubKey, err := provider.SigningKeyPublicKey("AUTH")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if pubKey == "" {
+		t.Error("expected non-empty public key")
+	}
+	// The public key should start with 'A' (account key)
+	if len(pubKey) > 0 && pubKey[0] != 'A' {
+		t.Errorf("expected public key to start with 'A', got %q", pubKey)
+	}
+
+	// Test getting signing key public key for non-existent account
+	_, err = provider.SigningKeyPublicKey("nonexistent")
+	if err == nil {
+		t.Error("expected error for non-existent account")
+	}
+}
+
+func createTestOperatorProvider(t *testing.T) *OperatorEntityProvider {
+	t.Helper()
+
+	tmpDir := t.TempDir()
+
+	// Use the same valid account seed for both - the seed itself is valid,
+	// and we just need two separate account entries for testing
+	authSeed := "SAANJIBNEKGCRUWJCPIWUXFBFJLR36FJTFKGBGKAT7AQXH2LVFNQWZJMQU"
+	appSeed := "SAANJIBNEKGCRUWJCPIWUXFBFJLR36FJTFKGBGKAT7AQXH2LVFNQWZJMQU"
+
+	authKeyPath := filepath.Join(tmpDir, "auth-signing.nk")
+	appKeyPath := filepath.Join(tmpDir, "app-signing.nk")
+
+	if err := os.WriteFile(authKeyPath, []byte(authSeed), 0600); err != nil {
+		t.Fatalf("failed to write auth key: %v", err)
+	}
+	if err := os.WriteFile(appKeyPath, []byte(appSeed), 0600); err != nil {
+		t.Fatalf("failed to write app key: %v", err)
+	}
+
+	provider, err := NewOperatorEntityProvider(OperatorEntityProviderConfig{
+		Accounts: map[string]AccountSigningConfig{
+			"AUTH": {
+				PublicKey:      "AAUTH1234567890123456789012345678901234567890123456789012345",
+				SigningKeyPath: authKeyPath,
+			},
+			"APP": {
+				PublicKey:      "AAPP12345678901234567890123456789012345678901234567890123456",
+				SigningKeyPath: appKeyPath,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("failed to create provider: %v", err)
+	}
+
+	return provider
+}

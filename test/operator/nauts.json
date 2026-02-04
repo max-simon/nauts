@@ -1,0 +1,35 @@
+{
+  "entity": {
+    "type": "operator",
+    "operator": {
+      "accounts": {
+        "AUTH": {
+          "publicKey": "ADRQLIEAYBHUWDNRKOE4TQHQQFIOHAGL3QN7V2WGXU2TEM5XOFSIGNGY",
+          "signingKeyPath": "./sk-AUTH.nk"
+        },
+        "APP": {
+          "publicKey": "AD7UJQDIU2YHCMREKGU3ZQGBHJNTXW6M2N6IWPALOILGSNQMMWTHUWA3",
+          "signingKeyPath": "./sk-APP.nk"
+        }
+      }
+    }
+  },
+  "nauts": {
+    "type": "file",
+    "file": {
+      "policiesPath": "../policies.json",
+      "groupsPath": "../groups.json"
+    }
+  },
+  "identity": {
+    "type": "file",
+    "file": {
+      "usersPath": "../users.json"
+    }
+  },
+  "server": {
+    "natsUrl": "nats://localhost:4222",
+    "NatsCredentials": "./auth.creds",
+    "xkeySeedFile": "./server-xkey.nk"
+  }
+}

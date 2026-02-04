@@ -1,0 +1,24 @@
+[
+  {
+    "id": "read-access",
+    "name": "Read-Only Access",
+    "statements": [
+      {
+        "effect": "allow",
+        "actions": ["nats.sub"],
+        "resources": ["nats:public.>"]
+      }
+    ]
+  },
+  {
+    "id": "write-access",
+    "name": "Write Access",
+    "statements": [
+      {
+        "effect": "allow",
+        "actions": ["nats.pub"],
+        "resources": ["nats:public.>"]
+      }
+    ]
+  }
+]

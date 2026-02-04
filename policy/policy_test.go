@@ -181,4 +181,3 @@ func TestPolicy_JSON(t *testing.T) {
 		t.Errorf("Actions length mismatch: got %d, want 2", len(parsed.Statements[0].Actions))
 	}
 }
-

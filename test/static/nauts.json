@@ -1,0 +1,30 @@
+{
+  "entity": {
+    "type": "static",
+    "static": {
+      "publicKey": "ACQN3WJOQZ7SQ3PAFKWMPSNMMDWZR7ZN4GILQDRGAT6QDVOZKS2P2OYK",
+      "privateKeyPath": "./account-AUTH.nk",
+      "accounts": [
+        "AUTH", "APP"
+      ]
+    }
+  },
+  "nauts": {
+    "type": "file",
+    "file": {
+      "policiesPath": "../policies.json",
+      "groupsPath": "../groups.json"
+    }
+  },
+  "identity": {
+    "type": "file",
+    "file": {
+      "usersPath": "../users.json"
+    }
+  },
+  "server": {
+    "natsUrl": "nats://localhost:4222",
+    "natsNkey": "./user-auth.nk",
+    "xkeySeedFile": "./server-xkey.nk"
+  }
+}

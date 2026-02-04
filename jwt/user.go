@@ -17,11 +17,16 @@ import (
 //   - ttl: time-to-live for the JWT
 //   - permissions: NATS permissions to include in the JWT
 //   - issuerSigner: the account signer that issues the JWT
+//   - audienceAccount: the public key of the target account (for non-operator mode)
 //
 // Returns the signed JWT string.
-func IssueUserJWT(userName, userPublicKey string, ttl time.Duration, permissions *policy.NatsPermissions, issuerSigner Signer) (string, error) {
+func IssueUserJWT(userName string, userPublicKey string, ttl time.Duration, permissions *policy.NatsPermissions, issuerSigner Signer, audienceAccount string, issuerAccount string) (string, error) {
 	claims := natsjwt.NewUserClaims(userPublicKey)
 	claims.Name = userName
+	// Set audience to the target account's public key (required for non-operator mode)
+	if audienceAccount != "" {
+		claims.Audience = audienceAccount
+	}
 
 	if ttl > 0 {
 		claims.Expires = time.Now().Add(ttl).Unix()
@@ -29,6 +34,11 @@ func IssueUserJWT(userName, userPublicKey string, ttl time.Duration, permissions
 
 	if permissions != nil {
 		claims.Permissions = permissionsToNats(permissions)
+	}
+
+	// this is to support signing keys
+	if issuerAccount != "" {
+		claims.IssuerAccount = issuerAccount
 	}
 
 	token, err := claims.Encode(signerAdapter{issuerSigner})

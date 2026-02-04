@@ -40,8 +40,10 @@ func TestIssueUserJWT(t *testing.T) {
 	perms.Allow(policy.Permission{Type: policy.PermPub, Subject: "orders.>"})
 	perms.Allow(policy.Permission{Type: policy.PermSub, Subject: "events.>"})
 
+	accountPub := accountSigner.PublicKey()
+
 	// Issue JWT
-	token, err := IssueUserJWT("alice", userPub, time.Hour, perms, accountSigner)
+	token, err := IssueUserJWT("alice", userPub, time.Hour, perms, accountSigner, accountPub, "my-issuer-account")
 	if err != nil {
 		t.Fatalf("IssueUserJWT error: %v", err)
 	}
@@ -70,6 +72,16 @@ func TestIssueUserJWT(t *testing.T) {
 
 	if len(claims.Permissions.Sub.Allow) != 1 || claims.Permissions.Sub.Allow[0] != "events.>" {
 		t.Errorf("sub allow = %v, want [events.>]", claims.Permissions.Sub.Allow)
+	}
+
+	// Check audience is set to account public key
+	if claims.Audience != accountPub {
+		t.Errorf("audience = %q, want %q", claims.Audience, accountPub)
+	}
+
+	// Check issuer account
+	if claims.IssuerAccount != "my-issuer-account" {
+		t.Errorf("issuer account = %q, want %q", claims.IssuerAccount, "my-issuer-account")
 	}
 
 	// Check expiry is set
@@ -101,7 +113,9 @@ func TestIssueUserJWT_NoPermissions(t *testing.T) {
 		t.Fatalf("getting user public key: %v", err)
 	}
 
-	token, err := IssueUserJWT("bob", userPub, 0, nil, accountSigner)
+	accountPub := accountSigner.PublicKey()
+
+	token, err := IssueUserJWT("bob", userPub, 0, nil, accountSigner, accountPub, "")
 	if err != nil {
 		t.Fatalf("IssueUserJWT error: %v", err)
 	}
@@ -144,7 +158,9 @@ func TestIssueUserJWT_ZeroTTL(t *testing.T) {
 		t.Fatalf("getting user public key: %v", err)
 	}
 
-	token, err := IssueUserJWT("user", userPub, 0, nil, accountSigner)
+	accountPub := accountSigner.PublicKey()
+
+	token, err := IssueUserJWT("user", userPub, 0, nil, accountSigner, accountPub, "")
 	if err != nil {
 		t.Fatalf("IssueUserJWT error: %v", err)
 	}

@@ -63,4 +63,3 @@ func (s *Statement) Validate() error {
 	}
 	return nil
 }
-

@@ -7,6 +7,7 @@ import (
 	"log"
 	"time"
 
+	natsjwt "github.com/nats-io/jwt/v2"
 	"github.com/nats-io/nkeys"
 
 	"github.com/msimon/nauts/identity"
@@ -15,16 +16,26 @@ import (
 	"github.com/msimon/nauts/provider"
 )
 
-// Logger is an interface for logging warnings during authentication.
+// Logger is an interface for logging during authentication.
 type Logger interface {
+	Info(msg string, args ...any)
 	Warn(msg string, args ...any)
+	Debug(msg string, args ...any)
 }
 
 // defaultLogger wraps the standard log package.
 type defaultLogger struct{}
 
+func (l *defaultLogger) Info(msg string, args ...any) {
+	log.Printf("INFO: "+msg, args...)
+}
+
 func (l *defaultLogger) Warn(msg string, args ...any) {
 	log.Printf("WARN: "+msg, args...)
+}
+
+func (l *defaultLogger) Debug(msg string, args ...any) {
+	log.Printf("DEBUG: "+msg, args...)
 }
 
 // AuthController orchestrates user authentication, permission compilation, and JWT issuance.
@@ -64,11 +75,16 @@ func NewAuthController(
 	return c
 }
 
+// EntityProvider returns the entity provider used by this controller.
+func (c *AuthController) EntityProvider() provider.EntityProvider {
+	return c.entityProvider
+}
+
 // ResolveUser verifies the identity token and returns the user.
 // Returns identity.ErrInvalidCredentials if the credentials are invalid.
 // Returns identity.ErrUserNotFound if the user does not exist.
 // Returns identity.ErrInvalidTokenType if the token type is wrong for the provider.
-func (c *AuthController) ResolveUser(ctx context.Context, token identity.IdentityToken) (*identity.User, error) {
+func (c *AuthController) ResolveUser(ctx context.Context, token string) (*identity.User, error) {
 	user, err := c.identityProvider.Verify(ctx, token)
 	if err != nil {
 		return nil, NewAuthError("", "resolve_user", "failed to verify identity", err)
@@ -137,9 +153,10 @@ func (c *AuthController) ResolveNatsPermissions(ctx context.Context, user *ident
 
 // AuthResult contains the result of a successful authentication.
 type AuthResult struct {
-	User        *identity.User
-	Permissions *policy.NatsPermissions
-	JWT         string
+	User          *identity.User
+	UserPublicKey string
+	Permissions   *policy.NatsPermissions
+	JWT           string
 }
 
 // Authenticate performs the complete authentication flow:
@@ -154,12 +171,12 @@ type AuthResult struct {
 //   - ttl: time-to-live for the JWT (0 means no expiry)
 func (c *AuthController) Authenticate(
 	ctx context.Context,
-	token identity.IdentityToken,
+	connectOptions natsjwt.ConnectOptions,
 	userPublicKey string,
 	ttl time.Duration,
 ) (*AuthResult, error) {
 	// Step 1: Resolve user
-	user, err := c.ResolveUser(ctx, token)
+	user, err := c.ResolveUser(ctx, connectOptions.Token)
 	if err != nil {
 		return nil, err
 	}
@@ -185,9 +202,10 @@ func (c *AuthController) Authenticate(
 	}
 
 	return &AuthResult{
-		User:        user,
-		Permissions: permissions,
-		JWT:         jwtToken,
+		User:          user,
+		UserPublicKey: userPublicKey,
+		Permissions:   permissions,
+		JWT:           jwtToken,
 	}, nil
 }
 
@@ -225,8 +243,22 @@ func (c *AuthController) CreateUserJWT(
 		return "", NewAuthError(user.ID, "create_jwt", "failed to get account", err)
 	}
 
+	// Determine audience based on operator mode
+	// In operator mode, don't set audience (account determined by auth response's IssuerAccount)
+	// In non-operator mode, set audience to account name
+	audienceAccount := ""
+	if !c.entityProvider.IsOperatorMode() {
+		audienceAccount = user.Account
+	}
+
+	// In operator mode, the issuerAccount has to be set to support signing keys
+	issuerAccount := ""
+	if c.entityProvider.IsOperatorMode() {
+		issuerAccount = account.PublicKey()
+	}
+
 	// Issue the JWT using the account's signer
-	token, err := jwt.IssueUserJWT(user.ID, userPublicKey, ttl, permissions, account.Signer())
+	token, err := jwt.IssueUserJWT(user.ID, userPublicKey, ttl, permissions, account.Signer(), audienceAccount, issuerAccount)
 	if err != nil {
 		return "", NewAuthError(user.ID, "create_jwt", "failed to issue JWT", err)
 	}

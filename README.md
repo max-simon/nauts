@@ -85,22 +85,24 @@ The `AuthController.Authenticate()` method performs the following steps:
 4. _Return result_: Returns `AuthResult` containing the user, permissions, and signed JWT.
 
 ```go
-// Setup providers
-entityProvider, _ := provider.NewNscEntityProvider(provider.NscConfig{
-    Dir:          "~/.nsc",
-    OperatorName: "myoperator",
-})
+// Using configuration file (recommended)
+config, _ := auth.LoadConfig("nauts.json")
+controller, _ := auth.NewAuthControllerWithConfig(config)
 
+// Or setup providers manually (operator mode)
+entityProvider, _ := provider.NewOperatorEntityProvider(provider.OperatorEntityProviderConfig{
+    Accounts: map[string]provider.AccountSigningConfig{
+        "AUTH": {PublicKey: "AAUTH...", SigningKeyPath: "/path/to/auth-signing.nk"},
+        "APP":  {PublicKey: "AAPP...", SigningKeyPath: "/path/to/app-signing.nk"},
+    },
+})
 nautsProvider, _ := provider.NewFileNautsProvider(provider.FileNautsProviderConfig{
     PoliciesPath: "policies.json",
     GroupsPath:   "groups.json",
 })
-
 identityProvider, _ := identity.NewFileUserIdentityProvider(identity.FileUserIdentityProviderConfig{
     UsersPath: "users.json",
 })
-
-// Create controller
 controller := auth.NewAuthController(entityProvider, nautsProvider, identityProvider)
 
 // Authenticate
@@ -113,7 +115,57 @@ result, err := controller.Authenticate(ctx, identity.UsernamePassword{
 // result.JWT contains signed NATS user JWT
 ```
 
-> **Note**: NATS auth callout protocol integration (NATS message handling) is not yet implemented.
+### Auth Callout Service
+
+nauts provides a `CalloutService` that implements the [NATS auth callout protocol](https://docs.nats.io/running-a-nats-service/configuration/securing_nats/auth_callout). The service subscribes to `$SYS.REQ.USER.AUTH` and handles authentication requests from NATS servers.
+
+```go
+// Using configuration file (recommended)
+config, _ := auth.LoadConfig("nauts.json")
+controller, _ := auth.NewAuthControllerWithConfig(config)
+calloutConfig, _ := config.Server.ToCalloutConfig()
+service, _ := auth.NewCalloutService(controller, calloutConfig)
+
+// Or configure manually
+service, _ := auth.NewCalloutService(controller, auth.CalloutConfig{
+    NatsURL:    "nats://localhost:4222",
+    NatsNkey:   "auth-service.nk",  // Path to nkey seed file
+    XKeySeed:   xkeySeed,           // Optional, for encrypted auth callout (read from file)
+    DefaultTTL: time.Hour,
+})
+
+// Start service (blocks until shutdown)
+ctx, cancel := context.WithCancel(context.Background())
+service.Start(ctx)
+```
+
+**Protocol Flow**:
+1. Receive message on `$SYS.REQ.USER.AUTH`
+2. Decrypt request using service's xkey (if configured)
+3. Decode `jwt.AuthorizationRequestClaims`
+4. Extract username/password from `ConnectOptions`
+5. Call `AuthController.Authenticate()` with credentials and user's nkey
+6. Build `jwt.AuthorizationResponseClaims` with signed user JWT
+7. In operator mode, set `IssuerAccount` to the signing key's public key
+8. Encrypt response with server's xkey (from `Nats-Server-Xkey` header)
+9. Reply via `msg.Respond()`
+
+**NATS Server Configuration**:
+
+```
+accounts {
+  AUTH { users: [ { nkey: UAXXXXX... } ] }  # nkey public key from auth-service.nk
+  APP {}
+}
+
+authorization {
+  auth_callout {
+    issuer: AXXXXX...  # Account public key that issues user JWTs
+    account: AUTH
+    xkey: XAXXXXX...   # Public key matching nauts --xkey-seed
+  }
+}
+```
 
 ### User Identity Provider
 
@@ -144,25 +196,69 @@ interface UserList {
 
 ### Entity Provider
 
-Entity providers supply NATS operator and account information, including signing keys for JWT issuance.
+Entity providers supply NATS account information and signing keys for JWT issuance. nauts supports two entity provider modes:
 
-#### Nsc-based (NscEntityProvider)
+#### Operator Mode (OperatorEntityProvider)
 
-Reads operator and account information from an [nsc](https://docs.nats.io/using-nats/nats-tools/nsc) directory structure:
+For NATS deployments with operator/account hierarchy where the auth service runs in the AUTH account but authenticates users for all accounts. Each account has its own signing key.
 
+```json
+{
+  "entity": {
+    "type": "operator",
+    "operator": {
+      "accounts": {
+        "AUTH": {
+          "publicKey": "AAUTH...",
+          "signingKeyPath": "/path/to/auth-signing.nk"
+        },
+        "APP": {
+          "publicKey": "AAPP...",
+          "signingKeyPath": "/path/to/app-signing.nk"
+        }
+      }
+    }
+  }
+}
 ```
-~/.nsc/
-├── nats/
-│   └── <operator>/
-│       ├── <operator>.jwt
-│       └── accounts/
-│           └── <account>/
-│               └── <account>.jwt
-└── keys/
-    └── keys/
-        ├── O/<prefix>/<operator-pubkey>.nk
-        └── A/<prefix>/<account-pubkey>.nk
+
+| Field | Description |
+|-------|-------------|
+| `accounts` | Map of account names to their signing configuration |
+| `publicKey` | The account's public key (starts with 'A') |
+| `signingKeyPath` | Path to the account signing key file (.nk file) |
+
+In operator mode:
+- Auth callout response includes `IssuerAccount` set to the signing key's public key
+- User JWTs don't include audience (account determined by `IssuerAccount`)
+- `IsOperatorMode()` returns `true`
+
+#### Static Mode (StaticEntityProvider)
+
+A simplified provider that uses a single signing key for all accounts. Useful for development and simple deployments where all accounts share the same credentials.
+
+```json
+{
+  "entity": {
+    "type": "static",
+    "static": {
+      "publicKey": "AXXXXX...",
+      "privateKeyPath": "/path/to/account.nk",
+      "accounts": ["AUTH", "APP"]
+    }
+  }
+}
 ```
+
+| Field | Description |
+|-------|-------------|
+| `publicKey` | The account public key (used for all accounts) |
+| `privateKeyPath` | Path to the nkey seed file (used to sign JWTs for all accounts) |
+| `accounts` | List of account names that this provider serves |
+
+In static mode:
+- User JWTs include audience set to account name
+- `IsOperatorMode()` returns `false`
 
 ## Package Structure
 
@@ -170,7 +266,7 @@ Reads operator and account information from an [nsc](https://docs.nats.io/using-
 nauts/
 ├── cmd/
 │   └── nauts/              # CLI entrypoint
-│       └── main.go         # Authentication CLI
+│       └── main.go         # CLI with auth and serve subcommands
 ├── policy/                 # Policy types, compilation, interpolation
 │   ├── action.go           # Action types and group expansion
 │   ├── compile.go          # Compile() function
@@ -181,7 +277,8 @@ nauts/
 ├── provider/               # Entity and policy/group providers
 │   ├── entity.go           # Operator, Account types
 │   ├── entity_provider.go  # EntityProvider interface
-│   ├── nsc_entity_provider.go # NscEntityProvider
+│   ├── operator_entity_provider.go # OperatorEntityProvider (operator mode)
+│   ├── static_entity_provider.go # StaticEntityProvider
 │   ├── nauts_provider.go   # NautsProvider interface
 │   ├── file_nauts_provider.go # FileNautsProvider
 │   └── group.go            # Group type
@@ -193,8 +290,10 @@ nauts/
 │   ├── signer.go           # Signer interface
 │   ├── local_signer.go     # LocalSigner (nkeys)
 │   └── user.go             # IssueUserJWT()
-├── auth/                   # Authentication controller
+├── auth/                   # Authentication controller and callout service
 │   ├── controller.go       # AuthController
+│   ├── callout.go          # CalloutService (NATS auth callout)
+│   ├── config.go           # Config, LoadConfig, NewAuthControllerWithConfig
 │   └── errors.go           # AuthError
 └── testdata/               # Test fixtures
 ```
@@ -245,11 +344,15 @@ nauts/
 | `provider/` | NATS entity management (operators, accounts), policy/group storage |
 | `identity/` | User authentication and identity resolution |
 | `jwt/` | NATS JWT creation and signing |
-| `auth/` | Authentication orchestration combining all components |
+| `auth/` | Authentication orchestration and NATS auth callout service |
 
 ## CLI
 
-nauts provides a command-line interface for authenticating users and generating NATS JWTs.
+nauts provides a command-line interface with two subcommands:
+- `auth` - One-shot authentication to generate a NATS JWT
+- `serve` - Run the NATS auth callout service
+
+Both commands use a JSON configuration file specified via `-c/--config` flag or `NAUTS_CONFIG` environment variable.
 
 ### Installation
 
@@ -257,51 +360,136 @@ nauts provides a command-line interface for authenticating users and generating 
 go build -o bin/nauts ./cmd/nauts
 ```
 
-### Usage
+### Configuration File
 
-```bash
-./bin/nauts [options]
+The CLI uses a JSON configuration file that specifies all providers and server settings:
 
-Options:
-  -nsc-dir string      Path to nsc directory (required)
-  -operator string     Operator name (required)
-  -policies string     Path to policies JSON file (required)
-  -groups string       Path to groups JSON file (required)
-  -users string        Path to users JSON file (required)
-  -username string     Username to authenticate (required)
-  -password string     Password for authentication (required)
-  -user-pubkey string  User's public key for JWT subject (optional, generates ephemeral key if omitted)
-  -ttl duration        JWT time-to-live (default 1h)
+**Operator mode** (recommended for production):
+
+```json
+{
+  "entity": {
+    "type": "operator",
+    "operator": {
+      "accounts": {
+        "AUTH": {
+          "publicKey": "AAUTH...",
+          "signingKeyPath": "/path/to/auth-signing.nk"
+        },
+        "APP": {
+          "publicKey": "AAPP...",
+          "signingKeyPath": "/path/to/app-signing.nk"
+        }
+      }
+    }
+  },
+  "nauts": {
+    "type": "file",
+    "file": {
+      "policiesPath": "policies.json",
+      "groupsPath": "groups.json"
+    }
+  },
+  "identity": {
+    "type": "file",
+    "file": {
+      "usersPath": "users.json"
+    }
+  },
+  "server": {
+    "natsUrl": "nats://localhost:4222",
+    "natsNkey": "auth-service.nk",
+    "xkeySeedFile": "xkey.seed",
+    "ttl": "1h"
+  }
+}
 ```
 
-### Example
+**Static mode** (simpler setup for development):
+
+```json
+{
+  "entity": {
+    "type": "static",
+    "static": {
+      "publicKey": "AXXXXX...",
+      "privateKeyPath": "/path/to/account.nk",
+      "accounts": ["AUTH", "APP"]
+    }
+  },
+  "nauts": { ... },
+  "identity": { ... },
+  "server": { ... }
+}
+```
+
+#### Configuration Sections
+
+| Section | Description |
+|---------|-------------|
+| `entity` | Entity provider configuration (operator/account info) |
+| `nauts` | Nauts provider configuration (policies/groups) |
+| `identity` | Identity provider configuration (user credentials) |
+| `server` | Server settings for auth callout service (only needed for `serve`) |
+
+#### Server Configuration Options
+
+| Field | Description |
+|-------|-------------|
+| `natsUrl` | NATS server URL |
+| `natsCredentials` | Path to NATS credentials file (mutually exclusive with natsNkey) |
+| `natsNkey` | Path to nkey seed file for NATS authentication (mutually exclusive with natsCredentials) |
+| `xkeySeedFile` | Path to file containing XKey seed for encrypted auth callout |
+| `ttl` | JWT time-to-live (e.g., "1h", "30m") |
+
+### auth Subcommand
+
+Authenticate a user and output a signed NATS JWT.
 
 ```bash
-# Authenticate user and get JWT (with ephemeral key)
-./bin/nauts \
-  -nsc-dir ~/.nsc \
-  -operator myoperator \
-  -policies /path/to/policies.json \
-  -groups /path/to/groups.json \
-  -users /path/to/users.json \
-  -username alice \
-  -password secret123
+./bin/nauts auth [options]
 
-# Or with a specific user public key
-./bin/nauts \
-  -nsc-dir ~/.nsc \
-  -operator myoperator \
-  -policies /path/to/policies.json \
-  -groups /path/to/groups.json \
-  -users /path/to/users.json \
-  -username alice \
-  -password secret123 \
-  -user-pubkey UABC123XYZ...
+Options:
+  -c, --config string    Path to configuration file (required)
+  -username string       Username to authenticate (required)
+  -password string       Password for authentication (required)
+  -user-pubkey string    User's public key for JWT subject (optional)
+  -ttl duration          JWT time-to-live (default 1h, overrides config)
+
+Environment variables:
+  NAUTS_CONFIG    Path to configuration file
+```
+
+**Example**:
+```bash
+./bin/nauts auth -c nauts.json -username alice -password secret123
 
 # Output: eyJ0eXAiOiJKV1QiLCJhbGciOiJlZDI1NTE5LW5rZXkifQ...
 ```
 
-The CLI outputs the signed JWT to stdout on success. The JWT can be used with NATS clients that support JWT-based authentication.
+### serve Subcommand
+
+Run the NATS auth callout service.
+
+```bash
+./bin/nauts serve [options]
+
+Options:
+  -c, --config string    Path to configuration file (required)
+
+Environment variables:
+  NAUTS_CONFIG    Path to configuration file
+```
+
+**Example**:
+```bash
+./bin/nauts serve -c nauts.json
+
+# Service logs:
+# INFO: auth callout service started, listening on $SYS.REQ.USER.AUTH
+```
+
+The service handles SIGINT/SIGTERM for graceful shutdown.
 
 ### Test Environment Setup
 
@@ -317,7 +505,10 @@ A setup script is provided to quickly create a test environment with all require
 # ├── user-keys/        # Test user nkeys
 # ├── users.json        # User credentials (alice, bob, charlie)
 # ├── policies.json     # Sample policies
-# └── groups.json       # Sample groups (admin, workers, readonly)
+# ├── groups.json       # Sample groups (admin, workers, readonly)
+# ├── nauts.json        # nauts configuration file
+# ├── nats-server.conf  # NATS server configuration
+# └── xkey.seed         # XKey for encrypted auth (if nk is installed)
 ```
 
 The script creates three test users:
@@ -327,30 +518,32 @@ The script creates three test users:
 | bob | bob456 | workers |
 | charlie | charlie789 | readonly |
 
-After running the setup script, authenticate with:
+After running the setup script:
 
 ```bash
 # Build the CLI
 go build -o bin/nauts ./cmd/nauts
 
 # Get JWT for alice (admin + workers permissions)
-./bin/nauts \
-  -nsc-dir ./testenv/nsc \
-  -operator test-operator \
-  -policies ./testenv/policies.json \
-  -groups ./testenv/groups.json \
-  -users ./testenv/users.json \
-  -username alice \
-  -password alice123
+./bin/nauts auth -c ./testenv/nauts.json -username alice -password alice123
+
+# Or run the auth callout service
+# 1. Start NATS server
+nats-server -c ./testenv/nats-server.conf
+
+# 2. Start nauts serve
+./bin/nauts serve -c ./testenv/nauts.json
+
+# 3. Test with nats CLI
+nats --user alice --password alice123 pub test.subject 'Hello World'
 ```
 
-**Requirements**: The setup script requires `nsc` and `go` to be installed.
+**Requirements**: The setup script requires `nsc` and `go` to be installed. For xkey generation, `nk` is optional.
 
 ## Future Enhancements
 
 The following features are planned for future versions:
 
-- **NATS auth callout integration**: Wire up `CalloutService` to NATS auth callout protocol with JWT signing.
 - **Explicit deny rules**: Support `effect: "deny"` in policy statements with evaluation order: explicit deny > explicit allow > implicit deny.
 - **Resource limits**: Allow policies to specify connection limits (`maxSubscriptions`, `maxPayload`, `maxData`).
 - **Policy simulation API**: Dry-run endpoint to test compiled permissions without authenticating.

@@ -17,22 +17,29 @@ import (
 	"github.com/msimon/nauts/provider"
 )
 
-// testLogger captures warnings for testing
+// testLogger captures log messages for testing
 type testLogger struct {
+	infos    []string
 	warnings []string
+	debugs   []string
+}
+
+func (l *testLogger) Info(msg string, args ...any) {
+	l.infos = append(l.infos, msg)
 }
 
 func (l *testLogger) Warn(msg string, args ...any) {
 	l.warnings = append(l.warnings, msg)
 }
 
+func (l *testLogger) Debug(msg string, args ...any) {
+	l.debugs = append(l.debugs, msg)
+}
+
 func TestResolveUser_ValidCredentials(t *testing.T) {
 	ctrl := createTestController(t)
 
-	user, err := ctrl.ResolveUser(context.Background(), identity.UsernamePassword{
-		Username: "alice",
-		Password: "secret123",
-	})
+	user, err := ctrl.ResolveUser(context.Background(), "alice:secret123")
 	if err != nil {
 		t.Fatalf("ResolveUser() error = %v", err)
 	}
@@ -48,10 +55,7 @@ func TestResolveUser_ValidCredentials(t *testing.T) {
 func TestResolveUser_InvalidCredentials(t *testing.T) {
 	ctrl := createTestController(t)
 
-	_, err := ctrl.ResolveUser(context.Background(), identity.UsernamePassword{
-		Username: "alice",
-		Password: "wrongpassword",
-	})
+	_, err := ctrl.ResolveUser(context.Background(), "alice:wrongpassword")
 	if err == nil {
 		t.Fatal("ResolveUser() expected error")
 	}
@@ -185,9 +189,8 @@ func TestAuthenticate_Success(t *testing.T) {
 		t.Fatalf("getting user public key: %v", err)
 	}
 
-	result, err := ctrl.Authenticate(context.Background(), identity.UsernamePassword{
-		Username: "alice",
-		Password: "secret123",
+	result, err := ctrl.Authenticate(context.Background(), natsjwt.ConnectOptions{
+		Token: "alice:secret123",
 	}, userPub, time.Hour)
 	if err != nil {
 		t.Fatalf("Authenticate() error = %v", err)
@@ -219,9 +222,8 @@ func TestAuthenticate_InvalidCredentials(t *testing.T) {
 		t.Fatalf("getting user public key: %v", err)
 	}
 
-	_, err = ctrl.Authenticate(context.Background(), identity.UsernamePassword{
-		Username: "alice",
-		Password: "wrongpassword",
+	_, err = ctrl.Authenticate(context.Background(), natsjwt.ConnectOptions{
+		Token: "alice:wrongpassword",
 	}, userPub, time.Hour)
 	if err == nil {
 		t.Fatal("Authenticate() expected error")
@@ -232,9 +234,8 @@ func TestAuthenticate_EphemeralKey(t *testing.T) {
 	ctrl := createTestController(t)
 
 	// Authenticate with empty userPublicKey - should generate ephemeral key
-	result, err := ctrl.Authenticate(context.Background(), identity.UsernamePassword{
-		Username: "alice",
-		Password: "secret123",
+	result, err := ctrl.Authenticate(context.Background(), natsjwt.ConnectOptions{
+		Token: "alice:secret123",
 	}, "", time.Hour) // Empty userPublicKey
 	if err != nil {
 		t.Fatalf("Authenticate() error = %v", err)
@@ -285,22 +286,6 @@ func createTestController(t *testing.T) *AuthController {
 func createTestEntityProvider(t *testing.T, tmpDir string) provider.EntityProvider {
 	t.Helper()
 
-	nscDir := filepath.Join(tmpDir, "nsc")
-
-	// Create operator keypair
-	opKp, err := nkeys.CreateOperator()
-	if err != nil {
-		t.Fatalf("creating operator keypair: %v", err)
-	}
-	opPub, err := opKp.PublicKey()
-	if err != nil {
-		t.Fatalf("getting operator public key: %v", err)
-	}
-	opSeed, err := opKp.Seed()
-	if err != nil {
-		t.Fatalf("getting operator seed: %v", err)
-	}
-
 	// Create account keypair
 	accKp, err := nkeys.CreateAccount()
 	if err != nil {
@@ -315,51 +300,16 @@ func createTestEntityProvider(t *testing.T, tmpDir string) provider.EntityProvid
 		t.Fatalf("getting account seed: %v", err)
 	}
 
-	// Create directory structure
-	operatorDir := filepath.Join(nscDir, "nats", "test-operator")
-	accountsDir := filepath.Join(operatorDir, "accounts", "test-account")
-	opKeysDir := filepath.Join(nscDir, "keys", "keys", "O", opPub[1:3])
-	accKeysDir := filepath.Join(nscDir, "keys", "keys", "A", accPub[1:3])
-
-	for _, dir := range []string{operatorDir, accountsDir, opKeysDir, accKeysDir} {
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			t.Fatalf("creating directory %s: %v", dir, err)
-		}
-	}
-
-	// Create operator JWT
-	opClaims := natsjwt.NewOperatorClaims(opPub)
-	opClaims.Name = "test-operator"
-	opJWT, err := opClaims.Encode(opKp)
-	if err != nil {
-		t.Fatalf("encoding operator JWT: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(operatorDir, "test-operator.jwt"), []byte(opJWT), 0644); err != nil {
-		t.Fatalf("writing operator JWT: %v", err)
-	}
-
-	// Create account JWT
-	accClaims := natsjwt.NewAccountClaims(accPub)
-	accClaims.Name = "test-account"
-	accJWT, err := accClaims.Encode(opKp)
-	if err != nil {
-		t.Fatalf("encoding account JWT: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(accountsDir, "test-account.jwt"), []byte(accJWT), 0644); err != nil {
-		t.Fatalf("writing account JWT: %v", err)
-	}
-
-	// Write seeds
-	if err := os.WriteFile(filepath.Join(opKeysDir, opPub+".nk"), opSeed, 0600); err != nil {
-		t.Fatalf("writing operator seed: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(accKeysDir, accPub+".nk"), accSeed, 0600); err != nil {
+	// Write account seed file
+	accKeyPath := filepath.Join(tmpDir, "account.nk")
+	if err := os.WriteFile(accKeyPath, accSeed, 0600); err != nil {
 		t.Fatalf("writing account seed: %v", err)
 	}
 
-	ep, err := provider.NewNscEntityProvider(provider.NscConfig{
-		Dir:          nscDir,
-		OperatorName: "test-operator",
+	ep, err := provider.NewStaticEntityProvider(provider.StaticEntityProviderConfig{
+		PublicKey:      accPub,
+		PrivateKeyPath: accKeyPath,
+		Accounts:       []string{"test-account"},
 	})
 	if err != nil {
 		t.Fatalf("creating entity provider: %v", err)

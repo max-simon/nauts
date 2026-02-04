@@ -13,10 +13,7 @@ import (
 func TestVerify_ValidCredentials(t *testing.T) {
 	fp := createTestProvider(t)
 
-	user, err := fp.Verify(context.Background(), UsernamePassword{
-		Username: "alice",
-		Password: "secret123",
-	})
+	user, err := fp.Verify(context.Background(), "alice:secret123")
 	if err != nil {
 		t.Fatalf("Verify() error = %v", err)
 	}
@@ -35,10 +32,7 @@ func TestVerify_ValidCredentials(t *testing.T) {
 func TestVerify_InvalidPassword(t *testing.T) {
 	fp := createTestProvider(t)
 
-	_, err := fp.Verify(context.Background(), UsernamePassword{
-		Username: "alice",
-		Password: "wrongpassword",
-	})
+	_, err := fp.Verify(context.Background(), "alice:wrongpassword")
 	if !errors.Is(err, ErrInvalidCredentials) {
 		t.Errorf("Verify() error = %v, want %v", err, ErrInvalidCredentials)
 	}
@@ -47,10 +41,7 @@ func TestVerify_InvalidPassword(t *testing.T) {
 func TestVerify_UserNotFound(t *testing.T) {
 	fp := createTestProvider(t)
 
-	_, err := fp.Verify(context.Background(), UsernamePassword{
-		Username: "nonexistent",
-		Password: "password",
-	})
+	_, err := fp.Verify(context.Background(), "nonexistent:password")
 	if !errors.Is(err, ErrUserNotFound) {
 		t.Errorf("Verify() error = %v, want %v", err, ErrUserNotFound)
 	}
