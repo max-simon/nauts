@@ -3,8 +3,6 @@ package provider
 import (
 	"context"
 	"fmt"
-
-	"github.com/msimon/nauts/jwt"
 )
 
 // OperatorAccountProvider implements AccountProvider for NATS operator mode.
@@ -86,14 +84,4 @@ func (p *OperatorAccountProvider) ListAccounts(ctx context.Context) ([]*Account,
 // IsOperatorMode returns true as this provider operates in NATS operator mode.
 func (p *OperatorAccountProvider) IsOperatorMode() bool {
 	return true
-}
-
-// SigningKeyPublicKey returns the public key of the signing key for the given account.
-// This is useful for setting IssuerAccount in auth callout responses.
-func (p *OperatorAccountProvider) SigningKeyPublicKey(accountName string) (string, error) {
-	account, ok := p.accounts[accountName]
-	if !ok {
-		return "", fmt.Errorf("%w: %s", ErrAccountNotFound, accountName)
-	}
-	return account.Signer().(jwt.Signer).PublicKey(), nil
 }

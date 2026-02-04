@@ -25,14 +25,12 @@ type Permission struct {
 // PermissionSet holds a set of allowed subjects with wildcard-aware deduplication.
 type PermissionSet struct {
 	allow map[string]struct{}
-	deny  map[string]struct{} // For future deny support
 }
 
 // NewPermissionSet creates a new empty PermissionSet.
 func NewPermissionSet() *PermissionSet {
 	return &PermissionSet{
 		allow: make(map[string]struct{}),
-		deny:  make(map[string]struct{}),
 	}
 }
 
@@ -42,14 +40,6 @@ func (ps *PermissionSet) Add(subject string) {
 		ps.allow = make(map[string]struct{})
 	}
 	ps.allow[subject] = struct{}{}
-}
-
-// AddDeny adds a subject to the deny set (placeholder for future use).
-func (ps *PermissionSet) AddDeny(subject string) {
-	if ps.deny == nil {
-		ps.deny = make(map[string]struct{})
-	}
-	ps.deny[subject] = struct{}{}
 }
 
 // AllowList returns the allow set as a sorted slice.
@@ -65,23 +55,9 @@ func (ps *PermissionSet) AllowList() []string {
 	return result
 }
 
-// DenyList returns the deny set as a sorted slice.
-func (ps *PermissionSet) DenyList() []string {
-	if ps.deny == nil {
-		return []string{}
-	}
-	result := make([]string, 0, len(ps.deny))
-	for s := range ps.deny {
-		result = append(result, s)
-	}
-	sort.Strings(result)
-	return result
-}
-
 // Deduplicate removes subjects that are covered by wildcards.
 func (ps *PermissionSet) Deduplicate() {
 	ps.allow = deduplicateWithWildcards(ps.allow)
-	ps.deny = deduplicateWithWildcards(ps.deny)
 }
 
 // IsEmpty returns true if the permission set has no allowed subjects.
@@ -121,18 +97,6 @@ func (p *NatsPermissions) Allow(perm Permission) {
 			p.addSubWithQueue(perm.Subject, perm.Queue)
 		} else {
 			p.sub.Add(perm.Subject)
-		}
-	}
-}
-
-// Deny adds a permission to the deny set (placeholder for future use).
-func (p *NatsPermissions) Deny(perm Permission) {
-	switch perm.Type {
-	case PermPub:
-		p.pub.AddDeny(perm.Subject)
-	case PermSub:
-		if perm.Queue == "" {
-			p.sub.AddDeny(perm.Subject)
 		}
 	}
 }

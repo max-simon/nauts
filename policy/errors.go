@@ -140,21 +140,3 @@ func (e *ValidationError) Error() string {
 	}
 	return e.Field + ": " + e.Message
 }
-
-// IsPolicyError checks if an error is a PolicyError with a specific code.
-func IsPolicyError(err error, code string) bool {
-	var pe *PolicyError
-	if errors.As(err, &pe) {
-		return pe.Code == code
-	}
-	return false
-}
-
-// GetPolicyErrorAttr returns an attribute from a PolicyError, or empty string if not found.
-func GetPolicyErrorAttr(err error, key string) string {
-	var pe *PolicyError
-	if errors.As(err, &pe) && pe.Attrs != nil {
-		return pe.Attrs[key]
-	}
-	return ""
-}

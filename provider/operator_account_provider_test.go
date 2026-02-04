@@ -193,29 +193,6 @@ func TestOperatorAccountProvider_IsOperatorMode(t *testing.T) {
 	}
 }
 
-func TestOperatorAccountProvider_SigningKeyPublicKey(t *testing.T) {
-	provider := createTestOperatorAccountProvider(t)
-
-	// Test getting signing key public key for existing account
-	pubKey, err := provider.SigningKeyPublicKey("AUTH")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if pubKey == "" {
-		t.Error("expected non-empty public key")
-	}
-	// The public key should start with 'A' (account key)
-	if len(pubKey) > 0 && pubKey[0] != 'A' {
-		t.Errorf("expected public key to start with 'A', got %q", pubKey)
-	}
-
-	// Test getting signing key public key for non-existent account
-	_, err = provider.SigningKeyPublicKey("nonexistent")
-	if err == nil {
-		t.Error("expected error for non-existent account")
-	}
-}
-
 func createTestOperatorAccountProvider(t *testing.T) *OperatorAccountProvider {
 	t.Helper()
 

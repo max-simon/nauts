@@ -4,13 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"sync"
 	"time"
 
-	"github.com/nats-io/jwt/v2"
+	natsjwt "github.com/nats-io/jwt/v2"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nkeys"
+
+	"github.com/msimon/nauts/jwt"
 )
 
 const (
@@ -233,7 +234,7 @@ func (s *CalloutService) handleRequest(msg *nats.Msg) {
 	}
 
 	// Decode auth request claims
-	authReq, err := jwt.DecodeAuthorizationRequestClaims(string(requestData))
+	authReq, err := natsjwt.DecodeAuthorizationRequestClaims(string(requestData))
 	if err != nil {
 		s.logger.Warn("failed to decode auth request: %v", err)
 		s.respondWithError(msg, responseConfig, "authentication failed")
@@ -297,7 +298,7 @@ func (s *CalloutService) handleRequest(msg *nats.Msg) {
 
 // respondWithError sends an error response.
 func (s *CalloutService) respondWithError(msg *nats.Msg, responseConfig ResponseConfig, errMsg string) {
-	resp := jwt.NewAuthorizationResponseClaims(responseConfig.UserNkey)
+	resp := natsjwt.NewAuthorizationResponseClaims(responseConfig.UserNkey)
 	resp.Audience = responseConfig.ServerId
 	resp.Error = errMsg
 	s.sendResponse(msg, responseConfig.ServerXkey, resp)
@@ -308,7 +309,7 @@ func (s *CalloutService) respondWithError(msg *nats.Msg, responseConfig Response
 // In non-operator mode, IssuerAccount is NOT set because the NATS server
 // derives the target account from the user JWT's Audience field instead.
 func (s *CalloutService) respondWithSuccess(msg *nats.Msg, responseConfig ResponseConfig, userJWT, issuerAccount string) {
-	resp := jwt.NewAuthorizationResponseClaims(responseConfig.UserNkey)
+	resp := natsjwt.NewAuthorizationResponseClaims(responseConfig.UserNkey)
 	resp.Jwt = userJWT
 	resp.Audience = responseConfig.ServerId
 
@@ -321,7 +322,7 @@ func (s *CalloutService) respondWithSuccess(msg *nats.Msg, responseConfig Respon
 }
 
 // sendResponse encodes, optionally encrypts, and sends the response.
-func (s *CalloutService) sendResponse(msg *nats.Msg, serverXKey string, resp *jwt.AuthorizationResponseClaims) {
+func (s *CalloutService) sendResponse(msg *nats.Msg, serverXKey string, resp *natsjwt.AuthorizationResponseClaims) {
 	// Get the account signer for encoding the response
 	// The auth callout response must be signed by the account that's configured as the auth issuer
 	// For simplicity, we use the first available account's signer
@@ -333,7 +334,7 @@ func (s *CalloutService) sendResponse(msg *nats.Msg, serverXKey string, resp *jw
 	}
 
 	// Encode the response (signed by account)
-	token, err := resp.Encode(signerAdapter{account.Signer()})
+	token, err := resp.Encode(jwt.NewSignerAdapter(account.Signer()))
 	if err != nil {
 		s.logger.Warn("failed to encode response: %v", err)
 		return
@@ -355,46 +356,4 @@ func (s *CalloutService) sendResponse(msg *nats.Msg, serverXKey string, resp *jw
 	if err := msg.Respond(responseData); err != nil {
 		s.logger.Warn("failed to send response: %v", err)
 	}
-}
-
-// signerAdapter adapts our Signer interface to nkeys.KeyPair for JWT encoding.
-type signerAdapter struct {
-	signer interface {
-		PublicKey() string
-		Sign(data []byte) ([]byte, error)
-	}
-}
-
-func (s signerAdapter) Seed() ([]byte, error) {
-	return nil, fmt.Errorf("seed not available")
-}
-
-func (s signerAdapter) PublicKey() (string, error) {
-	return s.signer.PublicKey(), nil
-}
-
-func (s signerAdapter) PrivateKey() ([]byte, error) {
-	return nil, fmt.Errorf("private key not available")
-}
-
-func (s signerAdapter) Sign(input []byte) ([]byte, error) {
-	return s.signer.Sign(input)
-}
-
-func (s signerAdapter) Verify(input, sig []byte) error {
-	return fmt.Errorf("verify not implemented")
-}
-
-func (s signerAdapter) Wipe() {}
-
-func (s signerAdapter) Open(input []byte, sender string) ([]byte, error) {
-	return nil, fmt.Errorf("open not implemented")
-}
-
-func (s signerAdapter) Seal(input []byte, recipient string) ([]byte, error) {
-	return nil, fmt.Errorf("seal not implemented")
-}
-
-func (s signerAdapter) SealWithRand(input []byte, recipient string, rr io.Reader) ([]byte, error) {
-	return nil, fmt.Errorf("seal with rand not implemented")
 }
