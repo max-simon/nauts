@@ -469,21 +469,92 @@ type AuthRequest struct {
 }
 ```
 
-**Errors**:
+**Errors** (FileUserIdentityProvider):
 - `ErrInvalidCredentials`: Password verification failed
 - `ErrUserNotFound`: User does not exist
 - `ErrInvalidTokenType`: Token format is wrong
 - `ErrInvalidAccount`: Requested account is not valid for user
 - `ErrAccountRequired`: User has multiple accounts but no account specified
 
+**JwtUserIdentityProvider** (`identity/jwt_user_provider.go`):
+Authenticates users using external JWTs (e.g., from Keycloak, Auth0, or other OIDC providers).
+
+**How it works**:
+1. **Decode JWT**: Parse the token to extract the issuer (`iss` claim)
+2. **Verify signature**: Look up issuer's public key from configuration and verify JWT signature
+3. **Extract roles**: Get roles from configurable claim path (default: `resource_access.nauts.roles`)
+   - Roles must follow format `<account>.<role>` (e.g., `tenant-a.admin`, `app.viewer`)
+   - Invalid formats are silently skipped
+4. **Determine target account**:
+   - If `AuthRequest.Account` is provided, use it directly
+   - Otherwise, derive from roles: if all roles belong to the same account, use that account
+   - If roles span multiple accounts without explicit account selection, return error
+5. **Validate issuer permissions**: Check that the issuer is allowed to manage the target account
+   - Configuration supports wildcards: `*` (any account), `tenant-*` (prefix match)
+   - Wildcards in target account are rejected
+6. **Filter and transform roles**:
+   - Keep only roles belonging to the target account
+   - Strip account prefix from role names (`tenant-a.admin` → `admin`)
+
+**Configuration**:
+```json
+{
+  "identity": {
+    "type": "jwt",
+    "jwt": {
+      "issuers": {
+        "https://auth.example.com/realms/myrealm": {
+          "publicKey": "-----BEGIN PUBLIC KEY-----\nMIIBIjAN...\n-----END PUBLIC KEY-----",
+          "accounts": ["tenant-a-*", "dev"]
+        },
+        "https://another-idp.com": {
+          "publicKey": "-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----",
+          "accounts": ["*"]
+        }
+      },
+      "rolesClaimPath": "resource_access.nauts.roles"
+    }
+  }
+}
+```
+
+**Account pattern matching examples**:
+| Target Account | Allowed Accounts | Result |
+|----------------|------------------|--------|
+| `tenant-a-acc-1` | `["tenant-a-*"]` | ✓ Valid |
+| `tenant-b-acc-1` | `["tenant-a-*", "dev"]` | ✗ Denied |
+| `dev` | `["tenant-a-*", "dev"]` | ✓ Valid |
+| `any-account` | `["*"]` | ✓ Valid |
+
+**Token format**:
+The `AuthRequest.Token` is the raw JWT string from the external identity provider.
+```json
+{ "account": "tenant-a-acc-1", "token": "eyJhbGciOiJSUzI1NiIs..." }
+```
+
+**Extracted user attributes**:
+Standard JWT claims are extracted as user attributes:
+- `email` → `attributes["email"]`
+- `name` → `attributes["name"]`
+- `preferred_username` → `attributes["preferred_username"]`
+
+**Errors** (JwtUserIdentityProvider):
+- `ErrInvalidCredentials`: JWT signature verification failed or token expired
+- `ErrIssuerNotConfigured`: JWT issuer not found in configuration
+- `ErrIssuerNotAllowed`: Issuer not allowed to manage target account
+- `ErrNoRolesFound`: No valid roles found in JWT claims
+- `ErrAmbiguousAccount`: Roles span multiple accounts and no account specified
+- `ErrWildcardInAccount`: Target account contains wildcard characters
+
 ## Dependencies
 
 ```go
 require (
-    golang.org/x/crypto v0.x         // bcrypt for password hashing
-    github.com/nats-io/jwt/v2 v2.x   // JWT encoding/decoding
-    github.com/nats-io/nkeys v0.x    // cryptographic signing
-    github.com/nats-io/nats.go v1.x  // NATS client for auth callout
+    golang.org/x/crypto v0.x           // bcrypt for password hashing
+    github.com/nats-io/jwt/v2 v2.x     // NATS JWT encoding/decoding
+    github.com/nats-io/nkeys v0.x      // cryptographic signing
+    github.com/nats-io/nats.go v1.x    // NATS client for auth callout
+    github.com/golang-jwt/jwt/v5 v5.x  // External JWT verification
 )
 ```
 
@@ -506,6 +577,7 @@ require (
 - [x] File policy provider: `provider/file_policy_provider.go` - JSON file backend for policies
 - [x] Identity provider: `identity/provider.go` - `UserIdentityProvider` interface
 - [x] File identity provider: `identity/file_user_provider.go` - Username/password with bcrypt
+- [x] JWT identity provider: `identity/jwt_user_provider.go` - External JWT verification with role mapping
 - [x] JWT issuance: `jwt/user.go` - `IssueUserJWT()` function
 - [x] Signer: `jwt/signer.go` - `Signer` interface and `LocalSigner`
 - [x] Auth controller: `auth/controller.go` - `AuthController` orchestrating full auth flow
@@ -514,5 +586,4 @@ require (
 - [x] NATS auth callout: `auth/callout.go` - `CalloutService` implementing auth callout protocol
 - [x] E2E tests: `test/e2e_test.go` - End-to-end tests for static and operator modes
 - [ ] NATS KV provider: Future
-- [ ] JWT identity provider: Future
 - [ ] Control plane: Future
