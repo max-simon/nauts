@@ -41,15 +41,15 @@ type IssuerConfig struct {
 	// Accounts is the list of NATS accounts this issuer can manage.
 	// Supports wildcards: "*" matches any account, "tenant-a-*" matches accounts starting with "tenant-a-".
 	Accounts []string `json:"accounts"`
+	// RolesClaimPath is the path to roles in JWT claims (dot-separated).
+	// Default: "resource_access.nauts.roles"
+	RolesClaimPath string `json:"rolesClaimPath,omitempty"`
 }
 
 // JwtUserIdentityProviderConfig holds configuration for JwtUserIdentityProvider.
 type JwtUserIdentityProviderConfig struct {
 	// Issuers maps JWT issuer (iss claim) to their configuration.
 	Issuers map[string]IssuerConfig `json:"issuers"`
-	// RolesClaimPath is the path to roles in JWT claims (dot-separated).
-	// Default: "resource_access.nauts.roles"
-	RolesClaimPath string `json:"rolesClaimPath,omitempty"`
 }
 
 // JwtUserIdentityProvider implements UserIdentityProvider using external JWTs.
@@ -59,14 +59,14 @@ type JwtUserIdentityProviderConfig struct {
 // The provider validates that the issuer is allowed to manage the target account
 // and filters roles to only include those for the target account.
 type JwtUserIdentityProvider struct {
-	issuers        map[string]*issuerEntry
-	rolesClaimPath []string
+	issuers map[string]*issuerEntry
 }
 
 // issuerEntry holds parsed issuer configuration.
 type issuerEntry struct {
-	publicKey any      // *rsa.PublicKey, *ecdsa.PublicKey, or ed25519.PublicKey
-	accounts  []string // allowed accounts (with potential wildcards)
+	publicKey      any      // *rsa.PublicKey, *ecdsa.PublicKey, or ed25519.PublicKey
+	accounts       []string // allowed accounts (with potential wildcards)
+	rolesClaimPath []string // path to roles in JWT claims (split by ".")
 }
 
 // NewJwtUserIdentityProvider creates a new JwtUserIdentityProvider from the given configuration.
@@ -75,13 +75,6 @@ func NewJwtUserIdentityProvider(cfg JwtUserIdentityProviderConfig) (*JwtUserIden
 		issuers: make(map[string]*issuerEntry),
 	}
 
-	// Parse roles claim path
-	rolesPath := cfg.RolesClaimPath
-	if rolesPath == "" {
-		rolesPath = "resource_access.nauts.roles"
-	}
-	provider.rolesClaimPath = strings.Split(rolesPath, ".")
-
 	// Parse issuer configurations
 	for issuer, issuerCfg := range cfg.Issuers {
 		pubKey, err := parsePublicKey(issuerCfg.PublicKey)
@@ -89,9 +82,16 @@ func NewJwtUserIdentityProvider(cfg JwtUserIdentityProviderConfig) (*JwtUserIden
 			return nil, fmt.Errorf("parsing public key for issuer %q: %w", issuer, err)
 		}
 
+		// Parse roles claim path for this issuer
+		rolesPath := issuerCfg.RolesClaimPath
+		if rolesPath == "" {
+			rolesPath = "resource_access.nauts.roles"
+		}
+
 		provider.issuers[issuer] = &issuerEntry{
-			publicKey: pubKey,
-			accounts:  issuerCfg.Accounts,
+			publicKey:      pubKey,
+			accounts:       issuerCfg.Accounts,
+			rolesClaimPath: strings.Split(rolesPath, "."),
 		}
 	}
 
@@ -153,8 +153,8 @@ func (p *JwtUserIdentityProvider) Verify(_ context.Context, req AuthRequest) (*U
 		userID = "unknown"
 	}
 
-	// Step 4: Extract roles from claims
-	rawRoles, err := p.extractRoles(claims)
+	// Step 4: Extract roles from claims using issuer's configured path
+	rawRoles, err := extractRoles(claims, issuerEntry.rolesClaimPath)
 	if err != nil {
 		return nil, err
 	}
@@ -245,15 +245,15 @@ func (p *JwtUserIdentityProvider) parseAndVerifyJWT(tokenString string) (*jwt.To
 	return token, entry, nil
 }
 
-// extractRoles extracts roles from JWT claims at the configured path.
-func (p *JwtUserIdentityProvider) extractRoles(claims jwt.MapClaims) ([]string, error) {
+// extractRoles extracts roles from JWT claims at the given path.
+func extractRoles(claims jwt.MapClaims, rolesClaimPath []string) ([]string, error) {
 	// Navigate to the roles claim using the configured path
 	var current any = map[string]any(claims)
 
-	for i, key := range p.rolesClaimPath {
+	for i, key := range rolesClaimPath {
 		m, ok := current.(map[string]any)
 		if !ok {
-			return nil, fmt.Errorf("invalid claim path at %q", strings.Join(p.rolesClaimPath[:i], "."))
+			return nil, fmt.Errorf("invalid claim path at %q", strings.Join(rolesClaimPath[:i], "."))
 		}
 		current, ok = m[key]
 		if !ok {

@@ -249,10 +249,10 @@ Verify JWTs from external identity providers (Keycloak, Auth0, etc.).
       "issuers": {
         "https://keycloak.example.com/realms/myrealm": {
           "publicKey": "-----BEGIN PUBLIC KEY-----\n...",
-          "accounts": ["tenant-*", "shared"]
+          "accounts": ["tenant-*", "shared"],
+          "rolesClaimPath": "resource_access.nauts.roles"
         }
-      },
-      "rolesClaimPath": "resource_access.nauts.roles"
+      }
     }
   }
 }
@@ -262,7 +262,7 @@ Verify JWTs from external identity providers (Keycloak, Auth0, etc.).
 1. Parse JWT to extract issuer (iss claim)
 2. Look up issuer configuration
 3. Verify signature using issuer's public key (RSA or ECDSA)
-4. Extract roles from claims at configured path (default: `resource_access.nauts.roles`)
+4. Extract roles from claims at issuer's configured path (default: `resource_access.nauts.roles`)
 5. Parse roles: format is `<account>.<role>` (e.g., `tenant-a.admin`)
 6. Determine target account from request or derive from roles
 7. Validate issuer can manage target account (supports wildcards)

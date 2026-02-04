@@ -421,11 +421,11 @@ func TestJwtUserIdentityProvider_CustomRolesPath(t *testing.T) {
 	provider, err := NewJwtUserIdentityProvider(JwtUserIdentityProviderConfig{
 		Issuers: map[string]IssuerConfig{
 			"https://auth.example.com": {
-				PublicKey: publicKeyPEM,
-				Accounts:  []string{"*"},
+				PublicKey:      publicKeyPEM,
+				Accounts:       []string{"*"},
+				RolesClaimPath: "realm_access.roles", // Custom path per issuer
 			},
 		},
-		RolesClaimPath: "realm_access.roles", // Custom path
 	})
 	if err != nil {
 		t.Fatalf("creating provider: %v", err)
@@ -450,6 +450,69 @@ func TestJwtUserIdentityProvider_CustomRolesPath(t *testing.T) {
 	}
 	if len(user.Roles) != 1 || user.Roles[0] != "myrole" {
 		t.Errorf("user.Roles = %v, want [myrole]", user.Roles)
+	}
+}
+
+func TestJwtUserIdentityProvider_DifferentRolesPathPerIssuer(t *testing.T) {
+	privateKey1, publicKeyPEM1 := generateTestKeyPair(t)
+	privateKey2, publicKeyPEM2 := generateTestKeyPair(t)
+
+	provider, err := NewJwtUserIdentityProvider(JwtUserIdentityProviderConfig{
+		Issuers: map[string]IssuerConfig{
+			"https://auth1.example.com": {
+				PublicKey:      publicKeyPEM1,
+				Accounts:       []string{"*"},
+				RolesClaimPath: "realm_access.roles",
+			},
+			"https://auth2.example.com": {
+				PublicKey:      publicKeyPEM2,
+				Accounts:       []string{"*"},
+				RolesClaimPath: "custom.path.to.roles",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("creating provider: %v", err)
+	}
+
+	// Test issuer 1 with realm_access.roles
+	token1 := createTestJWT(t, privateKey1, jwt.MapClaims{
+		"iss": "https://auth1.example.com",
+		"sub": "user-1",
+		"exp": time.Now().Add(time.Hour).Unix(),
+		"realm_access": map[string]any{
+			"roles": []any{"account1.admin"},
+		},
+	})
+
+	user1, err := provider.Verify(context.Background(), AuthRequest{Token: token1})
+	if err != nil {
+		t.Fatalf("Verify() issuer1 error = %v", err)
+	}
+	if user1.Account != "account1" || user1.Roles[0] != "admin" {
+		t.Errorf("issuer1: got account=%q roles=%v, want account1/admin", user1.Account, user1.Roles)
+	}
+
+	// Test issuer 2 with custom.path.to.roles
+	token2 := createTestJWT(t, privateKey2, jwt.MapClaims{
+		"iss": "https://auth2.example.com",
+		"sub": "user-2",
+		"exp": time.Now().Add(time.Hour).Unix(),
+		"custom": map[string]any{
+			"path": map[string]any{
+				"to": map[string]any{
+					"roles": []any{"account2.viewer"},
+				},
+			},
+		},
+	})
+
+	user2, err := provider.Verify(context.Background(), AuthRequest{Token: token2})
+	if err != nil {
+		t.Fatalf("Verify() issuer2 error = %v", err)
+	}
+	if user2.Account != "account2" || user2.Roles[0] != "viewer" {
+		t.Errorf("issuer2: got account=%q roles=%v, want account2/viewer", user2.Account, user2.Roles)
 	}
 }
 

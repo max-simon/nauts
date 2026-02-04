@@ -505,14 +505,15 @@ Authenticates users using external JWTs (e.g., from Keycloak, Auth0, or other OI
       "issuers": {
         "https://auth.example.com/realms/myrealm": {
           "publicKey": "-----BEGIN PUBLIC KEY-----\nMIIBIjAN...\n-----END PUBLIC KEY-----",
-          "accounts": ["tenant-a-*", "dev"]
+          "accounts": ["tenant-a-*", "dev"],
+          "rolesClaimPath": "resource_access.nauts.roles"
         },
         "https://another-idp.com": {
           "publicKey": "-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----",
-          "accounts": ["*"]
+          "accounts": ["*"],
+          "rolesClaimPath": "custom.claims.roles"
         }
-      },
-      "rolesClaimPath": "resource_access.nauts.roles"
+      }
     }
   }
 }

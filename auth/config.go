@@ -122,10 +122,6 @@ type FileIdentityConfig struct {
 type JwtIdentityConfig struct {
 	// Issuers maps JWT issuer (iss claim) to their configuration.
 	Issuers map[string]JwtIssuerConfig `json:"issuers"`
-
-	// RolesClaimPath is the path to roles in JWT claims (dot-separated).
-	// Default: "resource_access.nauts.roles"
-	RolesClaimPath string `json:"rolesClaimPath,omitempty"`
 }
 
 // JwtIssuerConfig holds configuration for a single JWT issuer.
@@ -136,6 +132,10 @@ type JwtIssuerConfig struct {
 	// Accounts is the list of NATS accounts this issuer can manage.
 	// Supports wildcards: "*" matches any account, "tenant-a-*" matches accounts starting with "tenant-a-".
 	Accounts []string `json:"accounts"`
+
+	// RolesClaimPath is the path to roles in JWT claims (dot-separated).
+	// Default: "resource_access.nauts.roles"
+	RolesClaimPath string `json:"rolesClaimPath,omitempty"`
 }
 
 // ServerConfig configures the auth callout service.
@@ -391,13 +391,13 @@ func NewAuthControllerWithConfig(config *Config, opts ...ControllerOption) (*Aut
 		issuers := make(map[string]identity.IssuerConfig)
 		for issuer, issuerCfg := range config.Identity.JWT.Issuers {
 			issuers[issuer] = identity.IssuerConfig{
-				PublicKey: issuerCfg.PublicKey,
-				Accounts:  issuerCfg.Accounts,
+				PublicKey:      issuerCfg.PublicKey,
+				Accounts:       issuerCfg.Accounts,
+				RolesClaimPath: issuerCfg.RolesClaimPath,
 			}
 		}
 		identityProvider, err = identity.NewJwtUserIdentityProvider(identity.JwtUserIdentityProviderConfig{
-			Issuers:        issuers,
-			RolesClaimPath: config.Identity.JWT.RolesClaimPath,
+			Issuers: issuers,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("initializing jwt identity provider: %w", err)

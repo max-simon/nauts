@@ -177,10 +177,10 @@ Verify JWTs from external identity providers like Keycloak or Auth0. Configure i
       "issuers": {
         "https://keycloak.example.com/realms/myrealm": {
           "publicKey": "-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----",
-          "accounts": ["tenant-*"]
+          "accounts": ["tenant-*"],
+          "rolesClaimPath": "resource_access.nauts.roles"
         }
-      },
-      "rolesClaimPath": "resource_access.nauts.roles"
+      }
     }
   }
 }
