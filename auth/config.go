@@ -13,11 +13,14 @@ import (
 
 // Config holds the complete configuration for the nauts authentication service.
 type Config struct {
-	// Entity provider configuration
-	Entity EntityConfig `json:"entity"`
+	// Account provider configuration
+	Account AccountConfig `json:"account"`
 
-	// Nauts provider configuration (policies and groups)
-	Nauts NautsConfig `json:"nauts"`
+	// Group provider configuration
+	Group GroupConfig `json:"group"`
+
+	// Policy provider configuration
+	Policy PolicyConfig `json:"policy"`
 
 	// Identity provider configuration
 	Identity IdentityConfig `json:"identity"`
@@ -26,22 +29,22 @@ type Config struct {
 	Server ServerConfig `json:"server"`
 }
 
-// EntityConfig configures the entity provider.
-type EntityConfig struct {
-	// Type specifies the entity provider type: "operator" or "static".
+// AccountConfig configures the account provider.
+type AccountConfig struct {
+	// Type specifies the account provider type: "operator" or "static".
 	Type string `json:"type"`
 
 	// Operator contains operator mode configuration.
-	Operator *OperatorEntityConfig `json:"operator,omitempty"`
+	Operator *OperatorAccountConfig `json:"operator,omitempty"`
 
-	// Static contains static entity provider configuration.
-	Static *StaticEntityConfig `json:"static,omitempty"`
+	// Static contains static account provider configuration.
+	Static *StaticAccountConfig `json:"static,omitempty"`
 }
 
-// OperatorEntityConfig configures the operator entity provider.
+// OperatorAccountConfig configures the operator account provider.
 // In operator mode, the auth service runs in the AUTH account but authenticates
 // users across all accounts using account signing keys.
-type OperatorEntityConfig struct {
+type OperatorAccountConfig struct {
 	// Accounts maps account names to their signing configuration.
 	Accounts map[string]AccountSigningConfig `json:"accounts"`
 }
@@ -55,8 +58,8 @@ type AccountSigningConfig struct {
 	SigningKeyPath string `json:"signingKeyPath"`
 }
 
-// StaticEntityConfig configures the static entity provider.
-type StaticEntityConfig struct {
+// StaticAccountConfig configures the static account provider.
+type StaticAccountConfig struct {
 	// PublicKey is the public key used for all accounts.
 	PublicKey string `json:"publicKey"`
 
@@ -67,22 +70,34 @@ type StaticEntityConfig struct {
 	Accounts []string `json:"accounts"`
 }
 
-// NautsConfig configures the nauts provider (policies and groups).
-type NautsConfig struct {
-	// Type specifies the nauts provider type. Currently only "file" is supported.
+// GroupConfig configures the group provider.
+type GroupConfig struct {
+	// Type specifies the group provider type. Currently only "file" is supported.
 	Type string `json:"type"`
 
 	// File contains file-based provider configuration.
-	File *FileNautsConfig `json:"file,omitempty"`
+	File *FileGroupConfig `json:"file,omitempty"`
 }
 
-// FileNautsConfig configures the file-based nauts provider.
-type FileNautsConfig struct {
-	// PoliciesPath is the path to the policies JSON file.
-	PoliciesPath string `json:"policiesPath"`
+// FileGroupConfig configures the file-based group provider.
+type FileGroupConfig struct {
+	// Path is the path to the groups JSON file.
+	Path string `json:"path"`
+}
 
-	// GroupsPath is the path to the groups JSON file.
-	GroupsPath string `json:"groupsPath"`
+// PolicyConfig configures the policy provider.
+type PolicyConfig struct {
+	// Type specifies the policy provider type. Currently only "file" is supported.
+	Type string `json:"type"`
+
+	// File contains file-based provider configuration.
+	File *FilePolicyConfig `json:"file,omitempty"`
+}
+
+// FilePolicyConfig configures the file-based policy provider.
+type FilePolicyConfig struct {
+	// Path is the path to the policies JSON file.
+	Path string `json:"path"`
 }
 
 // IdentityConfig configures the identity provider.
@@ -137,68 +152,81 @@ func LoadConfig(path string) (*Config, error) {
 
 // Validate checks that the configuration is valid and complete.
 func (c *Config) Validate() error {
-	// Validate entity config
-	if c.Entity.Type == "" {
-		c.Entity.Type = "static" // default to static
+	// Validate account config
+	if c.Account.Type == "" {
+		c.Account.Type = "static" // default to static
 	}
-	switch c.Entity.Type {
+	switch c.Account.Type {
 	case "operator":
-		if c.Entity.Operator == nil {
-			return fmt.Errorf("entity.operator configuration is required when type is 'operator'")
+		if c.Account.Operator == nil {
+			return fmt.Errorf("account.operator configuration is required when type is 'operator'")
 		}
-		if len(c.Entity.Operator.Accounts) == 0 {
-			return fmt.Errorf("entity.operator.accounts must contain at least one account")
+		if len(c.Account.Operator.Accounts) == 0 {
+			return fmt.Errorf("account.operator.accounts must contain at least one account")
 		}
-		for name, accCfg := range c.Entity.Operator.Accounts {
+		for name, accCfg := range c.Account.Operator.Accounts {
 			if name == "" {
-				return fmt.Errorf("entity.operator.accounts contains an empty account name")
+				return fmt.Errorf("account.operator.accounts contains an empty account name")
 			}
 			if accCfg.PublicKey == "" {
-				return fmt.Errorf("entity.operator.accounts[%s].publicKey is required", name)
+				return fmt.Errorf("account.operator.accounts[%s].publicKey is required", name)
 			}
 			if accCfg.SigningKeyPath == "" {
-				return fmt.Errorf("entity.operator.accounts[%s].signingKeyPath is required", name)
+				return fmt.Errorf("account.operator.accounts[%s].signingKeyPath is required", name)
 			}
 		}
 	case "static":
-		if c.Entity.Static == nil {
-			return fmt.Errorf("entity.static configuration is required when type is 'static'")
+		if c.Account.Static == nil {
+			return fmt.Errorf("account.static configuration is required when type is 'static'")
 		}
-		if c.Entity.Static.PublicKey == "" {
-			return fmt.Errorf("entity.static.publicKey is required")
+		if c.Account.Static.PublicKey == "" {
+			return fmt.Errorf("account.static.publicKey is required")
 		}
-		if c.Entity.Static.PrivateKeyPath == "" {
-			return fmt.Errorf("entity.static.privateKeyPath is required")
+		if c.Account.Static.PrivateKeyPath == "" {
+			return fmt.Errorf("account.static.privateKeyPath is required")
 		}
-		if len(c.Entity.Static.Accounts) == 0 {
-			return fmt.Errorf("entity.static.accounts must contain at least one account")
+		if len(c.Account.Static.Accounts) == 0 {
+			return fmt.Errorf("account.static.accounts must contain at least one account")
 		}
-		for i, name := range c.Entity.Static.Accounts {
+		for i, name := range c.Account.Static.Accounts {
 			if name == "" {
-				return fmt.Errorf("entity.static.accounts[%d] cannot be empty", i)
+				return fmt.Errorf("account.static.accounts[%d] cannot be empty", i)
 			}
 		}
 	default:
-		return fmt.Errorf("unsupported entity provider type: %s", c.Entity.Type)
+		return fmt.Errorf("unsupported account provider type: %s", c.Account.Type)
 	}
 
-	// Validate nauts config
-	if c.Nauts.Type == "" {
-		c.Nauts.Type = "file" // default to file
+	// Validate group config
+	if c.Group.Type == "" {
+		c.Group.Type = "file" // default to file
 	}
-	switch c.Nauts.Type {
+	switch c.Group.Type {
 	case "file":
-		if c.Nauts.File == nil {
-			return fmt.Errorf("nauts.file configuration is required when type is 'file'")
+		if c.Group.File == nil {
+			return fmt.Errorf("group.file configuration is required when type is 'file'")
 		}
-		if c.Nauts.File.PoliciesPath == "" {
-			return fmt.Errorf("nauts.file.policiesPath is required")
-		}
-		if c.Nauts.File.GroupsPath == "" {
-			return fmt.Errorf("nauts.file.groupsPath is required")
+		if c.Group.File.Path == "" {
+			return fmt.Errorf("group.file.path is required")
 		}
 	default:
-		return fmt.Errorf("unsupported nauts provider type: %s", c.Nauts.Type)
+		return fmt.Errorf("unsupported group provider type: %s", c.Group.Type)
+	}
+
+	// Validate policy config
+	if c.Policy.Type == "" {
+		c.Policy.Type = "file" // default to file
+	}
+	switch c.Policy.Type {
+	case "file":
+		if c.Policy.File == nil {
+			return fmt.Errorf("policy.file configuration is required when type is 'file'")
+		}
+		if c.Policy.File.Path == "" {
+			return fmt.Errorf("policy.file.path is required")
+		}
+	default:
+		return fmt.Errorf("unsupported policy provider type: %s", c.Policy.Type)
 	}
 
 	// Validate identity config
@@ -251,47 +279,59 @@ func NewAuthControllerWithConfig(config *Config, opts ...ControllerOption) (*Aut
 		return nil, fmt.Errorf("invalid configuration: %w", err)
 	}
 
-	// Initialize entity provider
-	var entityProvider provider.EntityProvider
+	// Initialize account provider
+	var accountProvider provider.AccountProvider
 	var err error
 
-	switch config.Entity.Type {
+	switch config.Account.Type {
 	case "operator":
 		accounts := make(map[string]provider.AccountSigningConfig)
-		for name, accCfg := range config.Entity.Operator.Accounts {
+		for name, accCfg := range config.Account.Operator.Accounts {
 			accounts[name] = provider.AccountSigningConfig{
 				PublicKey:      accCfg.PublicKey,
 				SigningKeyPath: accCfg.SigningKeyPath,
 			}
 		}
-		entityProvider, err = provider.NewOperatorEntityProvider(provider.OperatorEntityProviderConfig{
+		accountProvider, err = provider.NewOperatorAccountProvider(provider.OperatorAccountProviderConfig{
 			Accounts: accounts,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("initializing operator entity provider: %w", err)
+			return nil, fmt.Errorf("initializing operator account provider: %w", err)
 		}
 	case "static":
-		entityProvider, err = provider.NewStaticEntityProvider(provider.StaticEntityProviderConfig{
-			PublicKey:      config.Entity.Static.PublicKey,
-			PrivateKeyPath: config.Entity.Static.PrivateKeyPath,
-			Accounts:       config.Entity.Static.Accounts,
+		accountProvider, err = provider.NewStaticAccountProvider(provider.StaticAccountProviderConfig{
+			PublicKey:      config.Account.Static.PublicKey,
+			PrivateKeyPath: config.Account.Static.PrivateKeyPath,
+			Accounts:       config.Account.Static.Accounts,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("initializing static entity provider: %w", err)
+			return nil, fmt.Errorf("initializing static account provider: %w", err)
 		}
 	}
 
-	// Initialize nauts provider
-	var nautsProvider provider.NautsProvider
+	// Initialize group provider
+	var groupProvider provider.GroupProvider
 
-	switch config.Nauts.Type {
+	switch config.Group.Type {
 	case "file":
-		nautsProvider, err = provider.NewFileNautsProvider(provider.FileNautsProviderConfig{
-			PoliciesPath: config.Nauts.File.PoliciesPath,
-			GroupsPath:   config.Nauts.File.GroupsPath,
+		groupProvider, err = provider.NewFileGroupProvider(provider.FileGroupProviderConfig{
+			GroupsPath: config.Group.File.Path,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("initializing file nauts provider: %w", err)
+			return nil, fmt.Errorf("initializing file group provider: %w", err)
+		}
+	}
+
+	// Initialize policy provider
+	var policyProvider provider.PolicyProvider
+
+	switch config.Policy.Type {
+	case "file":
+		policyProvider, err = provider.NewFilePolicyProvider(provider.FilePolicyProviderConfig{
+			PoliciesPath: config.Policy.File.Path,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("initializing file policy provider: %w", err)
 		}
 	}
 
@@ -308,7 +348,7 @@ func NewAuthControllerWithConfig(config *Config, opts ...ControllerOption) (*Aut
 		}
 	}
 
-	return NewAuthController(entityProvider, nautsProvider, identityProvider, opts...), nil
+	return NewAuthController(accountProvider, groupProvider, policyProvider, identityProvider, opts...), nil
 }
 
 // ToCalloutConfig converts the server configuration to a CalloutConfig.

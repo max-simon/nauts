@@ -4,11 +4,8 @@ import (
 	"context"
 )
 
-// EntityProvider provides access to NATS operator and account entities.
-type EntityProvider interface {
-	// GetOperator returns the operator entity.
-	GetOperator(ctx context.Context) (*Operator, error)
-
+// AccountProvider provides access to NATS account entities.
+type AccountProvider interface {
 	// GetAccount retrieves an account by name.
 	// Returns ErrAccountNotFound if the account does not exist.
 	GetAccount(ctx context.Context, name string) (*Account, error)

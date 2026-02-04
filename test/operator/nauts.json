@@ -1,5 +1,5 @@
 {
-  "entity": {
+  "account": {
     "type": "operator",
     "operator": {
       "accounts": {
@@ -14,11 +14,16 @@
       }
     }
   },
-  "nauts": {
+  "group": {
     "type": "file",
     "file": {
-      "policiesPath": "../policies.json",
-      "groupsPath": "../groups.json"
+      "path": "../groups.json"
+    }
+  },
+  "policy": {
+    "type": "file",
+    "file": {
+      "path": "../policies.json"
     }
   },
   "identity": {
@@ -29,7 +34,7 @@
   },
   "server": {
     "natsUrl": "nats://localhost:4222",
-    "NatsCredentials": "./auth.creds",
+    "natsCredentials": "./auth.creds",
     "xkeySeedFile": "./server-xkey.nk"
   }
 }

@@ -277,7 +277,7 @@ func (s *CalloutService) handleRequest(msg *nats.Msg) {
 	s.logger.Debug("authentication successful for user: %s", result.User.ID)
 
 	// Get account for IssuerAccount
-	account, err := s.controller.EntityProvider().GetAccount(ctx, result.User.Account)
+	account, err := s.controller.AccountProvider().GetAccount(ctx, result.User.Account)
 	if err != nil {
 		s.logger.Warn("failed to get account for user %s: %v", result.User.ID, err)
 		s.respondWithError(msg, responseConfig, "internal error")
@@ -287,7 +287,7 @@ func (s *CalloutService) handleRequest(msg *nats.Msg) {
 	// In operator mode, use signing key's public key for IssuerAccount
 	// In non-operator mode, use account's public key (though IssuerAccount is not set)
 	issuerAccount := account.PublicKey()
-	if s.controller.EntityProvider().IsOperatorMode() {
+	if s.controller.AccountProvider().IsOperatorMode() {
 		issuerAccount = account.Signer().PublicKey()
 	}
 
@@ -313,7 +313,7 @@ func (s *CalloutService) respondWithSuccess(msg *nats.Msg, responseConfig Respon
 	resp.Audience = responseConfig.ServerId
 
 	// In operator mode, set IssuerAccount to the signing key's public key
-	if s.controller.EntityProvider().IsOperatorMode() {
+	if s.controller.AccountProvider().IsOperatorMode() {
 		resp.IssuerAccount = issuerAccount
 	}
 
@@ -326,7 +326,7 @@ func (s *CalloutService) sendResponse(msg *nats.Msg, serverXKey string, resp *jw
 	// The auth callout response must be signed by the account that's configured as the auth issuer
 	// For simplicity, we use the first available account's signer
 	ctx := context.Background()
-	account, err := s.controller.EntityProvider().GetAccount(ctx, "AUTH")
+	account, err := s.controller.AccountProvider().GetAccount(ctx, "AUTH")
 	if err != nil {
 		s.logger.Warn("failed to get account for response signing: %v", err)
 		return

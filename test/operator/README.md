@@ -141,8 +141,8 @@ See [nauts.json](./nauts.json)
   },
   "server": {
     "natsUrl": "nats://localhost:4222",
-    "natsNkey": "$XKEY_PUB",
-    "xkeySeedFile": "./server-xkey.nkey",
+    "natsCredentials": "./auth.creds",
+    "xkeySeedFile": "./server-xkey.nk"
   }
 }
 ```

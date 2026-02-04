@@ -270,20 +270,23 @@ func createTestController(t *testing.T) *AuthController {
 
 	tmpDir := t.TempDir()
 
-	// Create entity provider (nsc structure)
-	entityProvider := createTestEntityProvider(t, tmpDir)
+	// Create account provider
+	accountProvider := createTestAccountProvider(t, tmpDir)
 
-	// Create nauts provider (policies and groups)
-	nautsProvider := createTestNautsProvider(t, tmpDir)
+	// Create group provider
+	groupProvider := createTestGroupProvider(t, tmpDir)
+
+	// Create policy provider
+	policyProvider := createTestPolicyProvider(t, tmpDir)
 
 	// Create identity provider (users)
 	identityProvider := createTestIdentityProvider(t, tmpDir)
 
 	logger := &testLogger{}
-	return NewAuthController(entityProvider, nautsProvider, identityProvider, WithLogger(logger))
+	return NewAuthController(accountProvider, groupProvider, policyProvider, identityProvider, WithLogger(logger))
 }
 
-func createTestEntityProvider(t *testing.T, tmpDir string) provider.EntityProvider {
+func createTestAccountProvider(t *testing.T, tmpDir string) provider.AccountProvider {
 	t.Helper()
 
 	// Create account keypair
@@ -306,19 +309,49 @@ func createTestEntityProvider(t *testing.T, tmpDir string) provider.EntityProvid
 		t.Fatalf("writing account seed: %v", err)
 	}
 
-	ep, err := provider.NewStaticEntityProvider(provider.StaticEntityProviderConfig{
+	ap, err := provider.NewStaticAccountProvider(provider.StaticAccountProviderConfig{
 		PublicKey:      accPub,
 		PrivateKeyPath: accKeyPath,
 		Accounts:       []string{"test-account"},
 	})
 	if err != nil {
-		t.Fatalf("creating entity provider: %v", err)
+		t.Fatalf("creating account provider: %v", err)
 	}
 
-	return ep
+	return ap
 }
 
-func createTestNautsProvider(t *testing.T, tmpDir string) provider.NautsProvider {
+func createTestGroupProvider(t *testing.T, tmpDir string) provider.GroupProvider {
+	t.Helper()
+
+	groupsFile := filepath.Join(tmpDir, "groups.json")
+	groupsContent := `[
+  {
+    "id": "default",
+    "name": "Default",
+    "policies": []
+  },
+  {
+    "id": "workers",
+    "name": "Workers",
+    "policies": ["allow-basic"]
+  }
+]`
+	if err := os.WriteFile(groupsFile, []byte(groupsContent), 0644); err != nil {
+		t.Fatalf("writing groups file: %v", err)
+	}
+
+	gp, err := provider.NewFileGroupProvider(provider.FileGroupProviderConfig{
+		GroupsPath: groupsFile,
+	})
+	if err != nil {
+		t.Fatalf("creating group provider: %v", err)
+	}
+
+	return gp
+}
+
+func createTestPolicyProvider(t *testing.T, tmpDir string) provider.PolicyProvider {
 	t.Helper()
 
 	policiesFile := filepath.Join(tmpDir, "policies.json")
@@ -339,32 +372,14 @@ func createTestNautsProvider(t *testing.T, tmpDir string) provider.NautsProvider
 		t.Fatalf("writing policies file: %v", err)
 	}
 
-	groupsFile := filepath.Join(tmpDir, "groups.json")
-	groupsContent := `[
-  {
-    "id": "default",
-    "name": "Default",
-    "policies": []
-  },
-  {
-    "id": "workers",
-    "name": "Workers",
-    "policies": ["allow-basic"]
-  }
-]`
-	if err := os.WriteFile(groupsFile, []byte(groupsContent), 0644); err != nil {
-		t.Fatalf("writing groups file: %v", err)
-	}
-
-	np, err := provider.NewFileNautsProvider(provider.FileNautsProviderConfig{
+	pp, err := provider.NewFilePolicyProvider(provider.FilePolicyProviderConfig{
 		PoliciesPath: policiesFile,
-		GroupsPath:   groupsFile,
 	})
 	if err != nil {
-		t.Fatalf("creating nauts provider: %v", err)
+		t.Fatalf("creating policy provider: %v", err)
 	}
 
-	return np
+	return pp
 }
 
 func createTestIdentityProvider(t *testing.T, tmpDir string) identity.UserIdentityProvider {

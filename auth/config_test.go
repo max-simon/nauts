@@ -14,7 +14,7 @@ func TestLoadConfig(t *testing.T) {
 	configPath := filepath.Join(dir, "config.json")
 
 	configJSON := `{
-		"entity": {
+		"account": {
 			"type": "operator",
 			"operator": {
 				"accounts": {
@@ -29,11 +29,16 @@ func TestLoadConfig(t *testing.T) {
 				}
 			}
 		},
-		"nauts": {
+		"group": {
 			"type": "file",
 			"file": {
-				"policiesPath": "/path/to/policies.json",
-				"groupsPath": "/path/to/groups.json"
+				"path": "/path/to/groups.json"
+			}
+		},
+		"policy": {
+			"type": "file",
+			"file": {
+				"path": "/path/to/policies.json"
 			}
 		},
 		"identity": {
@@ -58,31 +63,39 @@ func TestLoadConfig(t *testing.T) {
 		t.Fatalf("LoadConfig() error = %v", err)
 	}
 
-	// Verify entity config
-	if config.Entity.Type != "operator" {
-		t.Errorf("Entity.Type = %q, want %q", config.Entity.Type, "operator")
+	// Verify account config
+	if config.Account.Type != "operator" {
+		t.Errorf("Account.Type = %q, want %q", config.Account.Type, "operator")
 	}
-	if len(config.Entity.Operator.Accounts) != 2 {
-		t.Errorf("Entity.Operator.Accounts count = %d, want 2", len(config.Entity.Operator.Accounts))
+	if len(config.Account.Operator.Accounts) != 2 {
+		t.Errorf("Account.Operator.Accounts count = %d, want 2", len(config.Account.Operator.Accounts))
 	}
-	authAcc, ok := config.Entity.Operator.Accounts["AUTH"]
+	authAcc, ok := config.Account.Operator.Accounts["AUTH"]
 	if !ok {
-		t.Error("Entity.Operator.Accounts[AUTH] not found")
+		t.Error("Account.Operator.Accounts[AUTH] not found")
 	} else {
 		if authAcc.PublicKey != "AAUTH1234567890123456789012345678901234567890123456789012345" {
-			t.Errorf("Entity.Operator.Accounts[AUTH].PublicKey = %q, want correct value", authAcc.PublicKey)
+			t.Errorf("Account.Operator.Accounts[AUTH].PublicKey = %q, want correct value", authAcc.PublicKey)
 		}
 		if authAcc.SigningKeyPath != "/path/to/auth-signing.nk" {
-			t.Errorf("Entity.Operator.Accounts[AUTH].SigningKeyPath = %q, want %q", authAcc.SigningKeyPath, "/path/to/auth-signing.nk")
+			t.Errorf("Account.Operator.Accounts[AUTH].SigningKeyPath = %q, want %q", authAcc.SigningKeyPath, "/path/to/auth-signing.nk")
 		}
 	}
 
-	// Verify nauts config
-	if config.Nauts.Type != "file" {
-		t.Errorf("Nauts.Type = %q, want %q", config.Nauts.Type, "file")
+	// Verify group config
+	if config.Group.Type != "file" {
+		t.Errorf("Group.Type = %q, want %q", config.Group.Type, "file")
 	}
-	if config.Nauts.File.PoliciesPath != "/path/to/policies.json" {
-		t.Errorf("Nauts.File.PoliciesPath = %q, want %q", config.Nauts.File.PoliciesPath, "/path/to/policies.json")
+	if config.Group.File.Path != "/path/to/groups.json" {
+		t.Errorf("Group.File.Path = %q, want %q", config.Group.File.Path, "/path/to/groups.json")
+	}
+
+	// Verify policy config
+	if config.Policy.Type != "file" {
+		t.Errorf("Policy.Type = %q, want %q", config.Policy.Type, "file")
+	}
+	if config.Policy.File.Path != "/path/to/policies.json" {
+		t.Errorf("Policy.File.Path = %q, want %q", config.Policy.File.Path, "/path/to/policies.json")
 	}
 
 	// Verify identity config
@@ -129,9 +142,9 @@ func TestConfig_Validate(t *testing.T) {
 		{
 			name: "valid operator config",
 			config: Config{
-				Entity: EntityConfig{
+				Account: AccountConfig{
 					Type: "operator",
-					Operator: &OperatorEntityConfig{
+					Operator: &OperatorAccountConfig{
 						Accounts: map[string]AccountSigningConfig{
 							"AUTH": {
 								PublicKey:      "AAUTH1234567890123456789012345678901234567890123456789012345",
@@ -140,10 +153,14 @@ func TestConfig_Validate(t *testing.T) {
 						},
 					},
 				},
-				Nauts: NautsConfig{
-					File: &FileNautsConfig{
-						PoliciesPath: "/path/to/policies.json",
-						GroupsPath:   "/path/to/groups.json",
+				Group: GroupConfig{
+					File: &FileGroupConfig{
+						Path: "/path/to/groups.json",
+					},
+				},
+				Policy: PolicyConfig{
+					File: &FilePolicyConfig{
+						Path: "/path/to/policies.json",
 					},
 				},
 				Identity: IdentityConfig{
@@ -157,18 +174,22 @@ func TestConfig_Validate(t *testing.T) {
 		{
 			name: "valid static config",
 			config: Config{
-				Entity: EntityConfig{
+				Account: AccountConfig{
 					Type: "static",
-					Static: &StaticEntityConfig{
+					Static: &StaticAccountConfig{
 						PublicKey:      "AAUTH1234567890123456789012345678901234567890123456789012345",
 						PrivateKeyPath: "/path/to/account.nk",
 						Accounts:       []string{"AUTH"},
 					},
 				},
-				Nauts: NautsConfig{
-					File: &FileNautsConfig{
-						PoliciesPath: "/path/to/policies.json",
-						GroupsPath:   "/path/to/groups.json",
+				Group: GroupConfig{
+					File: &FileGroupConfig{
+						Path: "/path/to/groups.json",
+					},
+				},
+				Policy: PolicyConfig{
+					File: &FilePolicyConfig{
+						Path: "/path/to/policies.json",
 					},
 				},
 				Identity: IdentityConfig{
@@ -182,21 +203,21 @@ func TestConfig_Validate(t *testing.T) {
 		{
 			name: "missing operator accounts",
 			config: Config{
-				Entity: EntityConfig{
+				Account: AccountConfig{
 					Type: "operator",
-					Operator: &OperatorEntityConfig{
+					Operator: &OperatorAccountConfig{
 						Accounts: map[string]AccountSigningConfig{},
 					},
 				},
 			},
-			wantErr: "entity.operator.accounts must contain at least one account",
+			wantErr: "account.operator.accounts must contain at least one account",
 		},
 		{
 			name: "missing operator account publicKey",
 			config: Config{
-				Entity: EntityConfig{
+				Account: AccountConfig{
 					Type: "operator",
-					Operator: &OperatorEntityConfig{
+					Operator: &OperatorAccountConfig{
 						Accounts: map[string]AccountSigningConfig{
 							"AUTH": {
 								SigningKeyPath: "/path/to/auth-signing.nk",
@@ -205,14 +226,14 @@ func TestConfig_Validate(t *testing.T) {
 					},
 				},
 			},
-			wantErr: "entity.operator.accounts[AUTH].publicKey is required",
+			wantErr: "account.operator.accounts[AUTH].publicKey is required",
 		},
 		{
 			name: "missing operator account signingKeyPath",
 			config: Config{
-				Entity: EntityConfig{
+				Account: AccountConfig{
 					Type: "operator",
-					Operator: &OperatorEntityConfig{
+					Operator: &OperatorAccountConfig{
 						Accounts: map[string]AccountSigningConfig{
 							"AUTH": {
 								PublicKey: "AAUTH1234567890123456789012345678901234567890123456789012345",
@@ -221,32 +242,32 @@ func TestConfig_Validate(t *testing.T) {
 					},
 				},
 			},
-			wantErr: "entity.operator.accounts[AUTH].signingKeyPath is required",
+			wantErr: "account.operator.accounts[AUTH].signingKeyPath is required",
 		},
 		{
 			name: "missing operator config",
 			config: Config{
-				Entity: EntityConfig{
+				Account: AccountConfig{
 					Type: "operator",
 				},
 			},
-			wantErr: "entity.operator configuration is required",
+			wantErr: "account.operator configuration is required",
 		},
 		{
-			name: "unsupported entity type",
+			name: "unsupported account type",
 			config: Config{
-				Entity: EntityConfig{
+				Account: AccountConfig{
 					Type: "unknown",
 				},
 			},
-			wantErr: "unsupported entity provider type",
+			wantErr: "unsupported account provider type",
 		},
 		{
-			name: "missing policies path",
+			name: "missing group path",
 			config: Config{
-				Entity: EntityConfig{
+				Account: AccountConfig{
 					Type: "operator",
-					Operator: &OperatorEntityConfig{
+					Operator: &OperatorAccountConfig{
 						Accounts: map[string]AccountSigningConfig{
 							"AUTH": {
 								PublicKey:      "AAUTH1234567890123456789012345678901234567890123456789012345",
@@ -255,21 +276,45 @@ func TestConfig_Validate(t *testing.T) {
 						},
 					},
 				},
-				Nauts: NautsConfig{
+				Group: GroupConfig{
 					Type: "file",
-					File: &FileNautsConfig{
-						GroupsPath: "/path/to/groups.json",
-					},
+					File: &FileGroupConfig{},
 				},
 			},
-			wantErr: "nauts.file.policiesPath is required",
+			wantErr: "group.file.path is required",
+		},
+		{
+			name: "missing policy path",
+			config: Config{
+				Account: AccountConfig{
+					Type: "operator",
+					Operator: &OperatorAccountConfig{
+						Accounts: map[string]AccountSigningConfig{
+							"AUTH": {
+								PublicKey:      "AAUTH1234567890123456789012345678901234567890123456789012345",
+								SigningKeyPath: "/path/to/auth-signing.nk",
+							},
+						},
+					},
+				},
+				Group: GroupConfig{
+					File: &FileGroupConfig{
+						Path: "/path/to/groups.json",
+					},
+				},
+				Policy: PolicyConfig{
+					Type: "file",
+					File: &FilePolicyConfig{},
+				},
+			},
+			wantErr: "policy.file.path is required",
 		},
 		{
 			name: "missing users path",
 			config: Config{
-				Entity: EntityConfig{
+				Account: AccountConfig{
 					Type: "operator",
-					Operator: &OperatorEntityConfig{
+					Operator: &OperatorAccountConfig{
 						Accounts: map[string]AccountSigningConfig{
 							"AUTH": {
 								PublicKey:      "AAUTH1234567890123456789012345678901234567890123456789012345",
@@ -278,10 +323,14 @@ func TestConfig_Validate(t *testing.T) {
 						},
 					},
 				},
-				Nauts: NautsConfig{
-					File: &FileNautsConfig{
-						PoliciesPath: "/path/to/policies.json",
-						GroupsPath:   "/path/to/groups.json",
+				Group: GroupConfig{
+					File: &FileGroupConfig{
+						Path: "/path/to/groups.json",
+					},
+				},
+				Policy: PolicyConfig{
+					File: &FilePolicyConfig{
+						Path: "/path/to/policies.json",
 					},
 				},
 				Identity: IdentityConfig{

@@ -89,8 +89,8 @@ func runAuth(args []string) error {
 		fmt.Fprintf(os.Stderr, "\nConfiguration file format (JSON):\n")
 		fmt.Fprintf(os.Stderr, `  {
     "entity": {
-      "type": "nsc",
-      "nsc": { "dir": "~/.nsc", "operatorName": "myop" }
+      "type": "static",
+      "static": { "publicKey": "AXXXXX...", "privateKeyPath": "account.nk", "accounts": ["APP"] }
     },
     "nauts": {
       "type": "file",
@@ -164,8 +164,8 @@ func runServe(args []string) error {
 		fmt.Fprintf(os.Stderr, "\nConfiguration file format (JSON):\n")
 		fmt.Fprintf(os.Stderr, `  {
     "entity": {
-      "type": "nsc",
-      "nsc": { "dir": "~/.nsc", "operatorName": "myop" }
+      "type": "static",
+      "static": { "publicKey": "AXXXXX...", "privateKeyPath": "account.nk", "accounts": ["APP"] }
     },
     "nauts": {
       "type": "file",

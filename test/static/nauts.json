@@ -1,5 +1,5 @@
 {
-  "entity": {
+  "account": {
     "type": "static",
     "static": {
       "publicKey": "ACQN3WJOQZ7SQ3PAFKWMPSNMMDWZR7ZN4GILQDRGAT6QDVOZKS2P2OYK",
@@ -9,11 +9,16 @@
       ]
     }
   },
-  "nauts": {
+  "group": {
     "type": "file",
     "file": {
-      "policiesPath": "../policies.json",
-      "groupsPath": "../groups.json"
+      "path": "../groups.json"
+    }
+  },
+  "policy": {
+    "type": "file",
+    "file": {
+      "path": "../policies.json"
     }
   },
   "identity": {

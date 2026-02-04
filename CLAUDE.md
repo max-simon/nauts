@@ -39,13 +39,15 @@ nauts/
 │   ├── permissions.go      # NatsPermissions with Allow/Deny and wildcard dedup
 │   ├── policy.go           # Policy, Statement, Effect types
 │   └── resource.go         # Resource parsing and validation
-├── provider/               # Entity and policy/group providers
-│   ├── entity.go           # Operator, Account types with Signer
-│   ├── entity_provider.go  # EntityProvider interface
-│   ├── operator_entity_provider.go # OperatorEntityProvider (operator mode with signing keys)
-│   ├── static_entity_provider.go # StaticEntityProvider (single key for all accounts)
-│   ├── nauts_provider.go   # NautsProvider interface (policies/groups)
-│   ├── file_nauts_provider.go # FileNautsProvider (JSON file backend)
+├── provider/               # Account, group, and policy providers
+│   ├── entity.go           # Account type with Signer
+│   ├── account_provider.go # AccountProvider interface
+│   ├── operator_account_provider.go # OperatorAccountProvider (operator mode with signing keys)
+│   ├── static_account_provider.go # StaticAccountProvider (single key for all accounts)
+│   ├── group_provider.go   # GroupProvider interface
+│   ├── file_group_provider.go # FileGroupProvider (JSON file backend)
+│   ├── policy_provider.go  # PolicyProvider interface
+│   ├── file_policy_provider.go # FilePolicyProvider (JSON file backend)
 │   ├── group.go            # Group type with validation
 │   └── errors.go           # Provider errors (ErrNotFound, etc.)
 ├── identity/               # User identity management
@@ -61,7 +63,7 @@ nauts/
 │   ├── callout.go          # CalloutService (NATS auth callout handler)
 │   ├── config.go           # Config types and NewAuthControllerWithConfig
 │   └── errors.go           # Auth errors (AuthError)
-├── testdata/               # Test fixtures (policies, groups, users)
+├── test/                   # Test fixtures and environments
 └── docs/                   # Additional documentation
 ```
 
@@ -87,11 +89,11 @@ nauts/
 - Actions: `Action`, `ActionDef`, `ResolveActions()`
 - Auth controller: `AuthController`, `NewAuthController()`, `NewAuthControllerWithConfig()`, `Authenticate()`, `ResolveUser()`, `ResolveNatsPermissions()`, `CreateUserJWT()`
 - Callout service: `CalloutService`, `NewCalloutService()`, `CalloutConfig`, `Start()`, `Stop()`
-- Configuration: `Config`, `LoadConfig()`, `EntityConfig`, `NautsConfig`, `IdentityConfig`, `ServerConfig`
+- Configuration: `Config`, `LoadConfig()`, `AccountConfig`, `GroupConfig`, `PolicyConfig`, `IdentityConfig`, `ServerConfig`
 - Permissions: `NatsPermissions`, `Permission`, `PermissionSet`
-- Providers: `EntityProvider`, `OperatorEntityProvider`, `StaticEntityProvider`, `NautsProvider`, `FileNautsProvider`, `UserIdentityProvider`, `FileUserIdentityProvider`
+- Providers: `AccountProvider`, `OperatorAccountProvider`, `StaticAccountProvider`, `GroupProvider`, `FileGroupProvider`, `PolicyProvider`, `FilePolicyProvider`, `UserIdentityProvider`, `FileUserIdentityProvider`
 - JWT: `Signer`, `LocalSigner`, `IssueUserJWT()`
-- Entities: `Operator`, `Account`, `Group`, `User`
+- Entities: `Account`, `Group`, `User`
 
 ### Testing
 
@@ -116,7 +118,8 @@ golangci-lint run
 go build -o bin/nauts ./cmd/nauts
 
 # One-shot authentication (get JWT)
-./bin/nauts auth -c nauts.json -username alice -password secret
+# Token format is provider-specific (e.g., "username:password" for file identity provider)
+./bin/nauts auth -c nauts.json -token alice:secret
 
 # Run auth callout service
 ./bin/nauts serve -c nauts.json
@@ -130,7 +133,7 @@ The CLI uses a JSON configuration file (`-c/--config`):
 
 ```json
 {
-  "entity": {
+  "account": {
     "type": "operator",
     "operator": {
       "accounts": {
@@ -145,11 +148,16 @@ The CLI uses a JSON configuration file (`-c/--config`):
       }
     }
   },
-  "nauts": {
+  "group": {
     "type": "file",
     "file": {
-      "policiesPath": "policies.json",
-      "groupsPath": "groups.json"
+      "path": "groups.json"
+    }
+  },
+  "policy": {
+    "type": "file",
+    "file": {
+      "path": "policies.json"
     }
   },
   "identity": {
@@ -171,7 +179,7 @@ The CLI uses a JSON configuration file (`-c/--config`):
 
 ```json
 {
-  "entity": {
+  "account": {
     "type": "static",
     "static": {
       "publicKey": "AXXXXX...",
@@ -184,11 +192,11 @@ The CLI uses a JSON configuration file (`-c/--config`):
 
 ## Key Implementation Notes
 
-### Entity Provider Modes
+### Account Provider Modes
 
-nauts supports two entity provider modes:
+nauts supports two account provider modes:
 
-**Operator Mode** (`OperatorEntityProvider`):
+**Operator Mode** (`OperatorAccountProvider`):
 - For NATS deployments with operator/account hierarchy
 - Auth service runs in AUTH account but authenticates users for all accounts
 - Each account has its own signing key
@@ -196,7 +204,7 @@ nauts supports two entity provider modes:
 - User JWTs don't include audience (account determined by `IssuerAccount`)
 - `IsOperatorMode()` returns `true`
 
-**Static Mode** (`StaticEntityProvider`):
+**Static Mode** (`StaticAccountProvider`):
 - Single signing key shared by all accounts
 - Simpler setup for development or single-account deployments
 - User JWTs include audience set to account name
@@ -243,10 +251,10 @@ The `policy.Compile()` function transforms policies to NATS permissions:
 
 The `auth.AuthController` orchestrates the full authentication flow:
 1. Verify identity token via `UserIdentityProvider` → returns `*identity.User`
-2. Resolve user's groups (including default group) from `NautsProvider`
-3. For each group, fetch policies and call `policy.Compile()` with user/group context
+2. Resolve user's groups (including default group) from `GroupProvider`
+3. For each group, fetch policies from `PolicyProvider` and call `policy.Compile()` with user/group context
 4. Deduplicate permissions with wildcard awareness
-5. Create signed JWT via `jwt.IssueUserJWT()` using account's signer from `EntityProvider`
+5. Create signed JWT via `jwt.IssueUserJWT()` using account's signer from `AccountProvider`
 6. Return `AuthResult` containing user, permissions, and JWT
 
 ### Wildcard-Aware Deduplication
@@ -266,10 +274,9 @@ The `auth.AuthController` orchestrates the full authentication flow, combining u
 config, _ := auth.LoadConfig("nauts.json")
 controller, _ := auth.NewAuthControllerWithConfig(config)
 
-// Authenticate
-result, err := controller.Authenticate(ctx, identity.UsernamePassword{
-    Username: "alice",
-    Password: "secret",
+// Authenticate using ConnectOptions (same as auth callout)
+result, err := controller.Authenticate(ctx, jwt.ConnectOptions{
+    Token: "alice:secret",  // Token format depends on identity provider
 }, userPublicKey, time.Hour)
 // result.User, result.Permissions, result.JWT available
 ```
@@ -277,7 +284,7 @@ result, err := controller.Authenticate(ctx, identity.UsernamePassword{
 **Manual provider setup (operator mode)**:
 ```go
 // Setup providers individually
-entityProvider, _ := provider.NewOperatorEntityProvider(provider.OperatorEntityProviderConfig{
+accountProvider, _ := provider.NewOperatorAccountProvider(provider.OperatorAccountProviderConfig{
     Accounts: map[string]provider.AccountSigningConfig{
         "AUTH": {
             PublicKey:      "AAUTH...",
@@ -290,9 +297,12 @@ entityProvider, _ := provider.NewOperatorEntityProvider(provider.OperatorEntityP
     },
 })
 
-nautsProvider, _ := provider.NewFileNautsProvider(provider.FileNautsProviderConfig{
+groupProvider, _ := provider.NewFileGroupProvider(provider.FileGroupProviderConfig{
+    GroupsPath: "groups.json",
+})
+
+policyProvider, _ := provider.NewFilePolicyProvider(provider.FilePolicyProviderConfig{
     PoliciesPath: "policies.json",
-    GroupsPath:   "groups.json",
 })
 
 identityProvider, _ := identity.NewFileUserIdentityProvider(identity.FileUserIdentityProviderConfig{
@@ -300,7 +310,7 @@ identityProvider, _ := identity.NewFileUserIdentityProvider(identity.FileUserIde
 })
 
 // Create controller
-controller := auth.NewAuthController(entityProvider, nautsProvider, identityProvider)
+controller := auth.NewAuthController(accountProvider, groupProvider, policyProvider, identityProvider)
 
 // Or use individual methods
 user, err := controller.ResolveUser(ctx, token)
@@ -358,7 +368,7 @@ Identity providers verify credentials and return user information:
 **FileUserIdentityProvider** (`identity/`):
 - Loads users from JSON file
 - Verifies passwords using bcrypt
-- Token type: `identity.UsernamePassword{Username, Password}`
+- Token format: `"username:password"` (colon-separated)
 
 ## Dependencies
 
@@ -381,11 +391,13 @@ require (
 - [x] Action mapping: `policy/mapper.go` - Action+Resource to NATS permissions
 - [x] Permissions: `policy/permissions.go` - Allow/Deny with wildcard deduplication
 - [x] Compilation: `policy/compile.go` - `Compile()` function
-- [x] Entity provider: `provider/entity_provider.go` - `EntityProvider` interface with `IsOperatorMode()`
-- [x] Operator entity provider: `provider/operator_entity_provider.go` - Per-account signing keys for operator mode
-- [x] Static entity provider: `provider/static_entity_provider.go` - Single key for all accounts
-- [x] Nauts provider: `provider/nauts_provider.go` - `NautsProvider` interface (policies/groups)
-- [x] File nauts provider: `provider/file_nauts_provider.go` - JSON file backend
+- [x] Account provider: `provider/account_provider.go` - `AccountProvider` interface with `IsOperatorMode()`
+- [x] Operator account provider: `provider/operator_account_provider.go` - Per-account signing keys for operator mode
+- [x] Static account provider: `provider/static_account_provider.go` - Single key for all accounts
+- [x] Group provider: `provider/group_provider.go` - `GroupProvider` interface
+- [x] File group provider: `provider/file_group_provider.go` - JSON file backend for groups
+- [x] Policy provider: `provider/policy_provider.go` - `PolicyProvider` interface
+- [x] File policy provider: `provider/file_policy_provider.go` - JSON file backend for policies
 - [x] Identity provider: `identity/provider.go` - `UserIdentityProvider` interface
 - [x] File identity provider: `identity/file_user_provider.go` - Username/password with bcrypt
 - [x] JWT issuance: `jwt/user.go` - `IssueUserJWT()` function
