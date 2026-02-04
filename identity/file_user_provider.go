@@ -18,7 +18,7 @@ type usernamePassword struct {
 // fileUser represents a user stored in the JSON file.
 type fileUser struct {
 	Account      string            `json:"account"`
-	Groups       []string          `json:"groups"`
+	Roles        []string          `json:"roles"`
 	PasswordHash string            `json:"passwordHash"`
 	Attributes   map[string]string `json:"attributes,omitempty"`
 }
@@ -105,7 +105,7 @@ func (fp *FileUserIdentityProvider) Verify(_ context.Context, token string) (*Us
 	return &User{
 		ID:         creds.Username,
 		Account:    fu.Account,
-		Groups:     fu.Groups,
+		Roles:      fu.Roles,
 		Attributes: fu.Attributes,
 	}, nil
 }
@@ -121,7 +121,7 @@ func (fp *FileUserIdentityProvider) GetUser(_ context.Context, id string) (*User
 	return &User{
 		ID:         id,
 		Account:    fu.Account,
-		Groups:     fu.Groups,
+		Roles:      fu.Roles,
 		Attributes: fu.Attributes,
 	}, nil
 }

@@ -9,6 +9,6 @@ var (
 	// ErrPolicyNotFound is returned when a policy cannot be found.
 	ErrPolicyNotFound = errors.New("policy not found")
 
-	// ErrGroupNotFound is returned when a group cannot be found.
-	ErrGroupNotFound = errors.New("group not found")
+	// ErrRoleNotFound is returned when a role cannot be found.
+	ErrRoleNotFound = errors.New("role not found")
 )

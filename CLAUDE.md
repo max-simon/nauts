@@ -8,7 +8,7 @@ nauts (**N**ATS **Aut**hentication **S**ervice) is a framework for scalable, hum
 
 - **Policy specification and compilation engine**: Translates high-level policies to low-level NATS permissions
 - **Authentication service**: NATS auth callout implementation
-- **Control plane**: Management API for policies, groups, and accounts (future)
+- **Control plane**: Management API for policies, roles, and accounts (future)
 
 See [README.md](./README.md) for architecture and [POLICY.md](./POLICY.md) for policy specification.
 
@@ -32,23 +32,23 @@ nauts/
 ├── policy/                 # Policy types, compilation, interpolation, action mapping
 │   ├── action.go           # Action types and action group expansion
 │   ├── compile.go          # Policy compilation (Compile function)
-│   ├── context.go          # Interpolation context types (UserContext, GroupContext)
+│   ├── context.go          # Interpolation context types (UserContext, RoleContext)
 │   ├── errors.go           # Policy errors (PolicyError, ValidationError)
 │   ├── interpolate.go      # Variable interpolation ({{ user.id }}, etc.)
 │   ├── mapper.go           # Action+Resource to NATS permissions mapping
 │   ├── permissions.go      # NatsPermissions with Allow/Deny and wildcard dedup
 │   ├── policy.go           # Policy, Statement, Effect types
 │   └── resource.go         # Resource parsing and validation
-├── provider/               # Account, group, and policy providers
+├── provider/               # Account, role, and policy providers
 │   ├── entity.go           # Account type with Signer
 │   ├── account_provider.go # AccountProvider interface
 │   ├── operator_account_provider.go # OperatorAccountProvider (operator mode with signing keys)
 │   ├── static_account_provider.go # StaticAccountProvider (single key for all accounts)
-│   ├── group_provider.go   # GroupProvider interface
-│   ├── file_group_provider.go # FileGroupProvider (JSON file backend)
+│   ├── role_provider.go    # RoleProvider interface
+│   ├── file_role_provider.go # FileRoleProvider (JSON file backend)
 │   ├── policy_provider.go  # PolicyProvider interface
 │   ├── file_policy_provider.go # FilePolicyProvider (JSON file backend)
-│   ├── group.go            # Group type with validation
+│   ├── role.go             # Role type with validation
 │   └── errors.go           # Provider errors (ErrNotFound, etc.)
 ├── identity/               # User identity management
 │   ├── user.go             # User type
@@ -76,7 +76,7 @@ nauts/
 │   │   ├── nats-server.conf# NATS server config with accounts
 │   │   └── *.nk            # Account key and xkey
 │   ├── users.json          # Test users (alice, bob)
-│   ├── groups.json         # Test groups (readonly, full)
+│   ├── roles.json          # Test roles (readonly, full)
 │   └── policies.json       # Test policies (read-access, write-access)
 └── docs/                   # Additional documentation
 ```
@@ -103,11 +103,11 @@ nauts/
 - Actions: `Action`, `ActionDef`, `ResolveActions()`
 - Auth controller: `AuthController`, `NewAuthController()`, `NewAuthControllerWithConfig()`, `Authenticate()`, `ResolveUser()`, `ResolveNatsPermissions()`, `CreateUserJWT()`
 - Callout service: `CalloutService`, `NewCalloutService()`, `CalloutConfig`, `Start()`, `Stop()`
-- Configuration: `Config`, `LoadConfig()`, `AccountConfig`, `GroupConfig`, `PolicyConfig`, `IdentityConfig`, `ServerConfig`
+- Configuration: `Config`, `LoadConfig()`, `AccountConfig`, `RoleConfig`, `PolicyConfig`, `IdentityConfig`, `ServerConfig`
 - Permissions: `NatsPermissions`, `Permission`, `PermissionSet`
-- Providers: `AccountProvider`, `OperatorAccountProvider`, `StaticAccountProvider`, `GroupProvider`, `FileGroupProvider`, `PolicyProvider`, `FilePolicyProvider`, `UserIdentityProvider`, `FileUserIdentityProvider`
+- Providers: `AccountProvider`, `OperatorAccountProvider`, `StaticAccountProvider`, `RoleProvider`, `FileRoleProvider`, `PolicyProvider`, `FilePolicyProvider`, `UserIdentityProvider`, `FileUserIdentityProvider`
 - JWT: `Signer`, `LocalSigner`, `IssueUserJWT()`
-- Entities: `Account`, `Group`, `User`
+- Entities: `Account`, `Role`, `User`
 
 ### Testing
 
@@ -174,10 +174,10 @@ The CLI uses a JSON configuration file (`-c/--config`):
       }
     }
   },
-  "group": {
+  "role": {
     "type": "file",
     "file": {
-      "path": "groups.json"
+      "path": "roles.json"
     }
   },
   "policy": {
@@ -270,7 +270,7 @@ Resource types include subidentifier variants:
 ### Variable Interpolation
 
 - Custom template engine with `{{ var.path }}` syntax
-- Supported variables: `user.id`, `user.account`, `user.attr.<key>`, `group.id`, `group.name`
+- Supported variables: `user.id`, `user.account`, `user.attr.<key>`, `role.name`, `role.account`
 - Sanitize interpolated values: reject `*`, `>`, empty strings
 - Allow only: `[a-zA-Z0-9_\-\.]+`
 - Return excluded result (skip resource) on validation failure
@@ -304,8 +304,8 @@ The `policy.Compile()` function transforms policies to NATS permissions:
 
 The `auth.AuthController` orchestrates the full authentication flow:
 1. Verify identity token via `UserIdentityProvider` → returns `*identity.User`
-2. Resolve user's groups (including default group) from `GroupProvider`
-3. For each group, fetch policies from `PolicyProvider` and call `policy.Compile()` with user/group context
+2. Resolve user's roles (including default role) from `RoleProvider`
+3. For each role, fetch both global and local roles, then compile policies with user/role context
 4. Deduplicate permissions with wildcard awareness
 5. Create signed JWT via `jwt.IssueUserJWT()` using account's signer from `AccountProvider`
 6. Return `AuthResult` containing user, permissions, and JWT
@@ -350,8 +350,8 @@ accountProvider, _ := provider.NewOperatorAccountProvider(provider.OperatorAccou
     },
 })
 
-groupProvider, _ := provider.NewFileGroupProvider(provider.FileGroupProviderConfig{
-    GroupsPath: "groups.json",
+roleProvider, _ := provider.NewFileRoleProvider(provider.FileRoleProviderConfig{
+    RolesPath: "roles.json",
 })
 
 policyProvider, _ := provider.NewFilePolicyProvider(provider.FilePolicyProviderConfig{
@@ -363,7 +363,7 @@ identityProvider, _ := identity.NewFileUserIdentityProvider(identity.FileUserIde
 })
 
 // Create controller
-controller := auth.NewAuthController(accountProvider, groupProvider, policyProvider, identityProvider)
+controller := auth.NewAuthController(accountProvider, roleProvider, policyProvider, identityProvider)
 
 // Or use individual methods
 user, err := controller.ResolveUser(ctx, token)
@@ -447,8 +447,8 @@ require (
 - [x] Account provider: `provider/account_provider.go` - `AccountProvider` interface with `IsOperatorMode()`
 - [x] Operator account provider: `provider/operator_account_provider.go` - Per-account signing keys for operator mode
 - [x] Static account provider: `provider/static_account_provider.go` - Single key for all accounts
-- [x] Group provider: `provider/group_provider.go` - `GroupProvider` interface
-- [x] File group provider: `provider/file_group_provider.go` - JSON file backend for groups
+- [x] Role provider: `provider/role_provider.go` - `RoleProvider` interface
+- [x] File role provider: `provider/file_role_provider.go` - JSON file backend for roles
 - [x] Policy provider: `provider/policy_provider.go` - `PolicyProvider` interface
 - [x] File policy provider: `provider/file_policy_provider.go` - JSON file backend for policies
 - [x] Identity provider: `identity/provider.go` - `UserIdentityProvider` interface

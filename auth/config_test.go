@@ -29,10 +29,10 @@ func TestLoadConfig(t *testing.T) {
 				}
 			}
 		},
-		"group": {
+		"role": {
 			"type": "file",
 			"file": {
-				"path": "/path/to/groups.json"
+				"path": "/path/to/roles.json"
 			}
 		},
 		"policy": {
@@ -82,12 +82,12 @@ func TestLoadConfig(t *testing.T) {
 		}
 	}
 
-	// Verify group config
-	if config.Group.Type != "file" {
-		t.Errorf("Group.Type = %q, want %q", config.Group.Type, "file")
+	// Verify role config
+	if config.Role.Type != "file" {
+		t.Errorf("Group.Type = %q, want %q", config.Role.Type, "file")
 	}
-	if config.Group.File.Path != "/path/to/groups.json" {
-		t.Errorf("Group.File.Path = %q, want %q", config.Group.File.Path, "/path/to/groups.json")
+	if config.Role.File.Path != "/path/to/roles.json" {
+		t.Errorf("Group.File.Path = %q, want %q", config.Role.File.Path, "/path/to/roles.json")
 	}
 
 	// Verify policy config
@@ -153,9 +153,9 @@ func TestConfig_Validate(t *testing.T) {
 						},
 					},
 				},
-				Group: GroupConfig{
-					File: &FileGroupConfig{
-						Path: "/path/to/groups.json",
+				Role: RoleConfig{
+					File: &FileRoleConfig{
+						Path: "/path/to/roles.json",
 					},
 				},
 				Policy: PolicyConfig{
@@ -182,9 +182,9 @@ func TestConfig_Validate(t *testing.T) {
 						Accounts:       []string{"AUTH"},
 					},
 				},
-				Group: GroupConfig{
-					File: &FileGroupConfig{
-						Path: "/path/to/groups.json",
+				Role: RoleConfig{
+					File: &FileRoleConfig{
+						Path: "/path/to/roles.json",
 					},
 				},
 				Policy: PolicyConfig{
@@ -263,7 +263,7 @@ func TestConfig_Validate(t *testing.T) {
 			wantErr: "unsupported account provider type",
 		},
 		{
-			name: "missing group path",
+			name: "missing role path",
 			config: Config{
 				Account: AccountConfig{
 					Type: "operator",
@@ -276,12 +276,12 @@ func TestConfig_Validate(t *testing.T) {
 						},
 					},
 				},
-				Group: GroupConfig{
+				Role: RoleConfig{
 					Type: "file",
-					File: &FileGroupConfig{},
+					File: &FileRoleConfig{},
 				},
 			},
-			wantErr: "group.file.path is required",
+			wantErr: "role.file.path is required",
 		},
 		{
 			name: "missing policy path",
@@ -297,9 +297,9 @@ func TestConfig_Validate(t *testing.T) {
 						},
 					},
 				},
-				Group: GroupConfig{
-					File: &FileGroupConfig{
-						Path: "/path/to/groups.json",
+				Role: RoleConfig{
+					File: &FileRoleConfig{
+						Path: "/path/to/roles.json",
 					},
 				},
 				Policy: PolicyConfig{
@@ -323,9 +323,9 @@ func TestConfig_Validate(t *testing.T) {
 						},
 					},
 				},
-				Group: GroupConfig{
-					File: &FileGroupConfig{
-						Path: "/path/to/groups.json",
+				Role: RoleConfig{
+					File: &FileRoleConfig{
+						Path: "/path/to/roles.json",
 					},
 				},
 				Policy: PolicyConfig{

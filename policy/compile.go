@@ -20,19 +20,19 @@ type CompileResult struct {
 //
 // After calling Compile, the caller should call perms.Deduplicate()
 // when all policies are compiled.
-func Compile(policies []*Policy, user *UserContext, group *GroupContext, perms *NatsPermissions) CompileResult {
+func Compile(policies []*Policy, user *UserContext, role *RoleContext, perms *NatsPermissions) CompileResult {
 	result := CompileResult{}
 
 	for _, pol := range policies {
-		policyResult := compilePolicy(pol, user, group, perms)
+		policyResult := compilePolicy(pol, user, role, perms)
 		result.Warnings = append(result.Warnings, policyResult.Warnings...)
 	}
 
 	return result
 }
 
-// compilePolicy compiles a single policy with user and group context.
-func compilePolicy(pol *Policy, user *UserContext, group *GroupContext, perms *NatsPermissions) CompileResult {
+// compilePolicy compiles a single policy with user and role context.
+func compilePolicy(pol *Policy, user *UserContext, role *RoleContext, perms *NatsPermissions) CompileResult {
 	result := CompileResult{}
 
 	for _, stmt := range pol.Statements {
@@ -45,7 +45,7 @@ func compilePolicy(pol *Policy, user *UserContext, group *GroupContext, perms *N
 
 		// Process each resource
 		for _, resource := range stmt.Resources {
-			resourceResult := compileResource(resource, actions, user, group, perms)
+			resourceResult := compileResource(resource, actions, user, role, perms)
 			result.Warnings = append(result.Warnings, resourceResult.Warnings...)
 		}
 	}
@@ -54,7 +54,7 @@ func compilePolicy(pol *Policy, user *UserContext, group *GroupContext, perms *N
 }
 
 // compileResource compiles permissions for a single resource with the given actions.
-func compileResource(resource string, actions []Action, user *UserContext, group *GroupContext, perms *NatsPermissions) CompileResult {
+func compileResource(resource string, actions []Action, user *UserContext, role *RoleContext, perms *NatsPermissions) CompileResult {
 	result := CompileResult{}
 
 	// Interpolate variables if present
@@ -62,7 +62,7 @@ func compileResource(resource string, actions []Action, user *UserContext, group
 	if ContainsVariables(resource) {
 		ctx := &InterpolationContext{}
 		ctx.Add("user", user)
-		ctx.Add("group", group)
+		ctx.Add("role", role)
 		interpResult := InterpolateWithContext(resource, ctx)
 		if interpResult.Excluded {
 			result.Warnings = append(result.Warnings, "resource excluded: "+resource+" ("+interpResult.Warning+")")

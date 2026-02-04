@@ -75,7 +75,7 @@ func TestResolveNatsPermissions_Basic(t *testing.T) {
 	user := &identity.User{
 		ID:      "alice",
 		Account: "test-account",
-		Groups:  []string{"workers"},
+		Roles:   []string{"workers"},
 		Attributes: map[string]string{
 			"department": "engineering",
 		},
@@ -100,13 +100,13 @@ func TestResolveNatsPermissions_NilUser(t *testing.T) {
 	}
 }
 
-func TestResolveNatsPermissions_DefaultGroup(t *testing.T) {
+func TestResolveNatsPermissions_DefaultRole(t *testing.T) {
 	ctrl := createTestController(t)
 
 	user := &identity.User{
 		ID:      "test",
 		Account: "test-account",
-		Groups:  []string{},
+		Roles:   []string{},
 	}
 
 	perms, err := ctrl.ResolveNatsPermissions(context.Background(), user)
@@ -114,7 +114,7 @@ func TestResolveNatsPermissions_DefaultGroup(t *testing.T) {
 		t.Fatalf("ResolveNatsPermissions() error = %v", err)
 	}
 
-	// Default group should be processed (even if it doesn't exist or has no policies)
+	// Default role should be processed (even if it doesn't exist or has no policies)
 	_ = perms
 }
 
@@ -124,7 +124,7 @@ func TestCreateUserJWT(t *testing.T) {
 	user := &identity.User{
 		ID:      "alice",
 		Account: "test-account",
-		Groups:  []string{"workers"},
+		Roles:   []string{"workers"},
 	}
 
 	perms, err := ctrl.ResolveNatsPermissions(context.Background(), user)
@@ -167,7 +167,7 @@ func TestCreateUserJWT_AccountNotFound(t *testing.T) {
 	user := &identity.User{
 		ID:      "alice",
 		Account: "nonexistent-account",
-		Groups:  []string{},
+		Roles:   []string{},
 	}
 
 	_, err := ctrl.CreateUserJWT(context.Background(), user, "UABC", nil, time.Hour)
@@ -273,8 +273,8 @@ func createTestController(t *testing.T) *AuthController {
 	// Create account provider
 	accountProvider := createTestAccountProvider(t, tmpDir)
 
-	// Create group provider
-	groupProvider := createTestGroupProvider(t, tmpDir)
+	// Create role provider
+	roleProvider := createTestRoleProvider(t, tmpDir)
 
 	// Create policy provider
 	policyProvider := createTestPolicyProvider(t, tmpDir)
@@ -283,7 +283,7 @@ func createTestController(t *testing.T) *AuthController {
 	identityProvider := createTestIdentityProvider(t, tmpDir)
 
 	logger := &testLogger{}
-	return NewAuthController(accountProvider, groupProvider, policyProvider, identityProvider, WithLogger(logger))
+	return NewAuthController(accountProvider, roleProvider, policyProvider, identityProvider, WithLogger(logger))
 }
 
 func createTestAccountProvider(t *testing.T, tmpDir string) provider.AccountProvider {
@@ -321,34 +321,34 @@ func createTestAccountProvider(t *testing.T, tmpDir string) provider.AccountProv
 	return ap
 }
 
-func createTestGroupProvider(t *testing.T, tmpDir string) provider.GroupProvider {
+func createTestRoleProvider(t *testing.T, tmpDir string) provider.RoleProvider {
 	t.Helper()
 
-	groupsFile := filepath.Join(tmpDir, "groups.json")
-	groupsContent := `[
+	rolesFile := filepath.Join(tmpDir, "roles.json")
+	rolesContent := `[
   {
-    "id": "default",
-    "name": "Default",
+    "name": "default",
+    "account": "*",
     "policies": []
   },
   {
-    "id": "workers",
-    "name": "Workers",
+    "name": "workers",
+    "account": "*",
     "policies": ["allow-basic"]
   }
 ]`
-	if err := os.WriteFile(groupsFile, []byte(groupsContent), 0644); err != nil {
-		t.Fatalf("writing groups file: %v", err)
+	if err := os.WriteFile(rolesFile, []byte(rolesContent), 0644); err != nil {
+		t.Fatalf("writing roles file: %v", err)
 	}
 
-	gp, err := provider.NewFileGroupProvider(provider.FileGroupProviderConfig{
-		GroupsPath: groupsFile,
+	rp, err := provider.NewFileRoleProvider(provider.FileRoleProviderConfig{
+		RolesPath: rolesFile,
 	})
 	if err != nil {
-		t.Fatalf("creating group provider: %v", err)
+		t.Fatalf("creating role provider: %v", err)
 	}
 
-	return gp
+	return rp
 }
 
 func createTestPolicyProvider(t *testing.T, tmpDir string) provider.PolicyProvider {
@@ -391,7 +391,7 @@ func createTestIdentityProvider(t *testing.T, tmpDir string) identity.UserIdenti
   "users": {
     "alice": {
       "account": "test-account",
-      "groups": ["workers"],
+      "roles": ["workers"],
       "passwordHash": "` + string(aliceHash) + `",
       "attributes": {
         "department": "engineering"

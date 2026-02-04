@@ -1,0 +1,17 @@
+[
+  {
+    "name": "default",
+    "account": "*",
+    "policies": []
+  },
+  {
+    "name": "readonly",
+    "account": "*",
+    "policies": ["read-access"]
+  },
+  {
+    "name": "full",
+    "account": "*",
+    "policies": ["read-access", "write-access"]
+  }
+]

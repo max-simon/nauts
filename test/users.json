@@ -2,12 +2,12 @@
   "users": {
     "alice": {
       "account": "APP",
-      "groups": ["readonly"],
+      "roles": ["readonly"],
       "passwordHash": "$2a$10$yRjAZrdk2RhF0LB/Hf2b5./.06Alk8Zy1Pis8acjM298NPSTB/iwi"
     },
     "bob": {
       "account": "APP",
-      "groups": ["full"],
+      "roles": ["full"],
       "passwordHash": "$2a$10$yRjAZrdk2RhF0LB/Hf2b5./.06Alk8Zy1Pis8acjM298NPSTB/iwi"
     }
   }

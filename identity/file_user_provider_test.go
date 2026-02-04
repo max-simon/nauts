@@ -24,8 +24,8 @@ func TestVerify_ValidCredentials(t *testing.T) {
 	if user.Account != "ACME" {
 		t.Errorf("user.Account = %q, want %q", user.Account, "ACME")
 	}
-	if len(user.Groups) != 1 || user.Groups[0] != "workers" {
-		t.Errorf("user.Groups = %v, want [workers]", user.Groups)
+	if len(user.Roles) != 1 || user.Roles[0] != "workers" {
+		t.Errorf("user.Roles = %v, want [workers]", user.Roles)
 	}
 }
 
@@ -130,7 +130,7 @@ func createTestProvider(t *testing.T) *FileUserIdentityProvider {
   "users": {
     "alice": {
       "account": "ACME",
-      "groups": ["workers"],
+      "roles": ["workers"],
       "passwordHash": "` + string(aliceHash) + `",
       "attributes": {
         "department": "engineering"
@@ -138,7 +138,7 @@ func createTestProvider(t *testing.T) *FileUserIdentityProvider {
     },
     "bob": {
       "account": "ACME",
-      "groups": ["viewers"],
+      "roles": ["viewers"],
       "passwordHash": "` + string(bobHash) + `",
       "attributes": {}
     }
