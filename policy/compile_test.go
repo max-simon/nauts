@@ -20,10 +20,10 @@ func TestCompile_BasicPolicy(t *testing.T) {
 	}
 
 	user := &UserContext{ID: "alice", Account: "ACME"}
-	group := &GroupContext{ID: "workers", Name: "Workers"}
+	role := &RoleContext{Name: "workers", Account: "*"}
 	perms := NewNatsPermissions()
 
-	result := Compile(policies, user, group, perms)
+	result := Compile(policies, user, role, perms)
 
 	if len(result.Warnings) != 0 {
 		t.Errorf("unexpected warnings: %v", result.Warnings)
@@ -57,10 +57,10 @@ func TestCompile_WithInterpolation(t *testing.T) {
 	}
 
 	user := &UserContext{ID: "alice", Account: "ACME"}
-	group := &GroupContext{ID: "workers", Name: "Workers"}
+	role := &RoleContext{Name: "workers", Account: "*"}
 	perms := NewNatsPermissions()
 
-	result := Compile(policies, user, group, perms)
+	result := Compile(policies, user, role, perms)
 
 	if len(result.Warnings) != 0 {
 		t.Errorf("unexpected warnings: %v", result.Warnings)
@@ -73,25 +73,25 @@ func TestCompile_WithInterpolation(t *testing.T) {
 	}
 }
 
-func TestCompile_WithGroupInterpolation(t *testing.T) {
+func TestCompile_WithRoleInterpolation(t *testing.T) {
 	policies := []*Policy{
 		{
-			ID: "group-policy",
+			ID: "role-policy",
 			Statements: []Statement{
 				{
 					Effect:    EffectAllow,
 					Actions:   []Action{ActionNATSSub},
-					Resources: []string{"nats:group.{{ group.id }}.>"},
+					Resources: []string{"nats:role.{{ role.name }}.>"},
 				},
 			},
 		},
 	}
 
 	user := &UserContext{ID: "alice"}
-	group := &GroupContext{ID: "workers", Name: "Workers"}
+	role := &RoleContext{Name: "workers", Account: "*"}
 	perms := NewNatsPermissions()
 
-	result := Compile(policies, user, group, perms)
+	result := Compile(policies, user, role, perms)
 
 	if len(result.Warnings) != 0 {
 		t.Errorf("unexpected warnings: %v", result.Warnings)
@@ -99,8 +99,8 @@ func TestCompile_WithGroupInterpolation(t *testing.T) {
 
 	perms.Deduplicate()
 	subList := perms.SubList()
-	if len(subList) != 1 || subList[0] != "group.workers.>" {
-		t.Errorf("expected [group.workers.>], got %v", subList)
+	if len(subList) != 1 || subList[0] != "role.workers.>" {
+		t.Errorf("expected [role.workers.>], got %v", subList)
 	}
 }
 
@@ -119,10 +119,10 @@ func TestCompile_AddsInboxForJSAction(t *testing.T) {
 	}
 
 	user := &UserContext{ID: "alice"}
-	group := &GroupContext{ID: "workers"}
+	role := &RoleContext{Name: "workers", Account: "*"}
 	perms := NewNatsPermissions()
 
-	result := Compile(policies, user, group, perms)
+	result := Compile(policies, user, role, perms)
 
 	if len(result.Warnings) != 0 {
 		t.Errorf("unexpected warnings: %v", result.Warnings)
@@ -157,10 +157,10 @@ func TestCompile_UnresolvedVariable(t *testing.T) {
 	}
 
 	user := &UserContext{ID: "alice"}
-	group := &GroupContext{ID: "workers"}
+	role := &RoleContext{Name: "workers", Account: "*"}
 	perms := NewNatsPermissions()
 
-	result := Compile(policies, user, group, perms)
+	result := Compile(policies, user, role, perms)
 
 	if len(result.Warnings) != 1 {
 		t.Errorf("expected 1 warning, got %v", result.Warnings)
@@ -187,10 +187,10 @@ func TestCompile_InvalidResource(t *testing.T) {
 	}
 
 	user := &UserContext{ID: "alice"}
-	group := &GroupContext{ID: "workers"}
+	role := &RoleContext{Name: "workers", Account: "*"}
 	perms := NewNatsPermissions()
 
-	result := Compile(policies, user, group, perms)
+	result := Compile(policies, user, role, perms)
 
 	if len(result.Warnings) != 1 {
 		t.Errorf("expected 1 warning, got %v", result.Warnings)
@@ -227,10 +227,10 @@ func TestCompile_MultiplePolicies(t *testing.T) {
 	}
 
 	user := &UserContext{ID: "alice"}
-	group := &GroupContext{ID: "workers"}
+	role := &RoleContext{Name: "workers", Account: "*"}
 	perms := NewNatsPermissions()
 
-	result := Compile(policies, user, group, perms)
+	result := Compile(policies, user, role, perms)
 
 	if len(result.Warnings) != 0 {
 		t.Errorf("unexpected warnings: %v", result.Warnings)
@@ -264,10 +264,10 @@ func TestCompile_ActionGroup(t *testing.T) {
 	}
 
 	user := &UserContext{ID: "alice"}
-	group := &GroupContext{ID: "workers"}
+	role := &RoleContext{Name: "workers", Account: "*"}
 	perms := NewNatsPermissions()
 
-	result := Compile(policies, user, group, perms)
+	result := Compile(policies, user, role, perms)
 
 	if len(result.Warnings) != 0 {
 		t.Errorf("unexpected warnings: %v", result.Warnings)
@@ -305,10 +305,10 @@ func TestCompile_DenyEffect(t *testing.T) {
 	}
 
 	user := &UserContext{ID: "alice"}
-	group := &GroupContext{ID: "workers"}
+	role := &RoleContext{Name: "workers", Account: "*"}
 	perms := NewNatsPermissions()
 
-	result := Compile(policies, user, group, perms)
+	result := Compile(policies, user, role, perms)
 
 	if len(result.Warnings) != 0 {
 		t.Errorf("unexpected warnings: %v", result.Warnings)
@@ -339,9 +339,9 @@ func TestCompile_MergeIntoExisting(t *testing.T) {
 	}
 
 	user := &UserContext{ID: "alice"}
-	group := &GroupContext{ID: "workers"}
+	role := &RoleContext{Name: "workers", Account: "*"}
 
-	Compile(policies, user, group, perms)
+	Compile(policies, user, role, perms)
 	perms.Deduplicate()
 
 	pubList := perms.PubList()

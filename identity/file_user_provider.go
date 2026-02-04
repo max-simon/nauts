@@ -9,7 +9,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// UsernamePassword is the identity token type for the file user provider.
+// usernamePassword is the identity token type for the file user provider.
 type usernamePassword struct {
 	Username string
 	Password string
@@ -17,8 +17,8 @@ type usernamePassword struct {
 
 // fileUser represents a user stored in the JSON file.
 type fileUser struct {
-	Account      string            `json:"account"`
-	Groups       []string          `json:"groups"`
+	Accounts     []string          `json:"accounts"`
+	Roles        []string          `json:"roles"`
 	PasswordHash string            `json:"passwordHash"`
 	Attributes   map[string]string `json:"attributes,omitempty"`
 }
@@ -82,12 +82,14 @@ func parseUsernamePassword(token string) (*usernamePassword, error) {
 	}, nil
 }
 
-// Verify validates UsernamePassword token and returns the user.
-// Returns ErrInvalidTokenType if token is not UsernamePassword.
+// Verify validates the authentication request and returns the user.
+// Returns ErrInvalidTokenType if token is not UsernamePassword format.
 // Returns ErrUserNotFound if the user does not exist.
 // Returns ErrInvalidCredentials if the password is incorrect.
-func (fp *FileUserIdentityProvider) Verify(_ context.Context, token string) (*User, error) {
-	creds, err := parseUsernamePassword(token)
+// Returns ErrInvalidAccount if the requested account is not valid for the user.
+// Returns ErrAccountRequired if user has multiple accounts but no account was specified.
+func (fp *FileUserIdentityProvider) Verify(_ context.Context, req AuthRequest) (*User, error) {
+	creds, err := parseUsernamePassword(req.Token)
 	if err != nil {
 		return nil, ErrInvalidTokenType
 	}
@@ -102,26 +104,68 @@ func (fp *FileUserIdentityProvider) Verify(_ context.Context, token string) (*Us
 		return nil, ErrInvalidCredentials
 	}
 
+	// Determine the account
+	account, err := resolveAccount(fu.Accounts, req.Account)
+	if err != nil {
+		return nil, err
+	}
+
 	return &User{
 		ID:         creds.Username,
-		Account:    fu.Account,
-		Groups:     fu.Groups,
+		Account:    account,
+		Roles:      fu.Roles,
 		Attributes: fu.Attributes,
 	}, nil
 }
 
+// resolveAccount determines the account based on the user's accounts and the requested account.
+// If user has single account, returns it (ignoring requested account).
+// If user has multiple accounts, requires and validates the requested account.
+func resolveAccount(accounts []string, requestedAccount string) (string, error) {
+	if len(accounts) == 0 {
+		return "", ErrInvalidAccount
+	}
+
+	if len(accounts) == 1 {
+		// Single account - use it regardless of request
+		return accounts[0], nil
+	}
+
+	// Multiple accounts - require explicit account selection
+	if requestedAccount == "" {
+		return "", ErrAccountRequired
+	}
+
+	// Validate requested account is in user's accounts list
+	for _, acc := range accounts {
+		if acc == requestedAccount {
+			return requestedAccount, nil
+		}
+	}
+
+	return "", ErrInvalidAccount
+}
+
 // GetUser retrieves a user by ID without verifying credentials.
 // Returns ErrUserNotFound if the user does not exist.
+// Note: For users with multiple accounts, this returns the first account.
+// Use Verify with AuthRequest to specify a specific account.
 func (fp *FileUserIdentityProvider) GetUser(_ context.Context, id string) (*User, error) {
 	fu, ok := fp.users[id]
 	if !ok {
 		return nil, ErrUserNotFound
 	}
 
+	// For GetUser, use the first account (or empty if no accounts)
+	account := ""
+	if len(fu.Accounts) > 0 {
+		account = fu.Accounts[0]
+	}
+
 	return &User{
 		ID:         id,
-		Account:    fu.Account,
-		Groups:     fu.Groups,
+		Account:    account,
+		Roles:      fu.Roles,
 		Attributes: fu.Attributes,
 	}, nil
 }

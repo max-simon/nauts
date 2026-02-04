@@ -1,13 +1,13 @@
 {
   "users": {
     "alice": {
-      "account": "APP",
-      "groups": ["readonly"],
+      "accounts": ["APP"],
+      "roles": ["readonly"],
       "passwordHash": "$2a$10$yRjAZrdk2RhF0LB/Hf2b5./.06Alk8Zy1Pis8acjM298NPSTB/iwi"
     },
     "bob": {
-      "account": "APP",
-      "groups": ["full"],
+      "accounts": ["APP"],
+      "roles": ["full"],
       "passwordHash": "$2a$10$yRjAZrdk2RhF0LB/Hf2b5./.06Alk8Zy1Pis8acjM298NPSTB/iwi"
     }
   }

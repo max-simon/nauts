@@ -10,6 +10,7 @@ require (
 )
 
 require (
+	github.com/golang-jwt/jwt/v5 v5.3.1 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/nats-io/nuid v1.0.1 // indirect
 	golang.org/x/sys v0.40.0 // indirect

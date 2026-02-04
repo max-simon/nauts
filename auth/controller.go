@@ -3,6 +3,7 @@ package auth
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log"
 	"time"
@@ -41,7 +42,7 @@ func (l *defaultLogger) Debug(msg string, args ...any) {
 // AuthController orchestrates user authentication, permission compilation, and JWT issuance.
 type AuthController struct {
 	accountProvider  provider.AccountProvider
-	groupProvider    provider.GroupProvider
+	roleProvider     provider.RoleProvider
 	policyProvider   provider.PolicyProvider
 	identityProvider identity.UserIdentityProvider
 	logger           Logger
@@ -60,14 +61,14 @@ func WithLogger(l Logger) ControllerOption {
 // NewAuthController creates a new AuthController with the given providers.
 func NewAuthController(
 	accountProvider provider.AccountProvider,
-	groupProvider provider.GroupProvider,
+	roleProvider provider.RoleProvider,
 	policyProvider provider.PolicyProvider,
 	identityProvider identity.UserIdentityProvider,
 	opts ...ControllerOption,
 ) *AuthController {
 	c := &AuthController{
 		accountProvider:  accountProvider,
-		groupProvider:    groupProvider,
+		roleProvider:     roleProvider,
 		policyProvider:   policyProvider,
 		identityProvider: identityProvider,
 		logger:           &defaultLogger{},
@@ -84,67 +85,75 @@ func (c *AuthController) AccountProvider() provider.AccountProvider {
 }
 
 // ResolveUser verifies the identity token and returns the user.
+// The token should be a JSON object with the structure: { "account"?: string, "token": string }
 // Returns identity.ErrInvalidCredentials if the credentials are invalid.
 // Returns identity.ErrUserNotFound if the user does not exist.
 // Returns identity.ErrInvalidTokenType if the token type is wrong for the provider.
+// Returns identity.ErrInvalidAccount if the requested account is not valid for the user.
+// Returns identity.ErrAccountRequired if user has multiple accounts but no account was specified.
 func (c *AuthController) ResolveUser(ctx context.Context, token string) (*identity.User, error) {
-	user, err := c.identityProvider.Verify(ctx, token)
+	authReq, err := parseAuthRequest(token)
+	if err != nil {
+		return nil, NewAuthError("", "resolve_user", "failed to parse auth request", err)
+	}
+
+	user, err := c.identityProvider.Verify(ctx, authReq)
 	if err != nil {
 		return nil, NewAuthError("", "resolve_user", "failed to verify identity", err)
 	}
 	return user, nil
 }
 
-// ResolveNatsPermissions compiles NATS permissions for a user based on their groups and policies.
+// parseAuthRequest parses the JSON token into an AuthRequest.
+// Expected format: { "account"?: string, "token": string }
+func parseAuthRequest(token string) (identity.AuthRequest, error) {
+	var req identity.AuthRequest
+	if err := json.Unmarshal([]byte(token), &req); err != nil {
+		return identity.AuthRequest{}, err
+	}
+	if req.Token == "" {
+		return identity.AuthRequest{}, errors.New("token field is required")
+	}
+	return req, nil
+}
+
+// ResolveNatsPermissions compiles NATS permissions for a user based on their roles and policies.
 // The compilation process:
-// 1. Resolve user's groups (always include "default")
-// 2. For each group, fetch policies and compile with that group's context
+// 1. Resolve user's roles (always include "default")
+// 2. For each role name, fetch both global and local roles and compile policies
 // 3. Deduplicate and return permissions
 func (c *AuthController) ResolveNatsPermissions(ctx context.Context, user *identity.User) (*policy.NatsPermissions, error) {
 	if user == nil {
 		return nil, NewAuthError("", "resolve_permissions", "user is nil", nil)
 	}
 
-	// Collect all groups (including default)
-	groupIDs := c.collectGroups(user)
+	// Collect all role names (including default)
+	roleNames := c.collectRoleNames(user)
 
 	result := policy.NewNatsPermissions()
 
 	// Convert user to context once
 	userCtx := userToContext(user)
 
-	// Process each group
-	for _, groupID := range groupIDs {
-		group, err := c.groupProvider.GetGroup(ctx, groupID)
+	// Process each role name
+	for _, roleName := range roleNames {
+		globalRole, localRole, err := c.roleProvider.GetRoles(ctx, roleName, user.Account)
 		if err != nil {
-			if errors.Is(err, provider.ErrGroupNotFound) {
-				c.logger.Warn("group not found: %s (user: %s)", groupID, user.ID)
+			if errors.Is(err, provider.ErrRoleNotFound) {
+				c.logger.Warn("role not found: %s (user: %s)", roleName, user.ID)
 				continue
 			}
 			return nil, NewAuthError(user.ID, "resolve_permissions", err.Error(), err)
 		}
 
-		// Collect policies for this group
-		var policies []*policy.Policy
-		for _, policyID := range group.Policies {
-			pol, err := c.policyProvider.GetPolicy(ctx, policyID)
-			if err != nil {
-				if errors.Is(err, provider.ErrPolicyNotFound) {
-					c.logger.Warn("policy not found: %s (group: %s)", policyID, groupID)
-					continue
-				}
-				return nil, NewAuthError(user.ID, "resolve_permissions", err.Error(), err)
-			}
-			policies = append(policies, pol)
+		// Process global role if it exists
+		if globalRole != nil {
+			c.compileRolePolicies(ctx, user, userCtx, globalRole, result)
 		}
 
-		// Compile policies with group context
-		groupCtx := groupToContext(group)
-		compileResult := policy.Compile(policies, userCtx, groupCtx, result)
-
-		// Log any warnings
-		for _, warning := range compileResult.Warnings {
-			c.logger.Warn("%s", warning)
+		// Process local role if it exists
+		if localRole != nil {
+			c.compileRolePolicies(ctx, user, userCtx, localRole, result)
 		}
 	}
 
@@ -152,6 +161,33 @@ func (c *AuthController) ResolveNatsPermissions(ctx context.Context, user *ident
 	result.Deduplicate()
 
 	return result, nil
+}
+
+// compileRolePolicies compiles policies for a single role.
+func (c *AuthController) compileRolePolicies(ctx context.Context, user *identity.User, userCtx *policy.UserContext, role *provider.Role, result *policy.NatsPermissions) {
+	// Collect policies for this role
+	var policies []*policy.Policy
+	for _, policyID := range role.Policies {
+		pol, err := c.policyProvider.GetPolicy(ctx, policyID)
+		if err != nil {
+			if errors.Is(err, provider.ErrPolicyNotFound) {
+				c.logger.Warn("policy not found: %s (role: %s)", policyID, role.Name)
+				continue
+			}
+			c.logger.Warn("error fetching policy %s: %v", policyID, err)
+			continue
+		}
+		policies = append(policies, pol)
+	}
+
+	// Compile policies with role context
+	roleCtx := roleToContext(role)
+	compileResult := policy.Compile(policies, userCtx, roleCtx, result)
+
+	// Log any warnings
+	for _, warning := range compileResult.Warnings {
+		c.logger.Warn("%s", warning)
+	}
 }
 
 // AuthResult contains the result of a successful authentication.
@@ -269,26 +305,26 @@ func (c *AuthController) CreateUserJWT(
 	return token, nil
 }
 
-// collectGroups returns all group IDs for a user, always including "default".
-func (c *AuthController) collectGroups(user *identity.User) []string {
+// collectRoleNames returns all role names for a user, always including "default".
+func (c *AuthController) collectRoleNames(user *identity.User) []string {
 	seen := make(map[string]bool)
-	var groups []string
+	var roles []string
 
-	// Always include default group first
-	if !seen[provider.DefaultGroupID] {
-		seen[provider.DefaultGroupID] = true
-		groups = append(groups, provider.DefaultGroupID)
+	// Always include default role first
+	if !seen[provider.DefaultRoleName] {
+		seen[provider.DefaultRoleName] = true
+		roles = append(roles, provider.DefaultRoleName)
 	}
 
-	// Add user's groups
-	for _, g := range user.Groups {
-		if !seen[g] {
-			seen[g] = true
-			groups = append(groups, g)
+	// Add user's roles
+	for _, r := range user.Roles {
+		if !seen[r] {
+			seen[r] = true
+			roles = append(roles, r)
 		}
 	}
 
-	return groups
+	return roles
 }
 
 // userToContext converts an identity.User to a policy.UserContext for interpolation.
@@ -303,13 +339,13 @@ func userToContext(user *identity.User) *policy.UserContext {
 	}
 }
 
-// groupToContext converts a provider.Group to a policy.GroupContext for interpolation.
-func groupToContext(group *provider.Group) *policy.GroupContext {
-	if group == nil {
+// roleToContext converts a provider.Role to a policy.RoleContext for interpolation.
+func roleToContext(role *provider.Role) *policy.RoleContext {
+	if role == nil {
 		return nil
 	}
-	return &policy.GroupContext{
-		ID:   group.ID,
-		Name: group.Name,
+	return &policy.RoleContext{
+		Name:    role.Name,
+		Account: role.Account,
 	}
 }

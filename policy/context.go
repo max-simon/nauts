@@ -5,7 +5,7 @@ package policy
 import "strings"
 
 // Context provides values for variable interpolation.
-// Implementations resolve variable paths like "user.id" or "group.name".
+// Implementations resolve variable paths like "user.id" or "role.name".
 type Context interface {
 	// HasAttribute returns true if the attribute exists.
 	HasAttribute(path string) bool
@@ -62,37 +62,37 @@ func (u *UserContext) GetAttribute(path string) (string, bool) {
 	}
 }
 
-// GroupContext contains group attributes needed for policy interpolation.
-// Implements Context interface for group.* variables.
-type GroupContext struct {
-	ID   string // group identifier
-	Name string // human-readable name
+// RoleContext contains role attributes needed for policy interpolation.
+// Implements Context interface for role.* variables.
+type RoleContext struct {
+	Name    string // role name
+	Account string // role account ("*" for global)
 }
 
-// HasAttribute returns true if the group attribute exists.
-func (g *GroupContext) HasAttribute(path string) bool {
-	_, ok := g.GetAttribute(path)
+// HasAttribute returns true if the role attribute exists.
+func (r *RoleContext) HasAttribute(path string) bool {
+	_, ok := r.GetAttribute(path)
 	return ok
 }
 
-// GetAttribute returns a group attribute value.
-// Supported paths: "id", "name"
-func (g *GroupContext) GetAttribute(path string) (string, bool) {
-	if g == nil {
+// GetAttribute returns a role attribute value.
+// Supported paths: "name", "account"
+func (r *RoleContext) GetAttribute(path string) (string, bool) {
+	if r == nil {
 		return "", false
 	}
 
 	switch path {
-	case "id":
-		if g.ID == "" {
-			return "", false
-		}
-		return g.ID, true
 	case "name":
-		if g.Name == "" {
+		if r.Name == "" {
 			return "", false
 		}
-		return g.Name, true
+		return r.Name, true
+	case "account":
+		if r.Account == "" {
+			return "", false
+		}
+		return r.Account, true
 	default:
 		return "", false
 	}

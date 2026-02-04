@@ -16,8 +16,8 @@ type Config struct {
 	// Account provider configuration
 	Account AccountConfig `json:"account"`
 
-	// Group provider configuration
-	Group GroupConfig `json:"group"`
+	// Role provider configuration
+	Role RoleConfig `json:"role"`
 
 	// Policy provider configuration
 	Policy PolicyConfig `json:"policy"`
@@ -70,18 +70,18 @@ type StaticAccountConfig struct {
 	Accounts []string `json:"accounts"`
 }
 
-// GroupConfig configures the group provider.
-type GroupConfig struct {
-	// Type specifies the group provider type. Currently only "file" is supported.
+// RoleConfig configures the role provider.
+type RoleConfig struct {
+	// Type specifies the role provider type. Currently only "file" is supported.
 	Type string `json:"type"`
 
 	// File contains file-based provider configuration.
-	File *FileGroupConfig `json:"file,omitempty"`
+	File *FileRoleConfig `json:"file,omitempty"`
 }
 
-// FileGroupConfig configures the file-based group provider.
-type FileGroupConfig struct {
-	// Path is the path to the groups JSON file.
+// FileRoleConfig configures the file-based role provider.
+type FileRoleConfig struct {
+	// Path is the path to the roles JSON file.
 	Path string `json:"path"`
 }
 
@@ -102,17 +102,40 @@ type FilePolicyConfig struct {
 
 // IdentityConfig configures the identity provider.
 type IdentityConfig struct {
-	// Type specifies the identity provider type. Currently only "file" is supported.
+	// Type specifies the identity provider type: "file" or "jwt".
 	Type string `json:"type"`
 
 	// File contains file-based provider configuration.
 	File *FileIdentityConfig `json:"file,omitempty"`
+
+	// JWT contains JWT-based provider configuration.
+	JWT *JwtIdentityConfig `json:"jwt,omitempty"`
 }
 
 // FileIdentityConfig configures the file-based identity provider.
 type FileIdentityConfig struct {
 	// UsersPath is the path to the users JSON file.
 	UsersPath string `json:"usersPath"`
+}
+
+// JwtIdentityConfig configures the JWT-based identity provider.
+type JwtIdentityConfig struct {
+	// Issuers maps JWT issuer (iss claim) to their configuration.
+	Issuers map[string]JwtIssuerConfig `json:"issuers"`
+}
+
+// JwtIssuerConfig holds configuration for a single JWT issuer.
+type JwtIssuerConfig struct {
+	// PublicKey is the PEM-encoded public key for JWT signature verification.
+	PublicKey string `json:"publicKey"`
+
+	// Accounts is the list of NATS accounts this issuer can manage.
+	// Supports wildcards: "*" matches any account, "tenant-a-*" matches accounts starting with "tenant-a-".
+	Accounts []string `json:"accounts"`
+
+	// RolesClaimPath is the path to roles in JWT claims (dot-separated).
+	// Default: "resource_access.nauts.roles"
+	RolesClaimPath string `json:"rolesClaimPath,omitempty"`
 }
 
 // ServerConfig configures the auth callout service.
@@ -197,20 +220,20 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("unsupported account provider type: %s", c.Account.Type)
 	}
 
-	// Validate group config
-	if c.Group.Type == "" {
-		c.Group.Type = "file" // default to file
+	// Validate role config
+	if c.Role.Type == "" {
+		c.Role.Type = "file" // default to file
 	}
-	switch c.Group.Type {
+	switch c.Role.Type {
 	case "file":
-		if c.Group.File == nil {
-			return fmt.Errorf("group.file configuration is required when type is 'file'")
+		if c.Role.File == nil {
+			return fmt.Errorf("role.file configuration is required when type is 'file'")
 		}
-		if c.Group.File.Path == "" {
-			return fmt.Errorf("group.file.path is required")
+		if c.Role.File.Path == "" {
+			return fmt.Errorf("role.file.path is required")
 		}
 	default:
-		return fmt.Errorf("unsupported group provider type: %s", c.Group.Type)
+		return fmt.Errorf("unsupported role provider type: %s", c.Role.Type)
 	}
 
 	// Validate policy config
@@ -240,6 +263,24 @@ func (c *Config) Validate() error {
 		}
 		if c.Identity.File.UsersPath == "" {
 			return fmt.Errorf("identity.file.usersPath is required")
+		}
+	case "jwt":
+		if c.Identity.JWT == nil {
+			return fmt.Errorf("identity.jwt configuration is required when type is 'jwt'")
+		}
+		if len(c.Identity.JWT.Issuers) == 0 {
+			return fmt.Errorf("identity.jwt.issuers must contain at least one issuer")
+		}
+		for issuer, issuerCfg := range c.Identity.JWT.Issuers {
+			if issuer == "" {
+				return fmt.Errorf("identity.jwt.issuers contains an empty issuer name")
+			}
+			if issuerCfg.PublicKey == "" {
+				return fmt.Errorf("identity.jwt.issuers[%s].publicKey is required", issuer)
+			}
+			if len(issuerCfg.Accounts) == 0 {
+				return fmt.Errorf("identity.jwt.issuers[%s].accounts must contain at least one account", issuer)
+			}
 		}
 	default:
 		return fmt.Errorf("unsupported identity provider type: %s", c.Identity.Type)
@@ -309,16 +350,16 @@ func NewAuthControllerWithConfig(config *Config, opts ...ControllerOption) (*Aut
 		}
 	}
 
-	// Initialize group provider
-	var groupProvider provider.GroupProvider
+	// Initialize role provider
+	var roleProvider provider.RoleProvider
 
-	switch config.Group.Type {
+	switch config.Role.Type {
 	case "file":
-		groupProvider, err = provider.NewFileGroupProvider(provider.FileGroupProviderConfig{
-			GroupsPath: config.Group.File.Path,
+		roleProvider, err = provider.NewFileRoleProvider(provider.FileRoleProviderConfig{
+			RolesPath: config.Role.File.Path,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("initializing file group provider: %w", err)
+			return nil, fmt.Errorf("initializing file role provider: %w", err)
 		}
 	}
 
@@ -346,9 +387,24 @@ func NewAuthControllerWithConfig(config *Config, opts ...ControllerOption) (*Aut
 		if err != nil {
 			return nil, fmt.Errorf("initializing file identity provider: %w", err)
 		}
+	case "jwt":
+		issuers := make(map[string]identity.IssuerConfig)
+		for issuer, issuerCfg := range config.Identity.JWT.Issuers {
+			issuers[issuer] = identity.IssuerConfig{
+				PublicKey:      issuerCfg.PublicKey,
+				Accounts:       issuerCfg.Accounts,
+				RolesClaimPath: issuerCfg.RolesClaimPath,
+			}
+		}
+		identityProvider, err = identity.NewJwtUserIdentityProvider(identity.JwtUserIdentityProviderConfig{
+			Issuers: issuers,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("initializing jwt identity provider: %w", err)
+		}
 	}
 
-	return NewAuthController(accountProvider, groupProvider, policyProvider, identityProvider, opts...), nil
+	return NewAuthController(accountProvider, roleProvider, policyProvider, identityProvider, opts...), nil
 }
 
 // ToCalloutConfig converts the server configuration to a CalloutConfig.

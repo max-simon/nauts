@@ -4,14 +4,14 @@ import (
 	"testing"
 )
 
-// newTestContext creates an InterpolationContext with user and group for testing.
-func newTestContext(user *UserContext, group *GroupContext) *InterpolationContext {
+// newTestContext creates an InterpolationContext with user and role for testing.
+func newTestContext(user *UserContext, role *RoleContext) *InterpolationContext {
 	ctx := &InterpolationContext{}
 	if user != nil {
 		ctx.Add("user", user)
 	}
-	if group != nil {
-		ctx.Add("group", group)
+	if role != nil {
+		ctx.Add("role", role)
 	}
 	return ctx
 }
@@ -26,12 +26,12 @@ func TestInterpolateWithContext(t *testing.T) {
 		},
 	}
 
-	group := &GroupContext{
-		ID:   "workers",
-		Name: "Workers",
+	role := &RoleContext{
+		Name:    "workers",
+		Account: "*",
 	}
 
-	ctx := newTestContext(user, group)
+	ctx := newTestContext(user, role)
 
 	tests := []struct {
 		name       string
@@ -81,18 +81,25 @@ func TestInterpolateWithContext(t *testing.T) {
 			wantValue: "nats:team.platform.>",
 		},
 
-		// Group variables
+		// Role variables
 		{
-			name:      "group.id",
-			template:  "nats:group.{{ group.id }}.>",
+			name:      "role.name",
+			template:  "nats:role.{{ role.name }}.>",
 			ctx:       ctx,
-			wantValue: "nats:group.workers.>",
+			wantValue: "nats:role.workers.>",
 		},
 		{
-			name:      "group.name",
-			template:  "nats:group.{{ group.name }}.>",
-			ctx:       ctx,
-			wantValue: "nats:group.Workers.>",
+			name:      "role.account with local account",
+			template:  "nats:role.{{ role.account }}.>",
+			ctx:       newTestContext(user, &RoleContext{Name: "workers", Account: "ACME"}),
+			wantValue: "nats:role.ACME.>",
+		},
+		{
+			name:       "role.account with global account (excluded)",
+			template:   "nats:role.{{ role.account }}.>",
+			ctx:        ctx,
+			wantExcl:   true,
+			wantReason: "invalid value for role.account: *",
 		},
 
 		// Multiple variables
@@ -134,16 +141,16 @@ func TestInterpolateWithContext(t *testing.T) {
 		{
 			name:       "nil user",
 			template:   "nats:{{ user.id }}",
-			ctx:        newTestContext(nil, group),
+			ctx:        newTestContext(nil, role),
 			wantExcl:   true,
 			wantReason: "unresolved variable: user.id",
 		},
 		{
-			name:       "nil group",
-			template:   "nats:{{ group.id }}",
+			name:       "nil role",
+			template:   "nats:{{ role.name }}",
 			ctx:        newTestContext(user, nil),
 			wantExcl:   true,
-			wantReason: "unresolved variable: group.id",
+			wantReason: "unresolved variable: role.name",
 		},
 		{
 			name:       "missing attribute",
@@ -167,11 +174,11 @@ func TestInterpolateWithContext(t *testing.T) {
 			wantReason: "unresolved variable: user.unknown",
 		},
 		{
-			name:       "unknown group property",
-			template:   "nats:{{ group.unknown }}",
+			name:       "unknown role property",
+			template:   "nats:{{ role.unknown }}",
 			ctx:        ctx,
 			wantExcl:   true,
-			wantReason: "unresolved variable: group.unknown",
+			wantReason: "unresolved variable: role.unknown",
 		},
 
 		// Excluded resources (invalid values)
@@ -324,62 +331,62 @@ func TestUserContext_GetAttribute(t *testing.T) {
 	}
 }
 
-func TestGroupContext_GetAttribute(t *testing.T) {
+func TestRoleContext_GetAttribute(t *testing.T) {
 	tests := []struct {
 		name  string
 		path  string
-		group *GroupContext
+		role  *RoleContext
 		want  string
 		found bool
 	}{
 		{
-			name:  "nil group",
-			path:  "id",
-			group: nil,
+			name:  "nil role",
+			path:  "name",
+			role:  nil,
 			found: false,
-		},
-		{
-			name:  "empty id",
-			path:  "id",
-			group: &GroupContext{},
-			found: false,
-		},
-		{
-			name:  "valid id",
-			path:  "id",
-			group: &GroupContext{ID: "workers"},
-			want:  "workers",
-			found: true,
 		},
 		{
 			name:  "empty name",
 			path:  "name",
-			group: &GroupContext{},
+			role:  &RoleContext{},
 			found: false,
 		},
 		{
 			name:  "valid name",
 			path:  "name",
-			group: &GroupContext{Name: "Workers"},
-			want:  "Workers",
+			role:  &RoleContext{Name: "workers"},
+			want:  "workers",
+			found: true,
+		},
+		{
+			name:  "empty account",
+			path:  "account",
+			role:  &RoleContext{},
+			found: false,
+		},
+		{
+			name:  "valid account",
+			path:  "account",
+			role:  &RoleContext{Account: "*"},
+			want:  "*",
 			found: true,
 		},
 		{
 			name:  "unknown path",
 			path:  "policies",
-			group: &GroupContext{ID: "test"},
+			role:  &RoleContext{Name: "test"},
 			found: false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, found := tt.group.GetAttribute(tt.path)
+			got, found := tt.role.GetAttribute(tt.path)
 			if found != tt.found {
-				t.Errorf("GroupContext.GetAttribute(%q) found = %v, want %v", tt.path, found, tt.found)
+				t.Errorf("RoleContext.GetAttribute(%q) found = %v, want %v", tt.path, found, tt.found)
 			}
 			if got != tt.want {
-				t.Errorf("GroupContext.GetAttribute(%q) = %q, want %q", tt.path, got, tt.want)
+				t.Errorf("RoleContext.GetAttribute(%q) = %q, want %q", tt.path, got, tt.want)
 			}
 		})
 	}
@@ -387,11 +394,11 @@ func TestGroupContext_GetAttribute(t *testing.T) {
 
 func TestInterpolationContext_GetAttribute(t *testing.T) {
 	user := &UserContext{ID: "alice", Account: "ACME"}
-	group := &GroupContext{ID: "workers", Name: "Workers"}
+	role := &RoleContext{Name: "workers", Account: "*"}
 
 	ctx := &InterpolationContext{}
 	ctx.Add("user", user)
-	ctx.Add("group", group)
+	ctx.Add("role", role)
 
 	tests := []struct {
 		name  string
@@ -412,15 +419,15 @@ func TestInterpolationContext_GetAttribute(t *testing.T) {
 			found: true,
 		},
 		{
-			name:  "group.id",
-			path:  "group.id",
+			name:  "role.name",
+			path:  "role.name",
 			want:  "workers",
 			found: true,
 		},
 		{
-			name:  "group.name",
-			path:  "group.name",
-			want:  "Workers",
+			name:  "role.account",
+			path:  "role.account",
+			want:  "*",
 			found: true,
 		},
 		{

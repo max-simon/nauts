@@ -14,10 +14,10 @@
       }
     }
   },
-  "group": {
+  "role": {
     "type": "file",
     "file": {
-      "path": "../groups.json"
+      "path": "../roles.json"
     }
   },
   "policy": {

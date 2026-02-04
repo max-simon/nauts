@@ -54,16 +54,17 @@ Refers to the user identity and contains:
 - `user.account`: NATS account
 - `user.attr.<key>`: any additional attribute of the user identity
 
-#### Group
+#### Role
 
-Refers to the group this policy is attached to and contains:
-- `group.id`: unique group identifier
-- `group.name`: human-readable name
+Refers to the role this policy is attached to and contains:
+- `role.name`: role name (e.g., "admin", "readonly")
+- `role.account`: account this role belongs to ("*" for global roles)
 
 #### Example
 
-- group-wide subject for all members of a group: `nats:group.{{ group.name }}.>`
+- role-wide subject for all members of a role: `nats:role.{{ role.name }}.>`
 - user-specific subject: `nats:user.{{ user.id }}`
+- account-scoped subject: `nats:{{ role.account }}.data.>`
 
 #### Variable Resolution
 
