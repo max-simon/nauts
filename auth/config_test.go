@@ -29,16 +29,11 @@ func TestLoadConfig(t *testing.T) {
 				}
 			}
 		},
-		"role": {
-			"type": "file",
-			"file": {
-				"path": "/path/to/roles.json"
-			}
-		},
 		"policy": {
 			"type": "file",
 			"file": {
-				"path": "/path/to/policies.json"
+				"policiesPath": "/path/to/policies.json",
+				"rolesPath": "/path/to/roles.json"
 			}
 		},
 		"auth": {
@@ -85,20 +80,15 @@ func TestLoadConfig(t *testing.T) {
 		}
 	}
 
-	// Verify role config
-	if config.Role.Type != "file" {
-		t.Errorf("Group.Type = %q, want %q", config.Role.Type, "file")
-	}
-	if config.Role.File.Path != "/path/to/roles.json" {
-		t.Errorf("Group.File.Path = %q, want %q", config.Role.File.Path, "/path/to/roles.json")
-	}
-
 	// Verify policy config
 	if config.Policy.Type != "file" {
 		t.Errorf("Policy.Type = %q, want %q", config.Policy.Type, "file")
 	}
-	if config.Policy.File.Path != "/path/to/policies.json" {
-		t.Errorf("Policy.File.Path = %q, want %q", config.Policy.File.Path, "/path/to/policies.json")
+	if config.Policy.File.PoliciesPath != "/path/to/policies.json" {
+		t.Errorf("Policy.File.PoliciesPath = %q, want %q", config.Policy.File.PoliciesPath, "/path/to/policies.json")
+	}
+	if config.Policy.File.RolesPath != "/path/to/roles.json" {
+		t.Errorf("Policy.File.RolesPath = %q, want %q", config.Policy.File.RolesPath, "/path/to/roles.json")
 	}
 
 	// Verify auth providers config
@@ -165,14 +155,10 @@ func TestConfig_Validate(t *testing.T) {
 						},
 					},
 				},
-				Role: RoleConfig{
-					File: &FileRoleConfig{
-						Path: "/path/to/roles.json",
-					},
-				},
 				Policy: PolicyConfig{
 					File: &FilePolicyConfig{
-						Path: "/path/to/policies.json",
+						PoliciesPath: "/path/to/policies.json",
+						RolesPath:    "/path/to/roles.json",
 					},
 				},
 				Auth: AuthConfig{
@@ -199,14 +185,10 @@ func TestConfig_Validate(t *testing.T) {
 						},
 					},
 				},
-				Role: RoleConfig{
-					File: &FileRoleConfig{
-						Path: "/path/to/roles.json",
-					},
-				},
 				Policy: PolicyConfig{
 					File: &FilePolicyConfig{
-						Path: "/path/to/policies.json",
+						PoliciesPath: "/path/to/policies.json",
+						RolesPath:    "/path/to/roles.json",
 					},
 				},
 				Auth: AuthConfig{
@@ -231,14 +213,10 @@ func TestConfig_Validate(t *testing.T) {
 						Accounts:       []string{"AUTH"},
 					},
 				},
-				Role: RoleConfig{
-					File: &FileRoleConfig{
-						Path: "/path/to/roles.json",
-					},
-				},
 				Policy: PolicyConfig{
 					File: &FilePolicyConfig{
-						Path: "/path/to/policies.json",
+						PoliciesPath: "/path/to/policies.json",
+						RolesPath:    "/path/to/roles.json",
 					},
 				},
 				Auth: AuthConfig{
@@ -314,7 +292,7 @@ func TestConfig_Validate(t *testing.T) {
 			wantErr: "unsupported account provider type",
 		},
 		{
-			name: "missing role path",
+			name: "missing policy roles path",
 			config: Config{
 				Account: AccountConfig{
 					Type: "operator",
@@ -327,15 +305,13 @@ func TestConfig_Validate(t *testing.T) {
 						},
 					},
 				},
-				Role: RoleConfig{
-					Type: "file",
-					File: &FileRoleConfig{},
-				},
+				Policy: PolicyConfig{File: &FilePolicyConfig{PoliciesPath: "/path/to/policies.json"}},
+				Auth:   AuthConfig{File: []FileAuthProviderConfig{{ID: "local", UsersPath: "/path/to/users.json", Accounts: []string{"*"}}}},
 			},
-			wantErr: "role.file.path is required",
+			wantErr: "policy.file.rolesPath is required",
 		},
 		{
-			name: "missing policy path",
+			name: "missing policy policies path",
 			config: Config{
 				Account: AccountConfig{
 					Type: "operator",
@@ -346,19 +322,15 @@ func TestConfig_Validate(t *testing.T) {
 								SigningKeyPath: "/path/to/auth-signing.nk",
 							},
 						},
-					},
-				},
-				Role: RoleConfig{
-					File: &FileRoleConfig{
-						Path: "/path/to/roles.json",
 					},
 				},
 				Policy: PolicyConfig{
 					Type: "file",
 					File: &FilePolicyConfig{},
 				},
+				Auth: AuthConfig{File: []FileAuthProviderConfig{{ID: "local", UsersPath: "/path/to/users.json", Accounts: []string{"*"}}}},
 			},
-			wantErr: "policy.file.path is required",
+			wantErr: "policy.file.policiesPath is required",
 		},
 		{
 			name: "missing auth providers",
@@ -374,14 +346,10 @@ func TestConfig_Validate(t *testing.T) {
 						},
 					},
 				},
-				Role: RoleConfig{
-					File: &FileRoleConfig{
-						Path: "/path/to/roles.json",
-					},
-				},
 				Policy: PolicyConfig{
 					File: &FilePolicyConfig{
-						Path: "/path/to/policies.json",
+						PoliciesPath: "/path/to/policies.json",
+						RolesPath:    "/path/to/roles.json",
 					},
 				},
 			},
@@ -401,14 +369,10 @@ func TestConfig_Validate(t *testing.T) {
 						},
 					},
 				},
-				Role: RoleConfig{
-					File: &FileRoleConfig{
-						Path: "/path/to/roles.json",
-					},
-				},
 				Policy: PolicyConfig{
 					File: &FilePolicyConfig{
-						Path: "/path/to/policies.json",
+						PoliciesPath: "/path/to/policies.json",
+						RolesPath:    "/path/to/roles.json",
 					},
 				},
 				Auth: AuthConfig{
@@ -435,14 +399,10 @@ func TestConfig_Validate(t *testing.T) {
 						},
 					},
 				},
-				Role: RoleConfig{
-					File: &FileRoleConfig{
-						Path: "/path/to/roles.json",
-					},
-				},
 				Policy: PolicyConfig{
 					File: &FilePolicyConfig{
-						Path: "/path/to/policies.json",
+						PoliciesPath: "/path/to/policies.json",
+						RolesPath:    "/path/to/roles.json",
 					},
 				},
 				Auth: AuthConfig{
@@ -470,14 +430,10 @@ func TestConfig_Validate(t *testing.T) {
 						},
 					},
 				},
-				Role: RoleConfig{
-					File: &FileRoleConfig{
-						Path: "/path/to/roles.json",
-					},
-				},
 				Policy: PolicyConfig{
 					File: &FilePolicyConfig{
-						Path: "/path/to/policies.json",
+						PoliciesPath: "/path/to/policies.json",
+						RolesPath:    "/path/to/roles.json",
 					},
 				},
 				Auth: AuthConfig{
@@ -505,14 +461,10 @@ func TestConfig_Validate(t *testing.T) {
 						},
 					},
 				},
-				Role: RoleConfig{
-					File: &FileRoleConfig{
-						Path: "/path/to/roles.json",
-					},
-				},
 				Policy: PolicyConfig{
 					File: &FilePolicyConfig{
-						Path: "/path/to/policies.json",
+						PoliciesPath: "/path/to/policies.json",
+						RolesPath:    "/path/to/roles.json",
 					},
 				},
 				Auth: AuthConfig{

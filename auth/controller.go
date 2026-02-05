@@ -43,7 +43,6 @@ func (l *defaultLogger) Debug(msg string, args ...any) {
 // AuthController orchestrates user authentication, permission compilation, and JWT issuance.
 type AuthController struct {
 	accountProvider provider.AccountProvider
-	roleProvider    provider.RoleProvider
 	policyProvider  provider.PolicyProvider
 	authProviders   *identity.AuthenticationProviderManager
 	logger          Logger
@@ -62,14 +61,12 @@ func WithLogger(l Logger) ControllerOption {
 // NewAuthController creates a new AuthController with the given providers.
 func NewAuthController(
 	accountProvider provider.AccountProvider,
-	roleProvider provider.RoleProvider,
 	policyProvider provider.PolicyProvider,
 	authProviders *identity.AuthenticationProviderManager,
 	opts ...ControllerOption,
 ) *AuthController {
 	c := &AuthController{
 		accountProvider: accountProvider,
-		roleProvider:    roleProvider,
 		policyProvider:  policyProvider,
 		authProviders:   authProviders,
 		logger:          &defaultLogger{},
@@ -168,7 +165,7 @@ func (c *AuthController) ResolveNatsPermissions(ctx context.Context, user *ident
 
 	// Process each role name
 	for _, roleName := range roleNames {
-		globalRole, localRole, err := c.roleProvider.GetRoles(ctx, roleName, account)
+		policies, err := c.policyProvider.GetPoliciesForRole(ctx, account, roleName)
 		if err != nil {
 			if errors.Is(err, provider.ErrRoleNotFound) {
 				c.logger.Warn("role not found: %s (user: %s)", roleName, user.ID)
@@ -177,15 +174,7 @@ func (c *AuthController) ResolveNatsPermissions(ctx context.Context, user *ident
 			return nil, NewAuthError(user.ID, "resolve_permissions", err.Error(), err)
 		}
 
-		// Process global role if it exists
-		if globalRole != nil {
-			c.compileRolePolicies(ctx, user, userCtx, globalRole, result)
-		}
-
-		// Process local role if it exists
-		if localRole != nil {
-			c.compileRolePolicies(ctx, user, userCtx, localRole, result)
-		}
+		c.compilePoliciesForRole(userCtx, account, roleName, policies, result)
 	}
 
 	// Deduplicate
@@ -194,28 +183,9 @@ func (c *AuthController) ResolveNatsPermissions(ctx context.Context, user *ident
 	return result, nil
 }
 
-// compileRolePolicies compiles policies for a single role.
-func (c *AuthController) compileRolePolicies(ctx context.Context, user *identity.User, userCtx *policy.UserContext, role *provider.Role, result *policy.NatsPermissions) {
-	// Collect policies for this role
-	var policies []*policy.Policy
-	for _, policyID := range role.Policies {
-		pol, err := c.policyProvider.GetPolicy(ctx, policyID)
-		if err != nil {
-			if errors.Is(err, provider.ErrPolicyNotFound) {
-				c.logger.Warn("policy not found: %s (role: %s)", policyID, role.Name)
-				continue
-			}
-			c.logger.Warn("error fetching policy %s: %v", policyID, err)
-			continue
-		}
-		policies = append(policies, pol)
-	}
-
-	// Compile policies with role context
-	roleCtx := roleToContext(role)
+func (c *AuthController) compilePoliciesForRole(userCtx *policy.UserContext, account string, roleName string, policies []*policy.Policy, result *policy.NatsPermissions) {
+	roleCtx := &policy.RoleContext{Name: roleName, Account: account}
 	compileResult := policy.Compile(policies, userCtx, roleCtx, result)
-
-	// Log any warnings
 	for _, warning := range compileResult.Warnings {
 		c.logger.Warn("%s", warning)
 	}
@@ -375,16 +345,5 @@ func userToContext(user *identity.User, account string) *policy.UserContext {
 		ID:         user.ID,
 		Account:    account,
 		Attributes: user.Attributes,
-	}
-}
-
-// roleToContext converts a provider.Role to a policy.RoleContext for interpolation.
-func roleToContext(role *provider.Role) *policy.RoleContext {
-	if role == nil {
-		return nil
-	}
-	return &policy.RoleContext{
-		Name:    role.Name,
-		Account: role.Account,
 	}
 }

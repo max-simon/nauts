@@ -9,16 +9,11 @@
       ]
     }
   },
-  "role": {
-    "type": "file",
-    "file": {
-      "path": "../roles.json"
-    }
-  },
   "policy": {
     "type": "file",
     "file": {
-      "path": "../policies.json"
+      "policiesPath": "../policies.json",
+      "rolesPath": "../roles.json"
     }
   },
   "auth": {

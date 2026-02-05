@@ -44,11 +44,8 @@ nauts/
 │   ├── account_provider.go # AccountProvider interface
 │   ├── operator_account_provider.go # OperatorAccountProvider (operator mode with signing keys)
 │   ├── static_account_provider.go # StaticAccountProvider (single key for all accounts)
-│   ├── role_provider.go    # RoleProvider interface
-│   ├── file_role_provider.go # FileRoleProvider (JSON file backend)
 │   ├── policy_provider.go  # PolicyProvider interface
 │   ├── file_policy_provider.go # FilePolicyProvider (JSON file backend)
-│   ├── role.go             # Role type with validation
 │   └── errors.go           # Provider errors (ErrNotFound, etc.)
 ├── identity/               # User identity management
 │   ├── user.go             # User type
@@ -103,9 +100,9 @@ nauts/
 - Actions: `Action`, `ActionDef`, `ResolveActions()`
 - Auth controller: `AuthController`, `NewAuthController()`, `NewAuthControllerWithConfig()`, `Authenticate()`, `ResolveUser()`, `ResolveNatsPermissions()`, `CreateUserJWT()`
 - Callout service: `CalloutService`, `NewCalloutService()`, `CalloutConfig`, `Start()`, `Stop()`
-- Configuration: `Config`, `LoadConfig()`, `AccountConfig`, `RoleConfig`, `PolicyConfig`, `IdentityConfig`, `ServerConfig`
+- Configuration: `Config`, `LoadConfig()`, `AccountConfig`, `PolicyConfig`, `IdentityConfig`, `ServerConfig`
 - Permissions: `NatsPermissions`, `Permission`, `PermissionSet`
-- Providers: `AccountProvider`, `OperatorAccountProvider`, `StaticAccountProvider`, `RoleProvider`, `FileRoleProvider`, `PolicyProvider`, `FilePolicyProvider`, `AuthenticationProvider`, `FileAuthenticationProvider`
+- Providers: `AccountProvider`, `OperatorAccountProvider`, `StaticAccountProvider`, `PolicyProvider`, `FilePolicyProvider`, `AuthenticationProvider`, `FileAuthenticationProvider`
 - JWT: `Signer`, `LocalSigner`, `IssueUserJWT()`
 - Entities: `Account`, `Role`, `User`
 
@@ -174,16 +171,11 @@ The CLI uses a JSON configuration file (`-c/--config`):
       }
     }
   },
-  "role": {
-    "type": "file",
-    "file": {
-      "path": "roles.json"
-    }
-  },
   "policy": {
     "type": "file",
     "file": {
-      "path": "policies.json"
+      "policiesPath": "policies.json",
+      "rolesPath": "roles.json"
     }
   },
   "auth": {
@@ -312,8 +304,8 @@ The `policy.Compile()` function transforms policies to NATS permissions:
 
 The `auth.AuthController` orchestrates the full authentication flow:
 1. Verify identity token via `AuthenticationProviderManager` → returns `*identity.User`
-2. Resolve user's roles (including default role) from `RoleProvider`
-3. For each role, fetch both global and local roles, then compile policies with user/role context
+2. Resolve user's roles (including default role) from identity provider claims
+3. For each role, fetch policies via `PolicyProvider.GetPoliciesForRole()` (global+local), then compile with user/role context
 4. Deduplicate permissions with wildcard awareness
 5. Create signed JWT via `jwt.IssueUserJWT()` using account's signer from `AccountProvider`
 6. Return `AuthResult` containing user, permissions, and JWT
@@ -359,12 +351,9 @@ accountProvider, _ := provider.NewOperatorAccountProvider(provider.OperatorAccou
     },
 })
 
-roleProvider, _ := provider.NewFileRoleProvider(provider.FileRoleProviderConfig{
-    RolesPath: "roles.json",
-})
-
 policyProvider, _ := provider.NewFilePolicyProvider(provider.FilePolicyProviderConfig{
-    PoliciesPath: "policies.json",
+  PoliciesPath: "policies.json",
+  RolesPath:    "roles.json",
 })
 
 identityProvider, _ := identity.NewFileAuthenticationProvider(identity.FileAuthenticationProviderConfig{
@@ -376,7 +365,7 @@ authProviders := identity.NewAuthenticationProviderManager(map[string]identity.A
 })
 
 // Create controller
-controller := auth.NewAuthController(accountProvider, roleProvider, policyProvider, authProviders)
+controller := auth.NewAuthController(accountProvider, policyProvider, authProviders)
 
 // Or use individual methods
 user, err := controller.ResolveUser(ctx, token)
@@ -569,8 +558,6 @@ require (
 - [x] Account provider: `provider/account_provider.go` - `AccountProvider` interface with `IsOperatorMode()`
 - [x] Operator account provider: `provider/operator_account_provider.go` - Per-account signing keys for operator mode
 - [x] Static account provider: `provider/static_account_provider.go` - Single key for all accounts
-- [x] Role provider: `provider/role_provider.go` - `RoleProvider` interface
-- [x] File role provider: `provider/file_role_provider.go` - JSON file backend for roles
 - [x] Policy provider: `provider/policy_provider.go` - `PolicyProvider` interface
 - [x] File policy provider: `provider/file_policy_provider.go` - JSON file backend for policies
 - [x] Identity provider: `identity/provider.go` - `AuthenticationProvider` interface

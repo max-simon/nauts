@@ -8,12 +8,12 @@ import (
 func TestRole_Validate(t *testing.T) {
 	tests := []struct {
 		name    string
-		role    Role
+		role    role
 		wantErr bool
 	}{
 		{
 			name: "valid global role",
-			role: Role{
+			role: role{
 				Name:     "test-role",
 				Account:  GlobalAccountID,
 				Policies: []string{"policy-1"},
@@ -22,7 +22,7 @@ func TestRole_Validate(t *testing.T) {
 		},
 		{
 			name: "valid local role",
-			role: Role{
+			role: role{
 				Name:     "test-role",
 				Account:  "APP",
 				Policies: []string{"policy-1"},
@@ -31,7 +31,7 @@ func TestRole_Validate(t *testing.T) {
 		},
 		{
 			name: "valid role without policies",
-			role: Role{
+			role: role{
 				Name:    "test-role",
 				Account: GlobalAccountID,
 			},
@@ -39,7 +39,7 @@ func TestRole_Validate(t *testing.T) {
 		},
 		{
 			name: "missing name",
-			role: Role{
+			role: role{
 				Account:  GlobalAccountID,
 				Policies: []string{"policy-1"},
 			},
@@ -47,7 +47,7 @@ func TestRole_Validate(t *testing.T) {
 		},
 		{
 			name: "missing account",
-			role: Role{
+			role: role{
 				Name:     "test-role",
 				Policies: []string{"policy-1"},
 			},
@@ -68,17 +68,17 @@ func TestRole_Validate(t *testing.T) {
 func TestRole_IsGlobal(t *testing.T) {
 	tests := []struct {
 		name string
-		role Role
+		role role
 		want bool
 	}{
 		{
 			name: "global role",
-			role: Role{Name: "test", Account: GlobalAccountID},
+			role: role{Name: "test", Account: GlobalAccountID},
 			want: true,
 		},
 		{
 			name: "local role",
-			role: Role{Name: "test", Account: "APP"},
+			role: role{Name: "test", Account: "APP"},
 			want: false,
 		},
 	}
@@ -95,17 +95,17 @@ func TestRole_IsGlobal(t *testing.T) {
 func TestRole_Key(t *testing.T) {
 	tests := []struct {
 		name string
-		role Role
+		role role
 		want string
 	}{
 		{
 			name: "global role",
-			role: Role{Name: "admin", Account: GlobalAccountID},
+			role: role{Name: "admin", Account: GlobalAccountID},
 			want: "admin:*",
 		},
 		{
 			name: "local role",
-			role: Role{Name: "admin", Account: "APP"},
+			role: role{Name: "admin", Account: "APP"},
 			want: "admin:APP",
 		},
 	}
@@ -120,7 +120,7 @@ func TestRole_Key(t *testing.T) {
 }
 
 func TestRole_JSON(t *testing.T) {
-	role := Role{
+	role := role{
 		Name:     "test-role",
 		Account:  GlobalAccountID,
 		Policies: []string{"policy-1", "policy-2"},
@@ -131,7 +131,7 @@ func TestRole_JSON(t *testing.T) {
 		t.Fatalf("Marshal error: %v", err)
 	}
 
-	var parsed Role
+	var parsed role
 	if err := json.Unmarshal(data, &parsed); err != nil {
 		t.Fatalf("Unmarshal error: %v", err)
 	}

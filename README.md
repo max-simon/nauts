@@ -92,13 +92,9 @@ nauts uses a JSON configuration file. Here's a minimal example:
       "accounts": ["APP"]
     }
   },
-  "role": {
-    "type": "file",
-    "file": { "path": "roles.json" }
-  },
   "policy": {
     "type": "file",
-    "file": { "path": "policies.json" }
+    "file": { "policiesPath": "policies.json", "rolesPath": "roles.json" }
   },
   "auth": {
     "file": [

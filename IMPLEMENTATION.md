@@ -21,11 +21,9 @@ nauts/
 │   ├── account_provider.go # AccountProvider interface
 │   ├── operator_account_provider.go # OperatorAccountProvider (operator mode)
 │   ├── static_account_provider.go # StaticAccountProvider
-│   ├── role_provider.go    # RoleProvider interface
-│   ├── file_role_provider.go # FileRoleProvider
 │   ├── policy_provider.go  # PolicyProvider interface
 │   ├── file_policy_provider.go # FilePolicyProvider
-│   └── role.go             # Role type
+│   └── errors.go           # Provider errors
 ├── identity/               # User identity management
 │   ├── user.go             # User type
 │   ├── provider.go         # AuthenticationProvider interface, AuthRequest
@@ -60,8 +58,8 @@ nauts/
 │    identity/    │    │    provider/    │         │      jwt/       │
 │                 │    │                 │         │                 │
 │ ┌─────────────┐ │    │ ┌─────────────┐ │         │ ┌─────────────┐ │
-│ │    User     │ │    │ │RoleProvider │ │         │ │   Signer    │ │
-│ │IdentityProv│ │    │ │PolicyProvider│ │         │ │ IssueUserJWT│ │
+│ │    User     │ │    │ │PolicyProvider│ │         │ │   Signer    │ │
+│ │IdentityProv│ │    │ │ (roles+pols) │ │         │ │ IssueUserJWT│ │
 │ └─────────────┘ │    │ └─────────────┘ │         │ └─────────────┘ │
 └─────────────────┘    │ ┌─────────────┐ │         └────────┬────────┘
                        │ │AccountProvider│                  │
@@ -85,7 +83,7 @@ nauts/
 | Package | Responsibility |
 |---------|---------------|
 | `policy/` | Policy specification, compilation, variable interpolation, action mapping |
-| `provider/` | NATS account management, policy storage, role storage |
+| `provider/` | NATS account management, policy storage, role→policy mapping |
 | `identity/` | User authentication and identity resolution |
 | `jwt/` | NATS JWT creation and signing |
 | `auth/` | Authentication orchestration and NATS auth callout service |
@@ -365,16 +363,11 @@ Environment variables:
       }
     }
   },
-  "role": {
-    "type": "file",
-    "file": {
-      "path": "roles.json"
-    }
-  },
   "policy": {
     "type": "file",
     "file": {
-      "path": "policies.json"
+      "policiesPath": "policies.json",
+      "rolesPath": "roles.json"
     }
   },
   "auth": {

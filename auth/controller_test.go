@@ -302,9 +302,6 @@ func createTestController(t *testing.T) *AuthController {
 	// Create account provider
 	accountProvider := createTestAccountProvider(t, tmpDir)
 
-	// Create role provider
-	roleProvider := createTestRoleProvider(t, tmpDir)
-
 	// Create policy provider
 	policyProvider := createTestPolicyProvider(t, tmpDir)
 
@@ -316,7 +313,7 @@ func createTestController(t *testing.T) *AuthController {
 	}
 
 	logger := &testLogger{}
-	return NewAuthController(accountProvider, roleProvider, policyProvider, manager, WithLogger(logger))
+	return NewAuthController(accountProvider, policyProvider, manager, WithLogger(logger))
 }
 
 func createTestAccountProvider(t *testing.T, tmpDir string) provider.AccountProvider {
@@ -354,40 +351,11 @@ func createTestAccountProvider(t *testing.T, tmpDir string) provider.AccountProv
 	return ap
 }
 
-func createTestRoleProvider(t *testing.T, tmpDir string) provider.RoleProvider {
-	t.Helper()
-
-	rolesFile := filepath.Join(tmpDir, "roles.json")
-	rolesContent := `[
-  {
-    "name": "default",
-    "account": "*",
-    "policies": []
-  },
-  {
-    "name": "workers",
-    "account": "*",
-    "policies": ["allow-basic"]
-  }
-]`
-	if err := os.WriteFile(rolesFile, []byte(rolesContent), 0644); err != nil {
-		t.Fatalf("writing roles file: %v", err)
-	}
-
-	rp, err := provider.NewFileRoleProvider(provider.FileRoleProviderConfig{
-		RolesPath: rolesFile,
-	})
-	if err != nil {
-		t.Fatalf("creating role provider: %v", err)
-	}
-
-	return rp
-}
-
 func createTestPolicyProvider(t *testing.T, tmpDir string) provider.PolicyProvider {
 	t.Helper()
 
 	policiesFile := filepath.Join(tmpDir, "policies.json")
+	rolesFile := filepath.Join(tmpDir, "roles.json")
 	policiesContent := `[
   {
     "id": "allow-basic",
@@ -405,8 +373,25 @@ func createTestPolicyProvider(t *testing.T, tmpDir string) provider.PolicyProvid
 		t.Fatalf("writing policies file: %v", err)
 	}
 
+	rolesContent := `[
+	{
+		"name": "default",
+		"account": "*",
+		"policies": []
+	},
+	{
+		"name": "workers",
+		"account": "*",
+		"policies": ["allow-basic"]
+	}
+]`
+	if err := os.WriteFile(rolesFile, []byte(rolesContent), 0644); err != nil {
+		t.Fatalf("writing roles file: %v", err)
+	}
+
 	pp, err := provider.NewFilePolicyProvider(provider.FilePolicyProviderConfig{
 		PoliciesPath: policiesFile,
+		RolesPath:    rolesFile,
 	})
 	if err != nil {
 		t.Fatalf("creating policy provider: %v", err)

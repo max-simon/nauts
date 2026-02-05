@@ -92,13 +92,9 @@ func runAuth(args []string) error {
 	  "type": "static",
 	  "static": { "publicKey": "AXXXXX...", "privateKeyPath": "account.nk", "accounts": ["APP"] }
 	},
-	"role": {
-	  "type": "file",
-	  "file": { "path": "roles.json" }
-	},
 	"policy": {
 	  "type": "file",
-	  "file": { "path": "policies.json" }
+	  "file": { "policiesPath": "policies.json", "rolesPath": "roles.json" }
 	},
 	"auth": {
 	  "file": [
@@ -172,13 +168,9 @@ func runServe(args []string) error {
 	  "type": "static",
 	  "static": { "publicKey": "AXXXXX...", "privateKeyPath": "account.nk", "accounts": ["APP"] }
 	},
-	"role": {
-	  "type": "file",
-	  "file": { "path": "roles.json" }
-	},
 	"policy": {
 	  "type": "file",
-	  "file": { "path": "policies.json" }
+	  "file": { "policiesPath": "policies.json", "rolesPath": "roles.json" }
 	},
 	"auth": {
 	  "file": [

@@ -12,6 +12,7 @@ import (
 func TestNewFilePolicyProvider(t *testing.T) {
 	cfg := FilePolicyProviderConfig{
 		PoliciesPath: "../test/policies.json",
+		RolesPath:    "../test/roles.json",
 	}
 
 	fp, err := NewFilePolicyProvider(cfg)
@@ -37,6 +38,18 @@ func TestNewFilePolicyProvider(t *testing.T) {
 	}
 	if len(policies) < 1 {
 		t.Errorf("ListPolicies() returned %d policies, want at least 1", len(policies))
+	}
+
+	// Test GetPoliciesForRole
+	rolePolicies, err := fp.GetPoliciesForRole(ctx, "APP", "readonly")
+	if err != nil {
+		t.Fatalf("GetPoliciesForRole() error = %v", err)
+	}
+	if len(rolePolicies) != 1 {
+		t.Fatalf("GetPoliciesForRole() returned %d policies, want 1", len(rolePolicies))
+	}
+	if rolePolicies[0].ID != "read-access" {
+		t.Errorf("GetPoliciesForRole() first policy ID = %q, want %q", rolePolicies[0].ID, "read-access")
 	}
 }
 
@@ -65,6 +78,20 @@ func TestNewFilePolicyProvider_EmptyConfig(t *testing.T) {
 	}
 	if len(policies) != 0 {
 		t.Errorf("ListPolicies() = %d, want 0 for empty config", len(policies))
+	}
+}
+
+func TestFilePolicyProvider_GetPoliciesForRole_NotFound(t *testing.T) {
+	fp := &FilePolicyProvider{
+		policies:    make(map[string]*policy.Policy),
+		localRoles:  make(map[string]*role),
+		globalRoles: make(map[string]*role),
+	}
+
+	ctx := context.Background()
+	_, err := fp.GetPoliciesForRole(ctx, "APP", "nonexistent")
+	if err != ErrRoleNotFound {
+		t.Errorf("GetPoliciesForRole() error = %v, want ErrRoleNotFound", err)
 	}
 }
 
