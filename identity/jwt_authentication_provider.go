@@ -16,29 +16,22 @@ import (
 
 // JwtAuthenticationProvider errors.
 var (
-	// ErrIssuerNotConfigured is returned when the JWT issuer is not in the configuration.
-	ErrIssuerNotConfigured = errors.New("issuer not configured")
-
 	// ErrNoRolesFound is returned when no valid roles are found in the JWT.
 	ErrNoRolesFound = errors.New("no valid roles found in token")
 )
-
-// IssuerConfig holds configuration for a single JWT issuer.
-type IssuerConfig struct {
-	// PublicKey is the PEM-encoded public key for JWT signature verification.
-	PublicKey string `json:"publicKey"`
-	// RolesClaimPath is the path to roles in JWT claims (dot-separated).
-	// Default: "resource_access.nauts.roles"
-	RolesClaimPath string `json:"rolesClaimPath,omitempty"`
-}
 
 // JwtAuthenticationProviderConfig holds configuration for JwtAuthenticationProvider.
 type JwtAuthenticationProviderConfig struct {
 	// Accounts is the list of NATS accounts this provider can manage.
 	// Patterns support wildcards in the form of "*" (all) or "prefix*".
 	Accounts []string `json:"accounts"`
-	// Issuers maps JWT issuer (iss claim) to their configuration.
-	Issuers map[string]IssuerConfig `json:"issuers"`
+	// Issuer is the expected JWT issuer (iss claim).
+	Issuer string `json:"issuer"`
+	// PublicKey is the PEM-encoded public key for JWT signature verification (base64-encoded PEM block).
+	PublicKey string `json:"publicKey"`
+	// RolesClaimPath is the path to roles in JWT claims (dot-separated).
+	// Default: "resource_access.nauts.roles"
+	RolesClaimPath string `json:"rolesClaimPath,omitempty"`
 }
 
 // JwtAuthenticationProvider implements AuthenticationProvider using external JWTs.
@@ -47,40 +40,33 @@ type JwtAuthenticationProviderConfig struct {
 // Roles in the JWT must follow the format "<account>.<role>" (e.g., "tenant-a.admin").
 // Account manageability validation and role filtering are performed by AuthController.
 type JwtAuthenticationProvider struct {
-	issuers            map[string]*issuerEntry
+	issuer             string
+	publicKey          any
+	rolesClaimPath     []string
 	manageableAccounts []string
-}
-
-// issuerEntry holds parsed issuer configuration.
-type issuerEntry struct {
-	publicKey      any      // *rsa.PublicKey, *ecdsa.PublicKey, or ed25519.PublicKey
-	rolesClaimPath []string // path to roles in JWT claims (split by ".")
 }
 
 // NewJwtAuthenticationProvider creates a new JwtAuthenticationProvider from the given configuration.
 func NewJwtAuthenticationProvider(cfg JwtAuthenticationProviderConfig) (*JwtAuthenticationProvider, error) {
+	if strings.TrimSpace(cfg.Issuer) == "" {
+		return nil, fmt.Errorf("issuer is required")
+	}
+	pubKey, err := parsePublicKey(cfg.PublicKey)
+	if err != nil {
+		return nil, fmt.Errorf("parsing public key: %w", err)
+	}
+
+	rolesPath := cfg.RolesClaimPath
+	if rolesPath == "" {
+		rolesPath = "resource_access.nauts.roles"
+	}
+
 	provider := &JwtAuthenticationProvider{
-		issuers:            make(map[string]*issuerEntry),
+		issuer:             cfg.Issuer,
+		publicKey:          pubKey,
+		rolesClaimPath:     strings.Split(rolesPath, "."),
 		manageableAccounts: append([]string(nil), cfg.Accounts...),
 	}
-
-	for issuer, issuerCfg := range cfg.Issuers {
-		pubKey, err := parsePublicKey(issuerCfg.PublicKey)
-		if err != nil {
-			return nil, fmt.Errorf("parsing public key for issuer %q: %w", issuer, err)
-		}
-
-		rolesPath := issuerCfg.RolesClaimPath
-		if rolesPath == "" {
-			rolesPath = "resource_access.nauts.roles"
-		}
-
-		provider.issuers[issuer] = &issuerEntry{
-			publicKey:      pubKey,
-			rolesClaimPath: strings.Split(rolesPath, "."),
-		}
-	}
-
 	return provider, nil
 }
 
@@ -117,7 +103,7 @@ func parsePublicKey(pemDataB64 string) (any, error) {
 //
 // Role filtering and account manageability validation are performed by AuthController.
 func (p *JwtAuthenticationProvider) Verify(_ context.Context, req AuthRequest) (*User, error) {
-	token, issuerEntry, err := p.parseAndVerifyJWT(req.Token)
+	token, err := p.parseAndVerifyJWT(req.Token)
 	if err != nil {
 		return nil, err
 	}
@@ -132,7 +118,12 @@ func (p *JwtAuthenticationProvider) Verify(_ context.Context, req AuthRequest) (
 		userID = "unknown"
 	}
 
-	rawRoles, err := extractRoles(claims, issuerEntry.rolesClaimPath)
+	issuer, _ := claims["iss"].(string)
+	if issuer != p.issuer {
+		return nil, ErrInvalidCredentials
+	}
+
+	rawRoles, err := extractRoles(claims, p.rolesClaimPath)
 	if err != nil {
 		return nil, err
 	}
@@ -151,30 +142,10 @@ func (p *JwtAuthenticationProvider) Verify(_ context.Context, req AuthRequest) (
 	}, nil
 }
 
-// parseAndVerifyJWT parses the JWT, looks up the issuer, and verifies the signature.
-func (p *JwtAuthenticationProvider) parseAndVerifyJWT(tokenString string) (*jwt.Token, *issuerEntry, error) {
-	unverified, _, err := jwt.NewParser().ParseUnverified(tokenString, jwt.MapClaims{})
-	if err != nil {
-		return nil, nil, fmt.Errorf("%w: %v", ErrInvalidCredentials, err)
-	}
-
-	claims, ok := unverified.Claims.(jwt.MapClaims)
-	if !ok {
-		return nil, nil, ErrInvalidTokenType
-	}
-
-	issuer, _ := claims["iss"].(string)
-	if issuer == "" {
-		return nil, nil, fmt.Errorf("%w: missing issuer claim", ErrInvalidCredentials)
-	}
-
-	entry, ok := p.issuers[issuer]
-	if !ok {
-		return nil, nil, ErrIssuerNotConfigured
-	}
-
+// parseAndVerifyJWT parses the JWT and verifies the signature.
+func (p *JwtAuthenticationProvider) parseAndVerifyJWT(tokenString string) (*jwt.Token, error) {
 	token, err := jwt.Parse(tokenString, func(t *jwt.Token) (any, error) {
-		switch entry.publicKey.(type) {
+		switch p.publicKey.(type) {
 		case *rsa.PublicKey:
 			if _, ok := t.Method.(*jwt.SigningMethodRSA); !ok {
 				return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
@@ -184,16 +155,15 @@ func (p *JwtAuthenticationProvider) parseAndVerifyJWT(tokenString string) (*jwt.
 				return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
 			}
 		}
-		return entry.publicKey, nil
+		return p.publicKey, nil
 	})
 	if err != nil {
-		return nil, nil, fmt.Errorf("%w: %v", ErrInvalidCredentials, err)
+		return nil, fmt.Errorf("%w: %v", ErrInvalidCredentials, err)
 	}
 	if !token.Valid {
-		return nil, nil, ErrInvalidCredentials
+		return nil, ErrInvalidCredentials
 	}
-
-	return token, entry, nil
+	return token, nil
 }
 
 // extractRoles extracts roles from JWT claims at the given path.

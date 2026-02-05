@@ -55,12 +55,9 @@ func TestJwtAuthenticationProvider_Verify_Success(t *testing.T) {
 	privateKey, publicKeyPEM := generateTestKeyPair(t)
 
 	provider, err := NewJwtAuthenticationProvider(JwtAuthenticationProviderConfig{
-		Accounts: []string{"*"},
-		Issuers: map[string]IssuerConfig{
-			"https://auth.example.com": {
-				PublicKey: publicKeyPEM,
-			},
-		},
+		Accounts:  []string{"*"},
+		Issuer:    "https://auth.example.com",
+		PublicKey: publicKeyPEM,
 	})
 	if err != nil {
 		t.Fatalf("creating provider: %v", err)
@@ -119,12 +116,9 @@ func TestJwtAuthenticationProvider_Verify_WithExplicitAccount(t *testing.T) {
 	privateKey, publicKeyPEM := generateTestKeyPair(t)
 
 	provider, err := NewJwtAuthenticationProvider(JwtAuthenticationProviderConfig{
-		Accounts: []string{"*"},
-		Issuers: map[string]IssuerConfig{
-			"https://auth.example.com": {
-				PublicKey: publicKeyPEM,
-			},
-		},
+		Accounts:  []string{"*"},
+		Issuer:    "https://auth.example.com",
+		PublicKey: publicKeyPEM,
 	})
 	if err != nil {
 		t.Fatalf("creating provider: %v", err)
@@ -165,22 +159,19 @@ func TestJwtAuthenticationProvider_Verify_WithExplicitAccount(t *testing.T) {
 	}
 }
 
-func TestJwtAuthenticationProvider_Verify_IssuerNotConfigured(t *testing.T) {
+func TestJwtAuthenticationProvider_Verify_IssuerMismatch(t *testing.T) {
 	privateKey, publicKeyPEM := generateTestKeyPair(t)
 
 	provider, err := NewJwtAuthenticationProvider(JwtAuthenticationProviderConfig{
-		Accounts: []string{"*"},
-		Issuers: map[string]IssuerConfig{
-			"https://auth.example.com": {
-				PublicKey: publicKeyPEM,
-			},
-		},
+		Accounts:  []string{"*"},
+		Issuer:    "https://auth.example.com",
+		PublicKey: publicKeyPEM,
 	})
 	if err != nil {
 		t.Fatalf("creating provider: %v", err)
 	}
 
-	// JWT from unknown issuer
+	// JWT with wrong issuer
 	tokenString := createTestJWT(t, privateKey, jwt.MapClaims{
 		"iss": "https://unknown-issuer.com",
 		"sub": "user-123",
@@ -188,8 +179,8 @@ func TestJwtAuthenticationProvider_Verify_IssuerNotConfigured(t *testing.T) {
 	})
 
 	_, err = provider.Verify(context.Background(), AuthRequest{Account: "any", Token: tokenString})
-	if !errors.Is(err, ErrIssuerNotConfigured) {
-		t.Errorf("Verify() error = %v, want %v", err, ErrIssuerNotConfigured)
+	if !errors.Is(err, ErrInvalidCredentials) {
+		t.Errorf("Verify() error = %v, want %v", err, ErrInvalidCredentials)
 	}
 }
 
@@ -197,12 +188,9 @@ func TestJwtAuthenticationProvider_Verify_NoRoles(t *testing.T) {
 	privateKey, publicKeyPEM := generateTestKeyPair(t)
 
 	provider, err := NewJwtAuthenticationProvider(JwtAuthenticationProviderConfig{
-		Accounts: []string{"*"},
-		Issuers: map[string]IssuerConfig{
-			"https://auth.example.com": {
-				PublicKey: publicKeyPEM,
-			},
-		},
+		Accounts:  []string{"*"},
+		Issuer:    "https://auth.example.com",
+		PublicKey: publicKeyPEM,
 	})
 	if err != nil {
 		t.Fatalf("creating provider: %v", err)
@@ -225,12 +213,9 @@ func TestJwtAuthenticationProvider_Verify_InvalidRoleFormat(t *testing.T) {
 	privateKey, publicKeyPEM := generateTestKeyPair(t)
 
 	provider, err := NewJwtAuthenticationProvider(JwtAuthenticationProviderConfig{
-		Accounts: []string{"*"},
-		Issuers: map[string]IssuerConfig{
-			"https://auth.example.com": {
-				PublicKey: publicKeyPEM,
-			},
-		},
+		Accounts:  []string{"*"},
+		Issuer:    "https://auth.example.com",
+		PublicKey: publicKeyPEM,
 	})
 	if err != nil {
 		t.Fatalf("creating provider: %v", err)
@@ -258,12 +243,9 @@ func TestJwtAuthenticationProvider_Verify_ExpiredToken(t *testing.T) {
 	privateKey, publicKeyPEM := generateTestKeyPair(t)
 
 	provider, err := NewJwtAuthenticationProvider(JwtAuthenticationProviderConfig{
-		Accounts: []string{"*"},
-		Issuers: map[string]IssuerConfig{
-			"https://auth.example.com": {
-				PublicKey: publicKeyPEM,
-			},
-		},
+		Accounts:  []string{"*"},
+		Issuer:    "https://auth.example.com",
+		PublicKey: publicKeyPEM,
 	})
 	if err != nil {
 		t.Fatalf("creating provider: %v", err)
@@ -293,12 +275,9 @@ func TestJwtAuthenticationProvider_Verify_InvalidSignature(t *testing.T) {
 
 	// Provider configured with key1
 	provider, err := NewJwtAuthenticationProvider(JwtAuthenticationProviderConfig{
-		Accounts: []string{"*"},
-		Issuers: map[string]IssuerConfig{
-			"https://auth.example.com": {
-				PublicKey: publicKeyPEM1,
-			},
-		},
+		Accounts:  []string{"*"},
+		Issuer:    "https://auth.example.com",
+		PublicKey: publicKeyPEM1,
 	})
 	if err != nil {
 		t.Fatalf("creating provider: %v", err)
@@ -326,13 +305,10 @@ func TestJwtAuthenticationProvider_CustomRolesPath(t *testing.T) {
 	privateKey, publicKeyPEM := generateTestKeyPair(t)
 
 	provider, err := NewJwtAuthenticationProvider(JwtAuthenticationProviderConfig{
-		Accounts: []string{"*"},
-		Issuers: map[string]IssuerConfig{
-			"https://auth.example.com": {
-				PublicKey:      publicKeyPEM,
-				RolesClaimPath: "realm_access.roles", // Custom path per issuer
-			},
-		},
+		Accounts:       []string{"*"},
+		Issuer:         "https://auth.example.com",
+		PublicKey:      publicKeyPEM,
+		RolesClaimPath: "realm_access.roles",
 	})
 	if err != nil {
 		t.Fatalf("creating provider: %v", err)
@@ -354,68 +330,6 @@ func TestJwtAuthenticationProvider_CustomRolesPath(t *testing.T) {
 
 	if len(user.Roles) != 1 || user.Roles[0].Account != "myaccount" || user.Roles[0].Role != "myrole" {
 		t.Errorf("user.Roles = %v, want [{myaccount myrole}]", user.Roles)
-	}
-}
-
-func TestJwtAuthenticationProvider_DifferentRolesPathPerIssuer(t *testing.T) {
-	privateKey1, publicKeyPEM1 := generateTestKeyPair(t)
-	privateKey2, publicKeyPEM2 := generateTestKeyPair(t)
-
-	provider, err := NewJwtAuthenticationProvider(JwtAuthenticationProviderConfig{
-		Accounts: []string{"*"},
-		Issuers: map[string]IssuerConfig{
-			"https://auth1.example.com": {
-				PublicKey:      publicKeyPEM1,
-				RolesClaimPath: "realm_access.roles",
-			},
-			"https://auth2.example.com": {
-				PublicKey:      publicKeyPEM2,
-				RolesClaimPath: "custom.path.to.roles",
-			},
-		},
-	})
-	if err != nil {
-		t.Fatalf("creating provider: %v", err)
-	}
-
-	// Test issuer 1 with realm_access.roles
-	token1 := createTestJWT(t, privateKey1, jwt.MapClaims{
-		"iss": "https://auth1.example.com",
-		"sub": "user-1",
-		"exp": time.Now().Add(time.Hour).Unix(),
-		"realm_access": map[string]any{
-			"roles": []any{"account1.admin"},
-		},
-	})
-
-	user1, err := provider.Verify(context.Background(), AuthRequest{Account: "account1", Token: token1})
-	if err != nil {
-		t.Fatalf("Verify() issuer1 error = %v", err)
-	}
-	if len(user1.Roles) != 1 || user1.Roles[0].Account != "account1" || user1.Roles[0].Role != "admin" {
-		t.Errorf("issuer1: got roles=%v, want [{account1 admin}]", user1.Roles)
-	}
-
-	// Test issuer 2 with custom.path.to.roles
-	token2 := createTestJWT(t, privateKey2, jwt.MapClaims{
-		"iss": "https://auth2.example.com",
-		"sub": "user-2",
-		"exp": time.Now().Add(time.Hour).Unix(),
-		"custom": map[string]any{
-			"path": map[string]any{
-				"to": map[string]any{
-					"roles": []any{"account2.viewer"},
-				},
-			},
-		},
-	})
-
-	user2, err := provider.Verify(context.Background(), AuthRequest{Account: "account2", Token: token2})
-	if err != nil {
-		t.Fatalf("Verify() issuer2 error = %v", err)
-	}
-	if len(user2.Roles) != 1 || user2.Roles[0].Account != "account2" || user2.Roles[0].Role != "viewer" {
-		t.Errorf("issuer2: got roles=%v, want [{account2 viewer}]", user2.Roles)
 	}
 }
 

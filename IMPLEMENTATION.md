@@ -108,7 +108,7 @@ controller, _ := auth.NewAuthControllerWithConfig(config)
 
 // Authenticate
 result, err := controller.Authenticate(ctx, jwt.ConnectOptions{
-    Token: `{"token":"alice:secret"}`,
+  Token: `{"account":"APP","token":"alice:secret"}`,
 }, userPublicKey, time.Hour)
 // result.User, result.Permissions, result.JWT
 ```
@@ -210,13 +210,15 @@ Simpler setup with single signing key for all accounts:
 }
 ```
 
-## Identity Providers
+## Authentication Providers
 
 ### FileAuthenticationProvider
 
 Static user list with bcrypt password hashes.
 
 **Token format**: `{"account":"APP","token":"username:password"}`
+
+**Optional provider selection**: `{"account":"APP","token":"username:password","ap":"local"}`
 
 ```json
 {
@@ -231,8 +233,7 @@ Static user list with bcrypt password hashes.
 }
 ```
 
-- If user has single account, `account` in request is optional
-- If user has multiple accounts, `account` must be specified
+`account` is required in the request.
 
 ### JwtAuthenticationProvider
 
@@ -240,33 +241,31 @@ Verify JWTs from external identity providers (Keycloak, Auth0, etc.).
 
 **Token format**: `{"account":"APP","token":"<external-jwt>"}`
 
+**Optional provider selection**: `{"account":"APP","token":"<external-jwt>","ap":"keycloak"}`
+
 **Configuration**:
 ```json
 {
-  "identity": {
-    "type": "jwt",
-    "jwt": {
-      "issuers": {
-        "https://keycloak.example.com/realms/myrealm": {
-          "publicKey": "<base64 encoded public key>",
-          "accounts": ["tenant-*", "shared"],
-          "rolesClaimPath": "resource_access.nauts.roles"
-        }
+  "auth": {
+    "jwt": [
+      {
+        "id": "keycloak",
+        "accounts": ["tenant-*", "shared"],
+        "issuer": "https://keycloak.example.com/realms/myrealm",
+        "publicKey": "<base64 encoded PEM public key>",
+        "rolesClaimPath": "resource_access.nauts.roles"
       }
-    }
+    ]
   }
 }
 ```
 
 **Verification process**:
-1. Parse JWT to extract issuer (iss claim)
-2. Look up issuer configuration
-3. Verify signature using issuer's public key (RSA or ECDSA)
-4. Extract roles from claims at issuer's configured path (default: `resource_access.nauts.roles`)
-5. Parse roles: format is `<account>.<role>` (e.g., `tenant-a.admin`)
-6. Determine target account from request or derive from roles
-7. Validate issuer can manage target account (supports wildcards)
-8. Filter roles for target account and strip account prefix
+1. Verify signature using the provider's configured public key (RSA or ECDSA)
+2. Validate issuer (iss claim) matches the provider's configured issuer
+3. Extract roles from claims at the provider's configured path (default: `resource_access.nauts.roles`)
+4. Parse roles: format is `<account>.<role>` (e.g., `tenant-a.admin`)
+5. Return all roles; authorization later filters roles by the requested account
 
 **Account wildcards**:
 - `*` matches any account
@@ -378,11 +377,14 @@ Environment variables:
       "path": "policies.json"
     }
   },
-  "identity": {
-    "type": "file",
-    "file": {
-      "usersPath": "users.json"
-    }
+  "auth": {
+    "file": [
+      {
+        "id": "local",
+        "accounts": ["*"],
+        "userPath": "users.json"
+      }
+    ]
   },
   "server": {
     "natsUrl": "nats://localhost:4222",
@@ -426,8 +428,8 @@ test/
 **Test users**:
 | User | Token | Roles | Account | Permissions |
 |------|-------|-------|---------|-------------|
-| alice | `{"token":"alice:secret"}` | readonly | APP | Subscribe to `public.>` |
-| bob | `{"token":"bob:secret"}` | full | APP | Pub/Sub to `public.>` |
+| alice | `{"account":"APP","token":"alice:secret"}` | readonly | APP | Subscribe to `public.>` |
+| bob | `{"account":"APP","token":"bob:secret"}` | full | APP | Pub/Sub to `public.>` |
 
 ## Future Enhancements
 

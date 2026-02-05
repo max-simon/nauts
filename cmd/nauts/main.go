@@ -73,7 +73,7 @@ func runAuth(args []string) error {
 
 	fs.StringVar(&configPath, "c", envOrDefault("NAUTS_CONFIG", ""), "Path to configuration file")
 	fs.StringVar(&configPath, "config", envOrDefault("NAUTS_CONFIG", ""), "Path to configuration file")
-	fs.StringVar(&token, "token", "", "Token to authenticate")
+	fs.StringVar(&token, "token", "", "Token to authenticate (JSON: {\"account\":\"APP\",\"token\":\"...\"} with optional \"ap\")")
 	fs.StringVar(&userPubKey, "user-pubkey", "", "User's public key for JWT subject (optional, generates ephemeral key if not provided)")
 	fs.DurationVar(&ttl, "ttl", time.Hour, "JWT time-to-live (overrides config file)")
 
@@ -85,21 +85,26 @@ func runAuth(args []string) error {
 		fmt.Fprintf(os.Stderr, "\nEnvironment variables:\n")
 		fmt.Fprintf(os.Stderr, "  NAUTS_CONFIG       Path to configuration file\n")
 		fmt.Fprintf(os.Stderr, "\nExample:\n")
-		fmt.Fprintf(os.Stderr, "  %s auth -c config.json -token alice:secret\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s auth -c config.json -token '{\\\"account\\\":\\\"APP\\\",\\\"token\\\":\\\"alice:secret\\\"}'\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "\nConfiguration file format (JSON):\n")
 		fmt.Fprintf(os.Stderr, `  {
-    "entity": {
-      "type": "static",
-      "static": { "publicKey": "AXXXXX...", "privateKeyPath": "account.nk", "accounts": ["APP"] }
-    },
-    "nauts": {
-      "type": "file",
-      "file": { "policiesPath": "policies.json", "groupsPath": "groups.json" }
-    },
-    "identity": {
-      "type": "file",
-      "file": { "usersPath": "users.json" }
-    }
+	"account": {
+	  "type": "static",
+	  "static": { "publicKey": "AXXXXX...", "privateKeyPath": "account.nk", "accounts": ["APP"] }
+	},
+	"role": {
+	  "type": "file",
+	  "file": { "path": "roles.json" }
+	},
+	"policy": {
+	  "type": "file",
+	  "file": { "path": "policies.json" }
+	},
+	"auth": {
+	  "file": [
+	    { "id": "local", "accounts": ["APP"], "userPath": "users.json" }
+	  ]
+	}
   }
 `)
 	}
@@ -163,18 +168,23 @@ func runServe(args []string) error {
 		fmt.Fprintf(os.Stderr, "  %s serve -c config.json\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "\nConfiguration file format (JSON):\n")
 		fmt.Fprintf(os.Stderr, `  {
-    "entity": {
-      "type": "static",
-      "static": { "publicKey": "AXXXXX...", "privateKeyPath": "account.nk", "accounts": ["APP"] }
-    },
-    "nauts": {
-      "type": "file",
-      "file": { "policiesPath": "policies.json", "groupsPath": "groups.json" }
-    },
-    "identity": {
-      "type": "file",
-      "file": { "usersPath": "users.json" }
-    },
+	"account": {
+	  "type": "static",
+	  "static": { "publicKey": "AXXXXX...", "privateKeyPath": "account.nk", "accounts": ["APP"] }
+	},
+	"role": {
+	  "type": "file",
+	  "file": { "path": "roles.json" }
+	},
+	"policy": {
+	  "type": "file",
+	  "file": { "path": "policies.json" }
+	},
+	"auth": {
+	  "file": [
+	    { "id": "local", "accounts": ["APP"], "userPath": "users.json" }
+	  ]
+	},
     "server": {
       "natsUrl": "nats://localhost:4222",
       "natsNkey": "auth-service.nk",

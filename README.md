@@ -33,7 +33,7 @@ go build -o bin/nauts ./cmd/nauts
 
 ```bash
 # Get a signed NATS JWT for a user
-./bin/nauts auth -c nauts.json -token '{"token":"alice:secret"}'
+./bin/nauts auth -c nauts.json -token '{"account":"APP","token":"alice:secret"}'
 ```
 
 ### Run Auth Callout Service
@@ -50,10 +50,10 @@ nats-server -c nats-server.conf
 
 ```bash
 # Static mode - just use token
-nats --token '{"token":"alice:secret"}' sub "public.>"
+nats --token '{"account":"APP","token":"alice:secret"}' sub "public.>"
 
 # Operator mode - requires sentinel credentials + token
-nats --creds sentinel.creds --token '{"token":"alice:secret"}' sub "public.>"
+nats --creds sentinel.creds --token '{"account":"APP","token":"alice:secret"}' sub "public.>"
 ```
 
 ## How It Works
@@ -100,9 +100,14 @@ nauts uses a JSON configuration file. Here's a minimal example:
     "type": "file",
     "file": { "path": "policies.json" }
   },
-  "identity": {
-    "type": "file",
-    "file": { "usersPath": "users.json" }
+  "auth": {
+    "file": [
+      {
+        "id": "local",
+        "accounts": ["APP"],
+        "userPath": "users.json"
+      }
+    ]
   },
   "server": {
     "natsUrl": "nats://localhost:4222",
@@ -145,7 +150,7 @@ nauts uses a JSON configuration file. Here's a minimal example:
 ]
 ```
 
-### users.json (file identity provider)
+### users.json (file auth provider)
 
 ```json
 {
@@ -159,34 +164,39 @@ nauts uses a JSON configuration file. Here's a minimal example:
 }
 ```
 
-## Identity Providers
+## Authentication Providers
 
 ### File-Based (username/password)
 
-Static user list with bcrypt password hashes. Token format: `{"token":"username:password"}`
+Static user list with bcrypt password hashes.
+
+Token format: `{"account":"APP","token":"username:password"}`
+
+Optional provider selection: `{"account":"APP","token":"username:password","ap":"local"}`
 
 ### JWT-Based (external IdP)
 
-Verify JWTs from external identity providers like Keycloak or Auth0. Configure issuer public keys and account mappings:
+Verify JWTs from external identity providers like Keycloak or Auth0.
 
 ```json
 {
-  "identity": {
-    "type": "jwt",
-    "jwt": {
-      "issuers": {
-        "https://keycloak.example.com/realms/myrealm": {
-          "publicKey": "<base64 encoded public key>",
-          "accounts": ["tenant-*"],
-          "rolesClaimPath": "resource_access.nauts.roles"
-        }
+  "auth": {
+    "jwt": [
+      {
+        "id": "keycloak",
+        "accounts": ["tenant-*"],
+        "issuer": "https://keycloak.example.com/realms/myrealm",
+        "publicKey": "<base64 encoded PEM public key>",
+        "rolesClaimPath": "resource_access.nauts.roles"
       }
-    }
+    ]
   }
 }
 ```
 
 Roles in JWT claims follow format `<account>.<role>` (e.g., `tenant-a.admin`).
+
+If multiple auth providers are configured, the request can set `ap` to pick a provider by id. If `ap` is omitted, nauts auto-selects the single provider whose `accounts` patterns match the requested `account`.
 
 ## Policy Specification
 

@@ -21,17 +21,16 @@
       "path": "../policies.json"
     }
   },
-  "identity": {
-    "type": "jwt",
-    "jwt": {
-      "issuers": {
-        "e2e": {
-          "publicKey": "LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KTUlJQklqQU5CZ2txaGtpRzl3MEJBUUVGQUFPQ0FROEFNSUlCQ2dLQ0FRRUFtTUozdGRsT0Z6Y0tTMlJsZGwydwpiSVpCT2U3SjR0UmpsTHREcmlrSVB1Z24zeFNCRnlLQVU4RHZOWnVVMVFvdThCQU9DVUdITk5zWGNLLzNQR3R6Ckd2M1c5dUI2VjNsbHc3K2VtYmFKbFBHblViZnpaYVhRbTFQR2phNnRQUXpMZFQzVEsyU0IrbjEvajM0NitBMTgKRXpZMFVxQmJ5YWRFb3B1TVZUbXJDa2UwYlNVcUVITUNEWjhqZkZxaUVTOVB0V2xuZUhRZ09Ud2syVGZjZUk4TQpJY2ZwbzVaNWduMC9yY1JkQktndUtjTHRWNEU5c0NxRjRtYnIzcFdDVEM5aU9TZnd2UUZkU3czN1BkcXR1eWl0Cm5KbmUwc1lNc1l5S0R1NW4yV05hVldDU0dyOTV5Zk40Nkc5Q0xXTjR4aDliRWRyZG1Oc0I3aTR1blB2eW9lOE0KaFFJREFRQUIKLS0tLS1FTkQgUFVCTElDIEtFWS0tLS0tCg==",
-          "accounts": ["APP", "AUTH"],
-          "rolesClaimPath": "nauts.roles"
-        }
+  "auth": {
+    "jwt": [
+      {
+        "id": "e2e",
+        "accounts": ["APP", "AUTH"],
+        "issuer": "e2e",
+        "rolesClaimPath": "nauts.roles",
+        "publicKey": "LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KTUlJQklqQU5CZ2txaGtpRzl3MEJBUUVGQUFPQ0FROEFNSUlCQ2dLQ0FRRUFtTUozdGRsT0Z6Y0tTMlJsZGwydwpiSVpCT2U3SjR0UmpsTHREcmlrSVB1Z24zeFNCRnlLQVU4RHZOWnVVMVFvdThCQU9DVUdITk5zWGNLLzNQR3R6Ckd2M1c5dUI2VjNsbHc3K2VtYmFKbFBHblViZnpaYVhRbTFQR2phNnRQUXpMZFQzVEsyU0IrbjEvajM0NitBMTgKRXpZMFVxQmJ5YWRFb3B1TVZUbXJDa2UwYlNVcUVITUNEWjhqZkZxaUVTOVB0V2xuZUhRZ09Ud2syVGZjZUk4TQpJY2ZwbzVaNWduMC9yY1JkQktndUtjTHRWNEU5c0NxRjRtYnIzcFdDVEM5aU9TZnd2UUZkU3czN1BkcXR1eWl0Cm5KbmUwc1lNc1l5S0R1NW4yV05hVldDU0dyOTV5Zk40Nkc5Q0xXTjR4aDliRWRyZG1Oc0I3aTR1blB2eW9lOE0KaFFJREFRQUIKLS0tLS1FTkQgUFVCTElDIEtFWS0tLS0tCg=="
       }
-    }
+    ]
   },
   "server": {
     "natsUrl": "nats://localhost:4222",

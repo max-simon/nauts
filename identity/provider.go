@@ -23,7 +23,7 @@ var (
 // AuthRequest represents the parsed authentication request from the token.
 // The token is expected to be a JSON object with the following structure:
 //
-//	{ "account": "ACME", "token": "username:password" }
+//	{ "account": "ACME", "token": "username:password", "ap": "provider-id" }
 //
 // The account field is required.
 type AuthRequest struct {
@@ -31,6 +31,9 @@ type AuthRequest struct {
 	Account string `json:"account"`
 	// Token is the authentication token (e.g., "username:password").
 	Token string `json:"token"`
+	// AP is an optional authentication provider id.
+	// If set, the authentication request is routed to that provider.
+	AP string `json:"ap,omitempty"`
 }
 
 // AuthenticationProvider resolves user identity from an authentication request.

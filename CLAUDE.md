@@ -139,9 +139,7 @@ golangci-lint run
 go build -o bin/nauts ./cmd/nauts
 
 # One-shot authentication (get JWT)
-# Token is JSON format: { "account"?: string, "token": string }
-./bin/nauts auth -c nauts.json -token '{"token":"alice:secret"}'
-# For multi-account users, specify the account:
+# Token is JSON format: { "account": string, "token": string, "ap"?: string }
 ./bin/nauts auth -c nauts.json -token '{"account":"APP","token":"alice:secret"}'
 
 # Run auth callout service
@@ -188,11 +186,14 @@ The CLI uses a JSON configuration file (`-c/--config`):
       "path": "policies.json"
     }
   },
-  "identity": {
-    "type": "file",
-    "file": {
-      "usersPath": "users.json"
-    }
+  "auth": {
+    "file": [
+      {
+        "id": "local",
+        "accounts": ["*"],
+        "userPath": "users.json"
+      }
+    ]
   },
   "server": {
     "natsUrl": "nats://localhost:4222",
@@ -242,21 +243,19 @@ nauts supports two account provider modes:
 
 Clients authenticate using a JSON token with the following structure:
 ```json
-{ "account": "APP", "token": "username:password" }
+{ "account": "APP", "token": "username:password", "ap": "local" }
 ```
 
-The `account` field is optional if the user has only one account configured. If the user has multiple accounts, the `account` field is required to specify which account to authenticate to.
+The `account` field is required. The `ap` field is optional and can be used to select a specific authentication provider by id.
 
 **Static mode**: Clients connect with just a token:
 ```bash
-nats --token '{"token":"alice:secret"}' pub test "hello"
-# Or with account specified:
 nats --token '{"account":"APP","token":"alice:secret"}' pub test "hello"
 ```
 
 **Operator mode**: Clients must use sentinel credentials + token. The sentinel user authenticates to the AUTH account, which triggers auth callout with the provided token:
 ```bash
-nats --creds sentinel.creds --token '{"token":"alice:secret"}' pub test "hello"
+nats --creds sentinel.creds --token '{"account":"APP","token":"alice:secret"}' pub test "hello"
 ```
 
 The sentinel user is a special user in the AUTH account that:
@@ -312,7 +311,7 @@ The `policy.Compile()` function transforms policies to NATS permissions:
 - Non-empty permissions → only `Allow` list is set (no `Deny`)
 
 The `auth.AuthController` orchestrates the full authentication flow:
-1. Verify identity token via `AuthenticationProvider` → returns `*identity.User`
+1. Verify identity token via `AuthenticationProviderManager` → returns `*identity.User`
 2. Resolve user's roles (including default role) from `RoleProvider`
 3. For each role, fetch both global and local roles, then compile policies with user/role context
 4. Deduplicate permissions with wildcard awareness
@@ -337,16 +336,11 @@ config, _ := auth.LoadConfig("nauts.json")
 controller, _ := auth.NewAuthControllerWithConfig(config)
 
 // Authenticate using ConnectOptions (same as auth callout)
-// Token is JSON: { "account"?: string, "token": string }
+// Token is JSON: { "account": string, "token": string, "ap"?: string }
 result, err := controller.Authenticate(ctx, jwt.ConnectOptions{
-    Token: `{"token":"alice:secret"}`,  // JSON token format
+  Token: `{"account":"APP","token":"alice:secret"}`,
 }, userPublicKey, time.Hour)
 // result.User, result.Permissions, result.JWT available
-
-// For multi-account users, specify the account:
-result, err := controller.Authenticate(ctx, jwt.ConnectOptions{
-    Token: `{"account":"CORP","token":"bob:secret"}`,
-}, userPublicKey, time.Hour)
 ```
 
 **Manual provider setup (operator mode)**:
@@ -377,8 +371,12 @@ identityProvider, _ := identity.NewFileAuthenticationProvider(identity.FileAuthe
     UsersPath: "users.json",
 })
 
+authProviders := identity.NewAuthenticationProviderManager(map[string]identity.AuthenticationProvider{
+  "local": identityProvider,
+})
+
 // Create controller
-controller := auth.NewAuthController(accountProvider, roleProvider, policyProvider, identityProvider)
+controller := auth.NewAuthController(accountProvider, roleProvider, policyProvider, authProviders)
 
 // Or use individual methods
 user, err := controller.ResolveUser(ctx, token)
@@ -437,8 +435,9 @@ Identity providers verify credentials and return user information.
 The authentication token is expected to be a JSON object:
 ```go
 type AuthRequest struct {
-    Account string `json:"account,omitempty"` // Optional if user has single account
-    Token   string `json:"token"`             // Provider-specific token (e.g., "user:pass")
+  Account string `json:"account"`           // Required
+  Token   string `json:"token"`             // Provider-specific token (e.g., "user:pass")
+  AP      string `json:"ap,omitempty"`      // Optional provider id
 }
 ```
 
@@ -446,9 +445,7 @@ type AuthRequest struct {
 - Loads users from JSON file
 - Verifies passwords using bcrypt
 - Token format within AuthRequest: `"username:password"` (colon-separated)
-- **Multi-account support**: Users can have multiple accounts
-  - Single account: `account` field in AuthRequest is optional (user's account is used)
-  - Multiple accounts: `account` field is required and validated against user's accounts list
+- The controller filters roles for the requested account (authorization)
 
 **Users JSON file format**:
 ```json
@@ -480,41 +477,36 @@ type AuthRequest struct {
 Authenticates users using external JWTs (e.g., from Keycloak, Auth0, or other OIDC providers).
 
 **How it works**:
-1. **Decode JWT**: Parse the token to extract the issuer (`iss` claim)
-2. **Verify signature**: Look up issuer's public key from configuration and verify JWT signature
+1. **Verify signature**: Verify JWT signature using the provider's configured public key
+2. **Validate issuer**: Ensure the `iss` claim matches the provider's configured issuer
 3. **Extract roles**: Get roles from configurable claim path (default: `resource_access.nauts.roles`)
    - Roles must follow format `<account>.<role>` (e.g., `tenant-a.admin`, `app.viewer`)
    - Invalid formats are silently skipped
-4. **Determine target account**:
-   - If `AuthRequest.Account` is provided, use it directly
-   - Otherwise, derive from roles: if all roles belong to the same account, use that account
-   - If roles span multiple accounts without explicit account selection, return error
-5. **Validate issuer permissions**: Check that the issuer is allowed to manage the target account
+4. **Validate manageability**: Ensure the provider is allowed to manage the requested account
    - Configuration supports wildcards: `*` (any account), `tenant-*` (prefix match)
    - Wildcards in target account are rejected
-6. **Filter and transform roles**:
-   - Keep only roles belonging to the target account
-   - Strip account prefix from role names (`tenant-a.admin` → `admin`)
+5. **Return roles**: Return all roles; the controller filters roles by requested account
 
 **Configuration**:
 ```json
 {
-  "identity": {
-    "type": "jwt",
-    "jwt": {
-      "issuers": {
-        "https://auth.example.com/realms/myrealm": {
-          "publicKey": "<base64 encoded public key>",
-          "accounts": ["tenant-a-*", "dev"],
-          "rolesClaimPath": "resource_access.nauts.roles"
-        },
-        "https://another-idp.com": {
-          "publicKey": "<base64 encoded public key>",
-          "accounts": ["*"],
-          "rolesClaimPath": "custom.claims.roles"
-        }
+  "auth": {
+    "jwt": [
+      {
+        "id": "idp-1",
+        "accounts": ["tenant-a-*", "dev"],
+        "issuer": "https://auth.example.com/realms/myrealm",
+        "publicKey": "<base64 encoded PEM public key>",
+        "rolesClaimPath": "resource_access.nauts.roles"
+      },
+      {
+        "id": "idp-2",
+        "accounts": ["*"],
+        "issuer": "https://another-idp.com",
+        "publicKey": "<base64 encoded PEM public key>",
+        "rolesClaimPath": "custom.claims.roles"
       }
-    }
+    ]
   }
 }
 ```
@@ -531,6 +523,11 @@ Authenticates users using external JWTs (e.g., from Keycloak, Auth0, or other OI
 The `AuthRequest.Token` is the raw JWT string from the external identity provider.
 ```json
 { "account": "tenant-a-acc-1", "token": "eyJhbGciOiJSUzI1NiIs..." }
+
+Optionally select a specific auth provider by id:
+```json
+{ "account": "tenant-a-acc-1", "token": "eyJhbGciOiJSUzI1NiIs...", "ap": "idp-1" }
+```
 ```
 
 **Extracted user attributes**:

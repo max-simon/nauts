@@ -45,7 +45,7 @@ type AuthController struct {
 	accountProvider provider.AccountProvider
 	roleProvider    provider.RoleProvider
 	policyProvider  provider.PolicyProvider
-	authProvider    identity.AuthenticationProvider
+	authProviders   *identity.AuthenticationProviderManager
 	logger          Logger
 }
 
@@ -64,14 +64,14 @@ func NewAuthController(
 	accountProvider provider.AccountProvider,
 	roleProvider provider.RoleProvider,
 	policyProvider provider.PolicyProvider,
-	authProvider identity.AuthenticationProvider,
+	authProviders *identity.AuthenticationProviderManager,
 	opts ...ControllerOption,
 ) *AuthController {
 	c := &AuthController{
 		accountProvider: accountProvider,
 		roleProvider:    roleProvider,
 		policyProvider:  policyProvider,
-		authProvider:    authProvider,
+		authProviders:   authProviders,
 		logger:          &defaultLogger{},
 	}
 	for _, opt := range opts {
@@ -99,11 +99,8 @@ func (c *AuthController) ResolveUser(ctx context.Context, token string) (*identi
 	if strings.Contains(authReq.Account, "*") {
 		return nil, NewAuthError("", "resolve_user", "account must not contain wildcards", nil)
 	}
-	if !accountIsManageableByProvider(c.authProvider.ManageableAccounts(), authReq.Account) {
-		return nil, NewAuthError("", "resolve_user", "account is not manageable by provider", nil)
-	}
 
-	user, err := c.authProvider.Verify(ctx, authReq)
+	user, err := c.authProviders.Verify(ctx, authReq)
 	if err != nil {
 		return nil, NewAuthError("", "resolve_user", "failed to verify identity", err)
 	}
@@ -125,52 +122,6 @@ func (c *AuthController) ResolveUser(ctx context.Context, token string) (*identi
 	}
 	user.Roles = filteredRoles
 	return user, nil
-}
-
-func accountIsManageableByProvider(patterns []string, account string) bool {
-	if account == "" {
-		return false
-	}
-	if account == "SYS" || account == "AUTH" {
-		for _, p := range patterns {
-			if p == account {
-				return true
-			}
-		}
-		return false
-	}
-
-	for _, pattern := range patterns {
-		if matchAccountPattern(pattern, account) {
-			return true
-		}
-	}
-	return false
-}
-
-// matchAccountPattern checks if an account matches a pattern.
-// Patterns can be:
-//   - "*" matches any account (except SYS/AUTH; those must be explicitly listed)
-//   - "prefix*" matches accounts starting with "prefix" (except SYS/AUTH)
-//   - "exact" matches only "exact"
-func matchAccountPattern(pattern, account string) bool {
-	if pattern == "" || account == "" {
-		return false
-	}
-	if pattern == account {
-		return true
-	}
-	if pattern == "*" {
-		return true
-	}
-	if strings.HasSuffix(pattern, "*") {
-		prefix := strings.TrimSuffix(pattern, "*")
-		if prefix == "" {
-			return true
-		}
-		return strings.HasPrefix(account, prefix)
-	}
-	return false
 }
 
 // parseAuthRequest parses the JSON token into an AuthRequest.

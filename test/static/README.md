@@ -12,13 +12,13 @@ nats-server -c nats-server.conf
 ../../bin/nauts serve -c nauts.json
 
 # 3. Test authentication
-nats --token alice:secret sub "public.>"
-nats --token bob:secret pub public.test "Hello"
+nats --token '{"account":"APP","token":"alice:secret"}' sub "public.>"
+nats --token '{"account":"APP","token":"bob:secret"}' pub public.test "Hello"
 ```
 
 ## Test Users
 
-| User  | Password | Groups   | Permissions |
+| User  | Password | Roles    | Permissions |
 |-------|----------|----------|-------------|
 | alice | secret   | readonly | Subscribe to `public.>` |
 | bob   | secret   | full     | Pub/Sub to `public.>` |
@@ -45,17 +45,22 @@ nats --token bob:secret pub public.test "Hello"
       "accounts": ["AUTH", "APP"]
     }
   },
-  "group": {
+  "role": {
     "type": "file",
-    "file": { "path": "../groups.json" }
+    "file": { "path": "../roles.json" }
   },
   "policy": {
     "type": "file",
     "file": { "path": "../policies.json" }
   },
-  "identity": {
-    "type": "file",
-    "file": { "usersPath": "../users.json" }
+  "auth": {
+    "file": [
+      {
+        "id": "local",
+        "accounts": ["*", "AUTH"],
+        "userPath": "../users.json"
+      }
+    ]
   },
   "server": {
     "natsUrl": "nats://localhost:4222",

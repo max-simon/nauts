@@ -26,11 +26,14 @@
       "path": "../policies.json"
     }
   },
-  "identity": {
-    "type": "file",
-    "file": {
-      "usersPath": "../users.json"
-    }
+  "auth": {
+    "file": [
+      {
+        "id": "local",
+        "accounts": ["*", "AUTH"],
+        "userPath": "../users.json"
+      }
+    ]
   },
   "server": {
     "natsUrl": "nats://localhost:4222",

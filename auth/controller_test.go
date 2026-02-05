@@ -5,7 +5,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -75,9 +74,13 @@ func TestResolveUser_WildcardInRole(t *testing.T) {
 
 	// Create a mock identity provider that returns roles with wildcards
 	mockProvider := &mockAuthProviderWithWildcard{}
-	ctrl.authProvider = mockProvider
+	manager, err := identity.NewAuthenticationProviderManager(map[string]identity.AuthenticationProvider{"mock": mockProvider})
+	if err != nil {
+		t.Fatalf("creating provider manager: %v", err)
+	}
+	ctrl.authProviders = manager
 
-	_, err := ctrl.ResolveUser(context.Background(), `{"account":"test-account","token":"test"}`)
+	_, err = ctrl.ResolveUser(context.Background(), `{"account":"test-account","token":"test"}`)
 	if err == nil {
 		t.Fatal("ResolveUser() expected error for wildcard in role")
 	}
@@ -88,55 +91,6 @@ func TestResolveUser_WildcardInRole(t *testing.T) {
 	}
 	if authErr.Phase != "resolve_user" {
 		t.Errorf("AuthError.Phase = %q, want %q", authErr.Phase, "resolve_user")
-	}
-}
-
-func TestAccountIsManageableByProvider(t *testing.T) {
-	tests := []struct {
-		name     string
-		patterns []string
-		account  string
-		want     bool
-	}{
-		{name: "wildcard allows normal accounts", patterns: []string{"*"}, account: "tenant-a", want: true},
-		{name: "wildcard does not allow SYS", patterns: []string{"*"}, account: "SYS", want: false},
-		{name: "wildcard does not allow AUTH", patterns: []string{"*"}, account: "AUTH", want: false},
-		{name: "explicit SYS allowed", patterns: []string{"SYS"}, account: "SYS", want: true},
-		{name: "explicit AUTH allowed", patterns: []string{"AUTH"}, account: "AUTH", want: true},
-		{name: "prefix wildcard matches", patterns: []string{"tenant-*"}, account: "tenant-a", want: true},
-		{name: "prefix wildcard misses", patterns: []string{"tenant-*"}, account: "other", want: false},
-		{name: "exact match works", patterns: []string{"dev"}, account: "dev", want: true},
-		{name: "empty account rejected", patterns: []string{"*"}, account: "", want: false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := accountIsManageableByProvider(tt.patterns, tt.account)
-			if got != tt.want {
-				t.Fatalf("accountIsManageableByProvider(%v, %q) = %v, want %v", tt.patterns, tt.account, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestResolveUser_AccountNotManageableByProvider(t *testing.T) {
-	ctrl := createTestController(t)
-	ctrl.authProvider = &mockAuthProviderManageableAccounts{patterns: []string{"dev"}}
-
-	_, err := ctrl.ResolveUser(context.Background(), `{"account":"prod","token":"anything"}`)
-	if err == nil {
-		t.Fatal("ResolveUser() expected error")
-	}
-
-	var authErr *AuthError
-	if !errors.As(err, &authErr) {
-		t.Fatalf("error is not AuthError: %T", err)
-	}
-	if authErr.Phase != "resolve_user" {
-		t.Errorf("AuthError.Phase = %q, want %q", authErr.Phase, "resolve_user")
-	}
-	if !strings.Contains(authErr.Message, "manageable") {
-		t.Errorf("AuthError.Message = %q, want it to mention manageability", authErr.Message)
 	}
 }
 
@@ -356,9 +310,13 @@ func createTestController(t *testing.T) *AuthController {
 
 	// Create identity provider (users)
 	identityProvider := createTestIdentityProvider(t, tmpDir)
+	manager, err := identity.NewAuthenticationProviderManager(map[string]identity.AuthenticationProvider{"file": identityProvider})
+	if err != nil {
+		t.Fatalf("creating provider manager: %v", err)
+	}
 
 	logger := &testLogger{}
-	return NewAuthController(accountProvider, roleProvider, policyProvider, identityProvider, WithLogger(logger))
+	return NewAuthController(accountProvider, roleProvider, policyProvider, manager, WithLogger(logger))
 }
 
 func createTestAccountProvider(t *testing.T, tmpDir string) provider.AccountProvider {
@@ -503,16 +461,4 @@ func (m *mockAuthProviderWithWildcard) Verify(_ context.Context, req identity.Au
 			{Account: req.Account, Role: "admin*"}, // wildcard in role
 		},
 	}, nil
-}
-
-type mockAuthProviderManageableAccounts struct {
-	patterns []string
-}
-
-func (m *mockAuthProviderManageableAccounts) ManageableAccounts() []string {
-	return append([]string(nil), m.patterns...)
-}
-
-func (m *mockAuthProviderManageableAccounts) Verify(_ context.Context, _ identity.AuthRequest) (*identity.User, error) {
-	return &identity.User{ID: "test"}, nil
 }
