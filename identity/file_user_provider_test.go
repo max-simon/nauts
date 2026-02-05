@@ -21,11 +21,11 @@ func TestVerify_ValidCredentials(t *testing.T) {
 	if user.ID != "alice" {
 		t.Errorf("user.ID = %q, want %q", user.ID, "alice")
 	}
-	if user.Account != "ACME" {
-		t.Errorf("user.Account = %q, want %q", user.Account, "ACME")
+	if len(user.Roles) != 1 {
+		t.Fatalf("user.Roles length = %d, want 1", len(user.Roles))
 	}
-	if len(user.Roles) != 1 || user.Roles[0] != "workers" {
-		t.Errorf("user.Roles = %v, want [workers]", user.Roles)
+	if user.Roles[0].Account != "ACME" || user.Roles[0].Role != "workers" {
+		t.Errorf("user.Roles[0] = {Account: %q, Role: %q}, want {Account: \"ACME\", Role: \"workers\"}", user.Roles[0].Account, user.Roles[0].Role)
 	}
 }
 
@@ -79,10 +79,13 @@ func TestGetUser_NotFound(t *testing.T) {
 	}
 }
 
-func TestNewFileUserIdentityProvider_EmptyConfig(t *testing.T) {
-	fp, err := NewFileUserIdentityProvider(FileUserIdentityProviderConfig{})
+func TestNewFileAuthenticationProvider_EmptyConfig(t *testing.T) {
+	fp, err := NewFileAuthenticationProvider(FileAuthenticationProviderConfig{
+		ID:       "test",
+		Accounts: []string{"*"},
+	})
 	if err != nil {
-		t.Fatalf("NewFileUserIdentityProvider() error = %v", err)
+		t.Fatalf("NewFileAuthenticationProvider() error = %v", err)
 	}
 
 	_, err = fp.GetUser(context.Background(), "any")
@@ -91,36 +94,39 @@ func TestNewFileUserIdentityProvider_EmptyConfig(t *testing.T) {
 	}
 }
 
-func TestNewFileUserIdentityProvider_InvalidPath(t *testing.T) {
-	_, err := NewFileUserIdentityProvider(FileUserIdentityProviderConfig{
+func TestNewFileAuthenticationProvider_InvalidPath(t *testing.T) {
+	_, err := NewFileAuthenticationProvider(FileAuthenticationProviderConfig{
+		ID:        "test",
+		Accounts:  []string{"*"},
 		UsersPath: "/nonexistent/path",
 	})
 	if err == nil {
-		t.Error("NewFileUserIdentityProvider() expected error for nonexistent path")
+		t.Error("NewFileAuthenticationProvider() expected error for nonexistent path")
 	}
 }
 
-func TestNewFileUserIdentityProvider_InvalidJSON(t *testing.T) {
+func TestNewFileAuthenticationProvider_InvalidJSON(t *testing.T) {
 	tmpDir := t.TempDir()
 	invalidFile := filepath.Join(tmpDir, "invalid.json")
 	if err := os.WriteFile(invalidFile, []byte("not json"), 0644); err != nil {
 		t.Fatalf("Failed to write test file: %v", err)
 	}
 
-	_, err := NewFileUserIdentityProvider(FileUserIdentityProviderConfig{
+	_, err := NewFileAuthenticationProvider(FileAuthenticationProviderConfig{
+		ID:        "test",
+		Accounts:  []string{"*"},
 		UsersPath: invalidFile,
 	})
 	if err == nil {
-		t.Error("NewFileUserIdentityProvider() expected error for invalid JSON")
+		t.Error("NewFileAuthenticationProvider() expected error for invalid JSON")
 	}
 }
 
-func TestVerify_MultipleAccounts_WithAccountSpecified(t *testing.T) {
+func TestVerify_MultipleAccounts(t *testing.T) {
 	fp := createMultiAccountProvider(t)
 
 	user, err := fp.Verify(context.Background(), AuthRequest{
-		Account: "CORP",
-		Token:   "charlie:secret789",
+		Token: "charlie:secret789",
 	})
 	if err != nil {
 		t.Fatalf("Verify() error = %v", err)
@@ -129,54 +135,31 @@ func TestVerify_MultipleAccounts_WithAccountSpecified(t *testing.T) {
 	if user.ID != "charlie" {
 		t.Errorf("user.ID = %q, want %q", user.ID, "charlie")
 	}
-	if user.Account != "CORP" {
-		t.Errorf("user.Account = %q, want %q", user.Account, "CORP")
+	// Should have roles for both accounts
+	if len(user.Roles) != 2 {
+		t.Fatalf("user.Roles length = %d, want 2", len(user.Roles))
 	}
-}
-
-func TestVerify_MultipleAccounts_InvalidAccount(t *testing.T) {
-	fp := createMultiAccountProvider(t)
-
-	_, err := fp.Verify(context.Background(), AuthRequest{
-		Account: "INVALID",
-		Token:   "charlie:secret789",
-	})
-	if !errors.Is(err, ErrInvalidAccount) {
-		t.Errorf("Verify() error = %v, want %v", err, ErrInvalidAccount)
+	// Check both account roles are present
+	hasACME := false
+	hasCORP := false
+	for _, role := range user.Roles {
+		if role.Account == "ACME" && role.Role == "admin" {
+			hasACME = true
+		}
+		if role.Account == "CORP" && role.Role == "admin" {
+			hasCORP = true
+		}
 	}
-}
-
-func TestVerify_MultipleAccounts_NoAccountSpecified(t *testing.T) {
-	fp := createMultiAccountProvider(t)
-
-	_, err := fp.Verify(context.Background(), AuthRequest{
-		Token: "charlie:secret789",
-	})
-	if !errors.Is(err, ErrAccountRequired) {
-		t.Errorf("Verify() error = %v, want %v", err, ErrAccountRequired)
+	if !hasACME {
+		t.Error("Expected ACME.admin role not found")
 	}
-}
-
-func TestVerify_SingleAccount_AccountSpecifiedIgnored(t *testing.T) {
-	fp := createTestProvider(t)
-
-	// When user has single account, the specified account is ignored
-	user, err := fp.Verify(context.Background(), AuthRequest{
-		Account: "IGNORED",
-		Token:   "alice:secret123",
-	})
-	if err != nil {
-		t.Fatalf("Verify() error = %v", err)
-	}
-
-	// Should use the user's single account, not the requested one
-	if user.Account != "ACME" {
-		t.Errorf("user.Account = %q, want %q (single account should be used)", user.Account, "ACME")
+	if !hasCORP {
+		t.Error("Expected CORP.admin role not found")
 	}
 }
 
 // createMultiAccountProvider creates a provider with a user having multiple accounts.
-func createMultiAccountProvider(t *testing.T) *FileUserIdentityProvider {
+func createMultiAccountProvider(t *testing.T) *FileAuthenticationProvider {
 	t.Helper()
 
 	tmpDir := t.TempDir()
@@ -187,8 +170,7 @@ func createMultiAccountProvider(t *testing.T) *FileUserIdentityProvider {
 	content := `{
   "users": {
     "charlie": {
-      "accounts": ["ACME", "CORP"],
-      "roles": ["admin"],
+      "roles": ["ACME.admin", "CORP.admin"],
       "passwordHash": "` + string(charlieHash) + `",
       "attributes": {}
     }
@@ -199,16 +181,20 @@ func createMultiAccountProvider(t *testing.T) *FileUserIdentityProvider {
 		t.Fatalf("Failed to write test file: %v", err)
 	}
 
-	fp, err := NewFileUserIdentityProvider(FileUserIdentityProviderConfig{UsersPath: usersFile})
+	fp, err := NewFileAuthenticationProvider(FileAuthenticationProviderConfig{
+		ID:        "test",
+		Accounts:  []string{"*"},
+		UsersPath: usersFile,
+	})
 	if err != nil {
-		t.Fatalf("NewFileUserIdentityProvider() error = %v", err)
+		t.Fatalf("NewFileAuthenticationProvider() error = %v", err)
 	}
 
 	return fp
 }
 
-// createTestProvider creates a FileUserIdentityProvider with test users.
-func createTestProvider(t *testing.T) *FileUserIdentityProvider {
+// createTestProvider creates a FileAuthenticationProvider with test users.
+func createTestProvider(t *testing.T) *FileAuthenticationProvider {
 	t.Helper()
 
 	tmpDir := t.TempDir()
@@ -221,16 +207,14 @@ func createTestProvider(t *testing.T) *FileUserIdentityProvider {
 	content := `{
   "users": {
     "alice": {
-      "accounts": ["ACME"],
-      "roles": ["workers"],
+      "roles": ["ACME.workers"],
       "passwordHash": "` + string(aliceHash) + `",
       "attributes": {
         "department": "engineering"
       }
     },
     "bob": {
-      "accounts": ["ACME"],
-      "roles": ["viewers"],
+      "roles": ["ACME.viewers"],
       "passwordHash": "` + string(bobHash) + `",
       "attributes": {}
     }
@@ -241,9 +225,13 @@ func createTestProvider(t *testing.T) *FileUserIdentityProvider {
 		t.Fatalf("Failed to write test file: %v", err)
 	}
 
-	fp, err := NewFileUserIdentityProvider(FileUserIdentityProviderConfig{UsersPath: usersFile})
+	fp, err := NewFileAuthenticationProvider(FileAuthenticationProviderConfig{
+		ID:        "test",
+		Accounts:  []string{"*"},
+		UsersPath: usersFile,
+	})
 	if err != nil {
-		t.Fatalf("NewFileUserIdentityProvider() error = %v", err)
+		t.Fatalf("NewFileAuthenticationProvider() error = %v", err)
 	}
 
 	return fp

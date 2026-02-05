@@ -50,10 +50,10 @@ nauts/
 │   ├── file_policy_provider.go # FilePolicyProvider (JSON file backend)
 │   ├── role.go             # Role type with validation
 │   └── errors.go           # Provider errors (ErrNotFound, etc.)
-├── identity/               # User identity management
-│   ├── user.go             # User type
-│   ├── provider.go         # UserIdentityProvider interface, IdentityToken
-│   └── file_user_provider.go # FileUserIdentityProvider (bcrypt passwords)
+├── identity/               # User identity and authentication
+│   ├── user.go             # User and AccountRole types
+│   ├── provider.go         # AuthenticationProvider interface, AuthRequest
+│   └── file_user_provider.go # FileAuthenticationProvider (bcrypt passwords)
 ├── jwt/                    # JWT issuance
 │   ├── signer.go           # Signer interface
 │   ├── local_signer.go     # LocalSigner (nkeys-based signing)
@@ -103,11 +103,11 @@ nauts/
 - Actions: `Action`, `ActionDef`, `ResolveActions()`
 - Auth controller: `AuthController`, `NewAuthController()`, `NewAuthControllerWithConfig()`, `Authenticate()`, `ResolveUser()`, `ResolveNatsPermissions()`, `CreateUserJWT()`
 - Callout service: `CalloutService`, `NewCalloutService()`, `CalloutConfig`, `Start()`, `Stop()`
-- Configuration: `Config`, `LoadConfig()`, `AccountConfig`, `RoleConfig`, `PolicyConfig`, `IdentityConfig`, `ServerConfig`
+- Configuration: `Config`, `LoadConfig()`, `AccountConfig`, `RoleConfig`, `PolicyConfig`, `AuthenticationConfig`, `ServerConfig`
 - Permissions: `NatsPermissions`, `Permission`, `PermissionSet`
-- Providers: `AccountProvider`, `OperatorAccountProvider`, `StaticAccountProvider`, `RoleProvider`, `FileRoleProvider`, `PolicyProvider`, `FilePolicyProvider`, `UserIdentityProvider`, `FileUserIdentityProvider`
+- Providers: `AccountProvider`, `OperatorAccountProvider`, `StaticAccountProvider`, `RoleProvider`, `FileRoleProvider`, `PolicyProvider`, `FilePolicyProvider`, `AuthenticationProvider`, `FileAuthenticationProvider`, `JwtAuthenticationProvider`
 - JWT: `Signer`, `LocalSigner`, `IssueUserJWT()`
-- Entities: `Account`, `Role`, `User`
+- Entities: `Account`, `Role`, `User`, `AccountRole`
 
 ### Testing
 
@@ -139,10 +139,10 @@ golangci-lint run
 go build -o bin/nauts ./cmd/nauts
 
 # One-shot authentication (get JWT)
-# Token is JSON format: { "account"?: string, "token": string }
-./bin/nauts auth -c nauts.json -token '{"token":"alice:secret"}'
-# For multi-account users, specify the account:
+# Token is JSON format: { "account": string, "token": string, "ap"?: string }
 ./bin/nauts auth -c nauts.json -token '{"account":"APP","token":"alice:secret"}'
+# With explicit provider selection:
+./bin/nauts auth -c nauts.json -token '{"account":"APP","token":"alice:secret","ap":"local-users"}'
 
 # Run auth callout service
 ./bin/nauts serve -c nauts.json
@@ -188,11 +188,14 @@ The CLI uses a JSON configuration file (`-c/--config`):
       "path": "policies.json"
     }
   },
-  "identity": {
-    "type": "file",
-    "file": {
-      "usersPath": "users.json"
-    }
+  "authentication": {
+    "file": [
+      {
+        "id": "local-users",
+        "accounts": ["*"],
+        "usersPath": "users.json"
+      }
+    ]
   },
   "server": {
     "natsUrl": "nats://localhost:4222",
@@ -242,10 +245,16 @@ nauts supports two account provider modes:
 
 Clients authenticate using a JSON token with the following structure:
 ```json
-{ "account": "APP", "token": "username:password" }
+{ "account": "APP", "token": "username:password", "ap": "provider-id" }
 ```
 
-The `account` field is optional if the user has only one account configured. If the user has multiple accounts, the `account` field is required to specify which account to authenticate to.
+The `account` field is **required** to specify which account to authenticate to.
+
+The `ap` (authentication provider) field is optional. It's only needed when multiple authentication providers can manage the same account. Examples:
+- Single provider configured: omit `ap` field
+- Multiple providers for same account: include `ap` field with provider ID
+
+**Role Format**: Users have roles in `<account>.<role>` format (e.g., `APP.admin`, `PROD.readonly`). All roles have concrete account names, never wildcards.
 
 **Static mode**: Clients connect with just a token:
 ```bash
@@ -576,10 +585,42 @@ require (
 - [x] File role provider: `provider/file_role_provider.go` - JSON file backend for roles
 - [x] Policy provider: `provider/policy_provider.go` - `PolicyProvider` interface
 - [x] File policy provider: `provider/file_policy_provider.go` - JSON file backend for policies
-- [x] Identity provider: `identity/provider.go` - `UserIdentityProvider` interface
-- [x] File identity provider: `identity/file_user_provider.go` - Username/password with bcrypt
-- [x] JWT identity provider: `identity/jwt_user_provider.go` - External JWT verification with role mapping
+- [x] Authentication provider: `identity/provider.go` - `AuthenticationProvider` interface (renamed from UserIdentityProvider)
+- [x] File authentication provider: `identity/file_user_provider.go` - Username/password with bcrypt (renamed from FileUserIdentityProvider)
+- [x] JWT authentication provider: `identity/jwt_user_provider.go` - External JWT verification (renamed from JwtUserIdentityProvider)
 - [x] JWT issuance: `jwt/user.go` - `IssueUserJWT()` function
+
+## Recent Changes (2026-02-05)
+
+### Identity Package Refactoring
+
+**Completed**: Full refactoring of the identity package to improve authentication/authorization separation and support multiple authentication providers.
+
+**Key Changes**:
+1. **Renamed types**: `UserIdentityProvider` → `AuthenticationProvider`, `FileUserIdentityProvider` → `FileAuthenticationProvider`, `JwtUserIdentityProvider` → `JwtAuthenticationProvider`
+2. **New AccountRole type**: User roles are now `[]AccountRole` instead of `[]string`, where `AccountRole` contains both account and role name
+3. **Role filtering moved**: Authentication providers return all user roles; AuthController filters for target account
+4. **Multiple provider support**: Can configure multiple authentication providers; AuthController selects based on account patterns
+5. **Provider interface changes**: Added `ID()` and `CanManageAccount(account)` methods
+6. **Configuration changes**: `identity` → `authentication`, array-based config for multiple providers
+7. **User data format**: Roles use `"APP.admin"` format instead of separate accounts and roles fields
+
+**Migration Notes**:
+- Configuration files need updating: `identity` → `authentication` with array syntax
+- User data files need updating: roles from `["admin"]` → `["APP.admin"]`
+- Test files need updating: use new type names and handle `[]AccountRole`
+- Token format now requires `account` field: `{"account":"APP","token":"..."}`
+- Optional `ap` field for explicit provider selection: `{"account":"APP","token":"...","ap":"provider-id"}`
+
+**Implementation Status**:
+- ✅ Core types and interfaces updated
+- ✅ File and JWT authentication providers updated
+- ✅ AuthController updated with provider selection and role filtering
+- ✅ Configuration structure updated
+- ✅ Code compiles successfully
+- ⏳ Test files need updating
+- ⏳ Test data files need updating
+- ⏳ Further documentation updates needed
 - [x] Signer: `jwt/signer.go` - `Signer` interface and `LocalSigner`
 - [x] Auth controller: `auth/controller.go` - `AuthController` orchestrating full auth flow
 - [x] Configuration: `auth/config.go` - `Config` types and `NewAuthControllerWithConfig()`

@@ -39,7 +39,7 @@ func (l *testLogger) Debug(msg string, args ...any) {
 func TestResolveUser_ValidCredentials(t *testing.T) {
 	ctrl := createTestController(t)
 
-	user, err := ctrl.ResolveUser(context.Background(), `{"token":"alice:secret123"}`)
+	user, err := ctrl.ResolveUser(context.Background(), `{"account":"test-account","token":"alice:secret123"}`)
 	if err != nil {
 		t.Fatalf("ResolveUser() error = %v", err)
 	}
@@ -47,15 +47,19 @@ func TestResolveUser_ValidCredentials(t *testing.T) {
 	if user.ID != "alice" {
 		t.Errorf("user.ID = %q, want %q", user.ID, "alice")
 	}
-	if user.Account != "test-account" {
-		t.Errorf("user.Account = %q, want %q", user.Account, "test-account")
+	// Check roles are filtered for test-account
+	if len(user.Roles) != 1 {
+		t.Fatalf("user.Roles length = %d, want 1", len(user.Roles))
+	}
+	if user.Roles[0].Account != "test-account" || user.Roles[0].Role != "workers" {
+		t.Errorf("user.Roles[0] = {Account: %q, Role: %q}, want {Account: \"test-account\", Role: \"workers\"}", user.Roles[0].Account, user.Roles[0].Role)
 	}
 }
 
 func TestResolveUser_InvalidCredentials(t *testing.T) {
 	ctrl := createTestController(t)
 
-	_, err := ctrl.ResolveUser(context.Background(), `{"token":"alice:wrongpassword"}`)
+	_, err := ctrl.ResolveUser(context.Background(), `{"account":"test-account","token":"alice:wrongpassword"}`)
 	if err == nil {
 		t.Fatal("ResolveUser() expected error")
 	}
@@ -73,15 +77,16 @@ func TestResolveNatsPermissions_Basic(t *testing.T) {
 	ctrl := createTestController(t)
 
 	user := &identity.User{
-		ID:      "alice",
-		Account: "test-account",
-		Roles:   []string{"workers"},
+		ID: "alice",
+		Roles: []identity.AccountRole{
+			{Account: "test-account", Role: "workers"},
+		},
 		Attributes: map[string]string{
 			"department": "engineering",
 		},
 	}
 
-	perms, err := ctrl.ResolveNatsPermissions(context.Background(), user)
+	perms, err := ctrl.ResolveNatsPermissions(context.Background(), user, "test-account")
 	if err != nil {
 		t.Fatalf("ResolveNatsPermissions() error = %v", err)
 	}
@@ -94,7 +99,7 @@ func TestResolveNatsPermissions_Basic(t *testing.T) {
 func TestResolveNatsPermissions_NilUser(t *testing.T) {
 	ctrl := createTestController(t)
 
-	_, err := ctrl.ResolveNatsPermissions(context.Background(), nil)
+	_, err := ctrl.ResolveNatsPermissions(context.Background(), nil, "test-account")
 	if err == nil {
 		t.Error("Expected error for nil user")
 	}
@@ -104,12 +109,11 @@ func TestResolveNatsPermissions_DefaultRole(t *testing.T) {
 	ctrl := createTestController(t)
 
 	user := &identity.User{
-		ID:      "test",
-		Account: "test-account",
-		Roles:   []string{},
+		ID:    "test",
+		Roles: []identity.AccountRole{},
 	}
 
-	perms, err := ctrl.ResolveNatsPermissions(context.Background(), user)
+	perms, err := ctrl.ResolveNatsPermissions(context.Background(), user, "test-account")
 	if err != nil {
 		t.Fatalf("ResolveNatsPermissions() error = %v", err)
 	}
@@ -122,12 +126,13 @@ func TestCreateUserJWT(t *testing.T) {
 	ctrl := createTestController(t)
 
 	user := &identity.User{
-		ID:      "alice",
-		Account: "test-account",
-		Roles:   []string{"workers"},
+		ID: "alice",
+		Roles: []identity.AccountRole{
+			{Account: "test-account", Role: "workers"},
+		},
 	}
 
-	perms, err := ctrl.ResolveNatsPermissions(context.Background(), user)
+	perms, err := ctrl.ResolveNatsPermissions(context.Background(), user, "test-account")
 	if err != nil {
 		t.Fatalf("ResolveNatsPermissions() error = %v", err)
 	}
@@ -142,7 +147,7 @@ func TestCreateUserJWT(t *testing.T) {
 		t.Fatalf("getting user public key: %v", err)
 	}
 
-	token, err := ctrl.CreateUserJWT(context.Background(), user, userPub, perms, time.Hour)
+	token, err := ctrl.CreateUserJWT(context.Background(), user, "test-account", userPub, perms, time.Hour)
 	if err != nil {
 		t.Fatalf("CreateUserJWT() error = %v", err)
 	}
@@ -155,7 +160,7 @@ func TestCreateUserJWT(t *testing.T) {
 func TestCreateUserJWT_NilUser(t *testing.T) {
 	ctrl := createTestController(t)
 
-	_, err := ctrl.CreateUserJWT(context.Background(), nil, "UABC", nil, time.Hour)
+	_, err := ctrl.CreateUserJWT(context.Background(), nil, "test-account", "UABC", nil, time.Hour)
 	if err == nil {
 		t.Error("Expected error for nil user")
 	}
@@ -165,12 +170,11 @@ func TestCreateUserJWT_AccountNotFound(t *testing.T) {
 	ctrl := createTestController(t)
 
 	user := &identity.User{
-		ID:      "alice",
-		Account: "nonexistent-account",
-		Roles:   []string{},
+		ID:    "alice",
+		Roles: []identity.AccountRole{},
 	}
 
-	_, err := ctrl.CreateUserJWT(context.Background(), user, "UABC", nil, time.Hour)
+	_, err := ctrl.CreateUserJWT(context.Background(), user, "nonexistent-account", "UABC", nil, time.Hour)
 	if err == nil {
 		t.Error("Expected error for nonexistent account")
 	}
@@ -190,7 +194,7 @@ func TestAuthenticate_Success(t *testing.T) {
 	}
 
 	result, err := ctrl.Authenticate(context.Background(), natsjwt.ConnectOptions{
-		Token: `{"token":"alice:secret123"}`,
+		Token: `{"account":"test-account","token":"alice:secret123"}`,
 	}, userPub, time.Hour)
 	if err != nil {
 		t.Fatalf("Authenticate() error = %v", err)
@@ -223,7 +227,7 @@ func TestAuthenticate_InvalidCredentials(t *testing.T) {
 	}
 
 	_, err = ctrl.Authenticate(context.Background(), natsjwt.ConnectOptions{
-		Token: `{"token":"alice:wrongpassword"}`,
+		Token: `{"account":"test-account","token":"alice:wrongpassword"}`,
 	}, userPub, time.Hour)
 	if err == nil {
 		t.Fatal("Authenticate() expected error")
@@ -235,7 +239,7 @@ func TestAuthenticate_EphemeralKey(t *testing.T) {
 
 	// Authenticate with empty userPublicKey - should generate ephemeral key
 	result, err := ctrl.Authenticate(context.Background(), natsjwt.ConnectOptions{
-		Token: `{"token":"alice:secret123"}`,
+		Token: `{"account":"test-account","token":"alice:secret123"}`,
 	}, "", time.Hour) // Empty userPublicKey
 	if err != nil {
 		t.Fatalf("Authenticate() error = %v", err)
@@ -283,7 +287,7 @@ func createTestController(t *testing.T) *AuthController {
 	identityProvider := createTestIdentityProvider(t, tmpDir)
 
 	logger := &testLogger{}
-	return NewAuthController(accountProvider, roleProvider, policyProvider, identityProvider, WithLogger(logger))
+	return NewAuthController(accountProvider, roleProvider, policyProvider, []identity.AuthenticationProvider{identityProvider}, WithLogger(logger))
 }
 
 func createTestAccountProvider(t *testing.T, tmpDir string) provider.AccountProvider {
@@ -382,7 +386,7 @@ func createTestPolicyProvider(t *testing.T, tmpDir string) provider.PolicyProvid
 	return pp
 }
 
-func createTestIdentityProvider(t *testing.T, tmpDir string) identity.UserIdentityProvider {
+func createTestIdentityProvider(t *testing.T, tmpDir string) identity.AuthenticationProvider {
 	t.Helper()
 
 	usersFile := filepath.Join(tmpDir, "users.json")
@@ -390,8 +394,7 @@ func createTestIdentityProvider(t *testing.T, tmpDir string) identity.UserIdenti
 	usersContent := `{
   "users": {
     "alice": {
-      "accounts": ["test-account"],
-      "roles": ["workers"],
+      "roles": ["test-account.workers"],
       "passwordHash": "` + string(aliceHash) + `",
       "attributes": {
         "department": "engineering"
@@ -403,7 +406,9 @@ func createTestIdentityProvider(t *testing.T, tmpDir string) identity.UserIdenti
 		t.Fatalf("writing users file: %v", err)
 	}
 
-	ip, err := identity.NewFileUserIdentityProvider(identity.FileUserIdentityProviderConfig{
+	ip, err := identity.NewFileAuthenticationProvider(identity.FileAuthenticationProviderConfig{
+		ID:        "test",
+		Accounts:  []string{"*"},
 		UsersPath: usersFile,
 	})
 	if err != nil {
