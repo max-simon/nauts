@@ -17,8 +17,7 @@ type usernamePassword struct {
 
 // fileUser represents a user stored in the JSON file.
 type fileUser struct {
-	Accounts     []string          `json:"accounts"`
-	Roles        []string          `json:"roles"`
+	Roles        []string          `json:"roles"` // Format: "account.role"
 	PasswordHash string            `json:"passwordHash"`
 	Attributes   map[string]string `json:"attributes,omitempty"`
 }
@@ -28,21 +27,29 @@ type usersFile struct {
 	Users map[string]*fileUser `json:"users"`
 }
 
-// FileUserIdentityProvider implements UserIdentityProvider using a JSON file.
-type FileUserIdentityProvider struct {
-	users map[string]*fileUser
+// FileAuthenticationProvider implements AuthenticationProvider using a JSON file.
+type FileAuthenticationProvider struct {
+	id       string
+	accounts []string
+	users    map[string]*fileUser
 }
 
-// FileUserIdentityProviderConfig holds configuration for FileUserIdentityProvider.
-type FileUserIdentityProviderConfig struct {
+// FileAuthenticationProviderConfig holds configuration for FileAuthenticationProvider.
+type FileAuthenticationProviderConfig struct {
+	// ID is the provider identifier.
+	ID string
+	// Accounts is the list of accounts this provider manages (supports wildcards).
+	Accounts []string
 	// UsersPath is the path to the users JSON file.
 	UsersPath string
 }
 
-// NewFileUserIdentityProvider creates a new FileUserIdentityProvider from the given configuration.
-func NewFileUserIdentityProvider(cfg FileUserIdentityProviderConfig) (*FileUserIdentityProvider, error) {
-	fp := &FileUserIdentityProvider{
-		users: make(map[string]*fileUser),
+// NewFileAuthenticationProvider creates a new FileAuthenticationProvider from the given configuration.
+func NewFileAuthenticationProvider(cfg FileAuthenticationProviderConfig) (*FileAuthenticationProvider, error) {
+	fp := &FileAuthenticationProvider{
+		id:       cfg.ID,
+		accounts: cfg.Accounts,
+		users:    make(map[string]*fileUser),
 	}
 
 	if cfg.UsersPath != "" {
@@ -55,7 +62,7 @@ func NewFileUserIdentityProvider(cfg FileUserIdentityProviderConfig) (*FileUserI
 }
 
 // loadUsers loads users from a JSON file.
-func (fp *FileUserIdentityProvider) loadUsers(path string) error {
+func (fp *FileAuthenticationProvider) loadUsers(path string) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return err
@@ -68,6 +75,22 @@ func (fp *FileUserIdentityProvider) loadUsers(path string) error {
 
 	fp.users = file.Users
 	return nil
+}
+
+// ID returns the unique identifier for this provider.
+func (fp *FileAuthenticationProvider) ID() string {
+	return fp.id
+}
+
+// CanManageAccount returns true if this provider is authorized to authenticate
+// users for the given account.
+func (fp *FileAuthenticationProvider) CanManageAccount(account string) bool {
+	for _, pattern := range fp.accounts {
+		if MatchAccountPattern(pattern, account) {
+			return true
+		}
+	}
+	return false
 }
 
 // parseUsernamePassword parses a UsernamePassword token from basic auth format.
@@ -86,9 +109,7 @@ func parseUsernamePassword(token string) (*usernamePassword, error) {
 // Returns ErrInvalidTokenType if token is not UsernamePassword format.
 // Returns ErrUserNotFound if the user does not exist.
 // Returns ErrInvalidCredentials if the password is incorrect.
-// Returns ErrInvalidAccount if the requested account is not valid for the user.
-// Returns ErrAccountRequired if user has multiple accounts but no account was specified.
-func (fp *FileUserIdentityProvider) Verify(_ context.Context, req AuthRequest) (*User, error) {
+func (fp *FileAuthenticationProvider) Verify(_ context.Context, req AuthRequest) (*User, error) {
 	creds, err := parseUsernamePassword(req.Token)
 	if err != nil {
 		return nil, ErrInvalidTokenType
@@ -104,68 +125,43 @@ func (fp *FileUserIdentityProvider) Verify(_ context.Context, req AuthRequest) (
 		return nil, ErrInvalidCredentials
 	}
 
-	// Determine the account
-	account, err := resolveAccount(fu.Accounts, req.Account)
-	if err != nil {
-		return nil, err
+	// Parse role strings to AccountRole objects
+	roles, errs := ParseAccountRoles(fu.Roles)
+	if len(errs) > 0 {
+		// Log errors but continue with valid roles
+		// TODO: integrate with logging system
+		for _, e := range errs {
+			_ = e
+		}
 	}
 
 	return &User{
 		ID:         creds.Username,
-		Account:    account,
-		Roles:      fu.Roles,
+		Roles:      roles,
 		Attributes: fu.Attributes,
 	}, nil
 }
 
-// resolveAccount determines the account based on the user's accounts and the requested account.
-// If user has single account, returns it (ignoring requested account).
-// If user has multiple accounts, requires and validates the requested account.
-func resolveAccount(accounts []string, requestedAccount string) (string, error) {
-	if len(accounts) == 0 {
-		return "", ErrInvalidAccount
-	}
-
-	if len(accounts) == 1 {
-		// Single account - use it regardless of request
-		return accounts[0], nil
-	}
-
-	// Multiple accounts - require explicit account selection
-	if requestedAccount == "" {
-		return "", ErrAccountRequired
-	}
-
-	// Validate requested account is in user's accounts list
-	for _, acc := range accounts {
-		if acc == requestedAccount {
-			return requestedAccount, nil
-		}
-	}
-
-	return "", ErrInvalidAccount
-}
-
 // GetUser retrieves a user by ID without verifying credentials.
 // Returns ErrUserNotFound if the user does not exist.
-// Note: For users with multiple accounts, this returns the first account.
-// Use Verify with AuthRequest to specify a specific account.
-func (fp *FileUserIdentityProvider) GetUser(_ context.Context, id string) (*User, error) {
+func (fp *FileAuthenticationProvider) GetUser(_ context.Context, id string) (*User, error) {
 	fu, ok := fp.users[id]
 	if !ok {
 		return nil, ErrUserNotFound
 	}
 
-	// For GetUser, use the first account (or empty if no accounts)
-	account := ""
-	if len(fu.Accounts) > 0 {
-		account = fu.Accounts[0]
+	// Parse role strings to AccountRole objects
+	roles, errs := ParseAccountRoles(fu.Roles)
+	if len(errs) > 0 {
+		// Log errors but continue with valid roles
+		for _, e := range errs {
+			_ = e
+		}
 	}
 
 	return &User{
 		ID:         id,
-		Account:    account,
-		Roles:      fu.Roles,
+		Roles:      roles,
 		Attributes: fu.Attributes,
 	}, nil
 }

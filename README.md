@@ -100,9 +100,14 @@ nauts uses a JSON configuration file. Here's a minimal example:
     "type": "file",
     "file": { "path": "policies.json" }
   },
-  "identity": {
-    "type": "file",
-    "file": { "usersPath": "users.json" }
+  "authentication": {
+    "file": [
+      {
+        "id": "local-users",
+        "accounts": ["*"],
+        "usersPath": "users.json"
+      }
+    ]
   },
   "server": {
     "natsUrl": "nats://localhost:4222",
@@ -145,25 +150,29 @@ nauts uses a JSON configuration file. Here's a minimal example:
 ]
 ```
 
-### users.json (file identity provider)
+### users.json (file authentication provider)
 
 ```json
 {
   "users": {
     "alice": {
-      "accounts": ["APP"],
-      "roles": ["readonly"],
-      "passwordHash": "$2a$10$..."
+      "roles": ["APP.readonly", "APP.viewer"],
+      "passwordHash": "$2a$10$...",
+      "attributes": {
+        "email": "alice@example.com"
+      }
     }
   }
 }
 ```
 
-## Identity Providers
+## Authentication Providers
 
 ### File-Based (username/password)
 
-Static user list with bcrypt password hashes. Token format: `{"token":"username:password"}`
+Static user list with bcrypt password hashes. Token format: `{"account":"APP","token":"username:password"}`
+
+**Note**: The `account` field is required in the token to specify which account to authenticate to.
 
 ### JWT-Based (external IdP)
 
@@ -171,22 +180,23 @@ Verify JWTs from external identity providers like Keycloak or Auth0. Configure i
 
 ```json
 {
-  "identity": {
-    "type": "jwt",
-    "jwt": {
-      "issuers": {
-        "https://keycloak.example.com/realms/myrealm": {
-          "publicKey": "<base64 encoded public key>",
-          "accounts": ["tenant-*"],
-          "rolesClaimPath": "resource_access.nauts.roles"
-        }
+  "authentication": {
+    "jwt": [
+      {
+        "id": "keycloak",
+        "accounts": ["tenant-*"],
+        "issuer": "https://keycloak.example.com/realms/myrealm",
+        "publicKey": "<base64 encoded PEM public key>",
+        "rolesClaimPath": "resource_access.nauts.roles"
       }
-    }
+    ]
   }
 }
 ```
 
-Roles in JWT claims follow format `<account>.<role>` (e.g., `tenant-a.admin`).
+Roles in JWT claims follow format `<account>.<role>` (e.g., `tenant-a.admin`). Each role must have a concrete account name.
+
+**Multiple Providers**: You can configure multiple authentication providers. When multiple providers can manage the same account, explicitly specify the provider using the `ap` field: `{"account":"APP","token":"...","ap":"provider-id"}`
 
 ## Policy Specification
 

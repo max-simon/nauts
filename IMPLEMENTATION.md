@@ -26,11 +26,11 @@ nauts/
 │   ├── policy_provider.go  # PolicyProvider interface
 │   ├── file_policy_provider.go # FilePolicyProvider
 │   └── role.go             # Role type
-├── identity/               # User identity management
-│   ├── user.go             # User type
-│   ├── provider.go         # UserIdentityProvider interface, AuthRequest
-│   ├── file_user_provider.go # FileUserIdentityProvider
-│   └── jwt_user_provider.go # JwtUserIdentityProvider
+├── identity/               # User identity and authentication
+│   ├── user.go             # User and AccountRole types
+│   ├── provider.go         # AuthenticationProvider interface, AuthRequest
+│   ├── file_user_provider.go # FileAuthenticationProvider
+│   └── jwt_user_provider.go # JwtAuthenticationProvider
 ├── jwt/                    # JWT issuance
 │   ├── signer.go           # Signer interface
 │   ├── local_signer.go     # LocalSigner (nkeys)
@@ -94,12 +94,13 @@ nauts/
 
 The `AuthController.Authenticate()` method performs:
 
-1. **Parse auth request**: Extract account and token from JSON `{"account":"APP","token":"..."}`
-2. **Verify identity token**: Identity provider verifies the token and returns user info
-3. **Resolve roles**: Collect user's roles (including default role)
-4. **Compile permissions**: For each role, fetch policies and compile to NATS permissions
-5. **Create JWT**: Sign a NATS user JWT with the compiled permissions
-6. **Return result**: `AuthResult` containing user, permissions, and signed JWT
+1. **Parse auth request**: Extract account, token, and optional provider ID from JSON `{"account":"APP","token":"...","ap":"provider-id"}`
+2. **Select provider**: Find authentication provider(s) that can manage the account. If multiple match, use provider ID from request.
+3. **Verify identity token**: Authentication provider verifies the token and returns user info with all roles across all accounts
+4. **Filter roles**: Filter user roles to only include those for the target account
+5. **Resolve permissions**: For each role, fetch both global and local role definitions and compile policies
+6. **Create JWT**: Sign a NATS user JWT with the compiled permissions
+7. **Return result**: `AuthResult` containing user, account, permissions, and signed JWT
 
 ```go
 // Using configuration file
@@ -163,6 +164,28 @@ When resolving permissions, both global and account-specific roles are considere
 2. Look up `roles[name:account]` (local role)
 3. Merge policies from both
 
+### User Roles vs Role Definitions
+
+Important distinction:
+- **User.Roles** (`[]AccountRole`): Concrete role assignments with account associations (e.g., `{Account: "APP", Role: "admin"}`)
+- **Role** (from RoleProvider): Role definitions that can be global (`Account: "*"`) or local (concrete account)
+- User roles always have concrete accounts (never `*`)
+- Role definitions from RoleProvider can have `Account: "*"` for global roles
+    Name     string   `json:"name"`     // Part of unique key
+    Account  string   `json:"account"`  // "*" for global, specific account for local
+    Policies []string `json:"policies"` // Policy IDs
+}
+```
+
+- **Global roles** (`account: "*"`): Apply to all accounts
+- **Local roles** (specific account): Apply only to that account
+- **Composite key**: `(Name, Account)` is unique
+
+When resolving permissions, both global and account-specific roles are considered:
+1. Look up `roles[name:*]` (global role)
+2. Look up `roles[name:account]` (local role)
+3. Merge policies from both
+
 ## Account Providers
 
 ### Operator Mode (OperatorAccountProvider)
@@ -210,31 +233,45 @@ Simpler setup with single signing key for all accounts:
 }
 ```
 
-## Identity Providers
+## Authentication Providers
 
-### FileUserIdentityProvider
+### FileAuthenticationProvider
 
 Static user list with bcrypt password hashes.
 
 **Token format**: `{"account":"APP","token":"username:password"}`
 
+**Configuration**:
+```json
+{
+  "authentication": {
+    "file": [
+      {
+        "id": "local-users",
+        "accounts": ["*"],
+        "usersPath": "users.json"
+      }
+    ]
+  }
+}
+```
+
+**User data format**: Roles use `<account>.<role>` format with concrete accounts:
 ```json
 {
   "users": {
     "alice": {
-      "accounts": ["APP"],
-      "roles": ["readonly"],
+      "roles": ["APP.readonly", "APP.viewer"],
       "passwordHash": "$2a$10$...",
-      "attributes": { "department": "engineering" }
+      "attributes": { "email": "alice@example.com" }
     }
   }
 }
 ```
 
-- If user has single account, `account` in request is optional
-- If user has multiple accounts, `account` must be specified
+The `account` field in the token is required. The provider returns a User with all roles, which AuthController filters for the target account.
 
-### JwtUserIdentityProvider
+### JwtAuthenticationProvider
 
 Verify JWTs from external identity providers (Keycloak, Auth0, etc.).
 
@@ -243,35 +280,33 @@ Verify JWTs from external identity providers (Keycloak, Auth0, etc.).
 **Configuration**:
 ```json
 {
-  "identity": {
-    "type": "jwt",
-    "jwt": {
-      "issuers": {
-        "https://keycloak.example.com/realms/myrealm": {
-          "publicKey": "<base64 encoded public key>",
-          "accounts": ["tenant-*", "shared"],
-          "rolesClaimPath": "resource_access.nauts.roles"
-        }
+  "authentication": {
+    "jwt": [
+      {
+        "id": "keycloak",
+        "accounts": ["tenant-*", "shared"],
+        "issuer": "https://keycloak.example.com/realms/myrealm",
+        "publicKey": "<base64 encoded PEM public key>",
+        "rolesClaimPath": "resource_access.nauts.roles"
       }
-    }
+    ]
   }
 }
 ```
 
 **Verification process**:
-1. Parse JWT to extract issuer (iss claim)
-2. Look up issuer configuration
-3. Verify signature using issuer's public key (RSA or ECDSA)
-4. Extract roles from claims at issuer's configured path (default: `resource_access.nauts.roles`)
-5. Parse roles: format is `<account>.<role>` (e.g., `tenant-a.admin`)
-6. Determine target account from request or derive from roles
-7. Validate issuer can manage target account (supports wildcards)
-8. Filter roles for target account and strip account prefix
+1. Parse JWT and verify signature using provider's public key (RSA or ECDSA)
+2. Verify issuer matches provider's configured issuer
+3. Extract roles from claims at provider's configured path (default: `resource_access.nauts.roles`)
+4. Parse roles: format is `<account>.<role>` (e.g., `tenant-a.admin`) with concrete accounts
+5. Return User with all roles (no filtering at this stage)
+6. AuthController filters roles for target account
 
-**Account wildcards**:
-- `*` matches any account
-- `tenant-*` matches accounts starting with `tenant-`
-- `shared` matches only `shared`
+**Provider Selection**:
+- Each provider declares which accounts it can manage via `CanManageAccount(account)` method
+- Supports wildcards: `*` matches any, `tenant-*` matches prefix
+- Special accounts `SYS` and `AUTH` require exact match
+- If multiple providers match an account, token must include `"ap": "provider-id"` field
 
 ## Auth Callout Service
 

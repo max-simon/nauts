@@ -41,11 +41,14 @@ func TestLoadConfig(t *testing.T) {
 				"path": "/path/to/policies.json"
 			}
 		},
-		"identity": {
-			"type": "file",
-			"file": {
-				"usersPath": "/path/to/users.json"
-			}
+		"authentication": {
+			"file": [
+				{
+					"id": "local",
+					"accounts": ["*"],
+					"usersPath": "/path/to/users.json"
+				}
+			]
 		},
 		"server": {
 			"natsUrl": "nats://localhost:4222",
@@ -84,10 +87,10 @@ func TestLoadConfig(t *testing.T) {
 
 	// Verify role config
 	if config.Role.Type != "file" {
-		t.Errorf("Group.Type = %q, want %q", config.Role.Type, "file")
+		t.Errorf("Role.Type = %q, want %q", config.Role.Type, "file")
 	}
 	if config.Role.File.Path != "/path/to/roles.json" {
-		t.Errorf("Group.File.Path = %q, want %q", config.Role.File.Path, "/path/to/roles.json")
+		t.Errorf("Role.File.Path = %q, want %q", config.Role.File.Path, "/path/to/roles.json")
 	}
 
 	// Verify policy config
@@ -98,9 +101,15 @@ func TestLoadConfig(t *testing.T) {
 		t.Errorf("Policy.File.Path = %q, want %q", config.Policy.File.Path, "/path/to/policies.json")
 	}
 
-	// Verify identity config
-	if config.Identity.Type != "file" {
-		t.Errorf("Identity.Type = %q, want %q", config.Identity.Type, "file")
+	// Verify authentication config
+	if len(config.Authentication.File) != 1 {
+		t.Fatalf("Authentication.File count = %d, want 1", len(config.Authentication.File))
+	}
+	if config.Authentication.File[0].ID != "local" {
+		t.Errorf("Authentication.File[0].ID = %q, want %q", config.Authentication.File[0].ID, "local")
+	}
+	if config.Authentication.File[0].UsersPath != "/path/to/users.json" {
+		t.Errorf("Authentication.File[0].UsersPath = %q, want %q", config.Authentication.File[0].UsersPath, "/path/to/users.json")
 	}
 
 	// Verify server config
@@ -140,7 +149,7 @@ func TestConfig_Validate(t *testing.T) {
 		wantErr string
 	}{
 		{
-			name: "valid operator config",
+			name: "valid file authentication config",
 			config: Config{
 				Account: AccountConfig{
 					Type: "operator",
@@ -163,16 +172,20 @@ func TestConfig_Validate(t *testing.T) {
 						Path: "/path/to/policies.json",
 					},
 				},
-				Identity: IdentityConfig{
-					File: &FileIdentityConfig{
-						UsersPath: "/path/to/users.json",
+				Authentication: AuthenticationConfig{
+					File: []FileAuthenticationConfig{
+						{
+							ID:        "local",
+							Accounts:  []string{"*"},
+							UsersPath: "/path/to/users.json",
+						},
 					},
 				},
 			},
 			wantErr: "",
 		},
 		{
-			name: "valid jwt identity config",
+			name: "valid jwt authentication config",
 			config: Config{
 				Account: AccountConfig{
 					Type: "operator",
@@ -195,14 +208,57 @@ func TestConfig_Validate(t *testing.T) {
 						Path: "/path/to/policies.json",
 					},
 				},
-				Identity: IdentityConfig{
-					Type: "jwt",
-					JWT: &JwtIdentityConfig{
-						Issuers: map[string]JwtIssuerConfig{
-							"https://auth.example.com": {
-								PublicKey: "-----BEGIN PUBLIC KEY-----\nMIIBIjANBg...\n-----END PUBLIC KEY-----",
-								Accounts:  []string{"*"},
+				Authentication: AuthenticationConfig{
+					JWT: []JwtAuthenticationConfig{
+						{
+							ID:        "okta",
+							Accounts:  []string{"*"},
+							Issuer:    "https://auth.example.com",
+							PublicKey: "-----BEGIN PUBLIC KEY-----\nMIIBIjANBg...\n-----END PUBLIC KEY-----",
+						},
+					},
+				},
+			},
+			wantErr: "",
+		},
+		{
+			name: "valid multiple authentication providers",
+			config: Config{
+				Account: AccountConfig{
+					Type: "operator",
+					Operator: &OperatorAccountConfig{
+						Accounts: map[string]AccountSigningConfig{
+							"AUTH": {
+								PublicKey:      "AAUTH1234567890123456789012345678901234567890123456789012345",
+								SigningKeyPath: "/path/to/auth-signing.nk",
 							},
+						},
+					},
+				},
+				Role: RoleConfig{
+					File: &FileRoleConfig{
+						Path: "/path/to/roles.json",
+					},
+				},
+				Policy: PolicyConfig{
+					File: &FilePolicyConfig{
+						Path: "/path/to/policies.json",
+					},
+				},
+				Authentication: AuthenticationConfig{
+					File: []FileAuthenticationConfig{
+						{
+							ID:        "local",
+							Accounts:  []string{"DEV", "TEST"},
+							UsersPath: "/path/to/users.json",
+						},
+					},
+					JWT: []JwtAuthenticationConfig{
+						{
+							ID:        "okta",
+							Accounts:  []string{"PROD*"},
+							Issuer:    "https://auth.example.com",
+							PublicKey: "-----BEGIN PUBLIC KEY-----\nMIIBIjANBg...\n-----END PUBLIC KEY-----",
 						},
 					},
 				},
@@ -230,9 +286,13 @@ func TestConfig_Validate(t *testing.T) {
 						Path: "/path/to/policies.json",
 					},
 				},
-				Identity: IdentityConfig{
-					File: &FileIdentityConfig{
-						UsersPath: "/path/to/users.json",
+				Authentication: AuthenticationConfig{
+					File: []FileAuthenticationConfig{
+						{
+							ID:        "local",
+							Accounts:  []string{"*"},
+							UsersPath: "/path/to/users.json",
+						},
 					},
 				},
 			},
@@ -348,7 +408,7 @@ func TestConfig_Validate(t *testing.T) {
 			wantErr: "policy.file.path is required",
 		},
 		{
-			name: "missing users path",
+			name: "missing file authentication provider id",
 			config: Config{
 				Account: AccountConfig{
 					Type: "operator",
@@ -371,15 +431,19 @@ func TestConfig_Validate(t *testing.T) {
 						Path: "/path/to/policies.json",
 					},
 				},
-				Identity: IdentityConfig{
-					Type: "file",
-					File: &FileIdentityConfig{},
+				Authentication: AuthenticationConfig{
+					File: []FileAuthenticationConfig{
+						{
+							Accounts:  []string{"*"},
+							UsersPath: "/path/to/users.json",
+						},
+					},
 				},
 			},
-			wantErr: "identity.file.usersPath is required",
+			wantErr: "authentication.file[0].id is required",
 		},
 		{
-			name: "missing jwt issuers",
+			name: "missing file authentication provider accounts",
 			config: Config{
 				Account: AccountConfig{
 					Type: "operator",
@@ -402,15 +466,19 @@ func TestConfig_Validate(t *testing.T) {
 						Path: "/path/to/policies.json",
 					},
 				},
-				Identity: IdentityConfig{
-					Type: "jwt",
-					JWT:  &JwtIdentityConfig{},
+				Authentication: AuthenticationConfig{
+					File: []FileAuthenticationConfig{
+						{
+							ID:        "local",
+							UsersPath: "/path/to/users.json",
+						},
+					},
 				},
 			},
-			wantErr: "identity.jwt.issuers must contain at least one issuer",
+			wantErr: "authentication.file[0].accounts must contain at least one account",
 		},
 		{
-			name: "missing jwt issuer public key",
+			name: "missing file authentication users path",
 			config: Config{
 				Account: AccountConfig{
 					Type: "operator",
@@ -433,21 +501,19 @@ func TestConfig_Validate(t *testing.T) {
 						Path: "/path/to/policies.json",
 					},
 				},
-				Identity: IdentityConfig{
-					Type: "jwt",
-					JWT: &JwtIdentityConfig{
-						Issuers: map[string]JwtIssuerConfig{
-							"https://auth.example.com": {
-								Accounts: []string{"*"},
-							},
+				Authentication: AuthenticationConfig{
+					File: []FileAuthenticationConfig{
+						{
+							ID:       "local",
+							Accounts: []string{"*"},
 						},
 					},
 				},
 			},
-			wantErr: "identity.jwt.issuers[https://auth.example.com].publicKey is required",
+			wantErr: "authentication.file[0].usersPath is required",
 		},
 		{
-			name: "missing jwt issuer accounts",
+			name: "missing jwt authentication provider id",
 			config: Config{
 				Account: AccountConfig{
 					Type: "operator",
@@ -470,18 +536,197 @@ func TestConfig_Validate(t *testing.T) {
 						Path: "/path/to/policies.json",
 					},
 				},
-				Identity: IdentityConfig{
-					Type: "jwt",
-					JWT: &JwtIdentityConfig{
-						Issuers: map[string]JwtIssuerConfig{
-							"https://auth.example.com": {
-								PublicKey: "-----BEGIN PUBLIC KEY-----\nMIIBIjANBg...\n-----END PUBLIC KEY-----",
-							},
+				Authentication: AuthenticationConfig{
+					JWT: []JwtAuthenticationConfig{
+						{
+							Accounts:  []string{"*"},
+							Issuer:    "https://auth.example.com",
+							PublicKey: "-----BEGIN PUBLIC KEY-----\nMIIBIjANBg...\n-----END PUBLIC KEY-----",
 						},
 					},
 				},
 			},
-			wantErr: "identity.jwt.issuers[https://auth.example.com].accounts must contain at least one account",
+			wantErr: "authentication.jwt[0].id is required",
+		},
+		{
+			name: "missing jwt authentication provider accounts",
+			config: Config{
+				Account: AccountConfig{
+					Type: "operator",
+					Operator: &OperatorAccountConfig{
+						Accounts: map[string]AccountSigningConfig{
+							"AUTH": {
+								PublicKey:      "AAUTH1234567890123456789012345678901234567890123456789012345",
+								SigningKeyPath: "/path/to/auth-signing.nk",
+							},
+						},
+					},
+				},
+				Role: RoleConfig{
+					File: &FileRoleConfig{
+						Path: "/path/to/roles.json",
+					},
+				},
+				Policy: PolicyConfig{
+					File: &FilePolicyConfig{
+						Path: "/path/to/policies.json",
+					},
+				},
+				Authentication: AuthenticationConfig{
+					JWT: []JwtAuthenticationConfig{
+						{
+							ID:        "okta",
+							Issuer:    "https://auth.example.com",
+							PublicKey: "-----BEGIN PUBLIC KEY-----\nMIIBIjANBg...\n-----END PUBLIC KEY-----",
+						},
+					},
+				},
+			},
+			wantErr: "authentication.jwt[0].accounts must contain at least one account",
+		},
+		{
+			name: "missing jwt issuer",
+			config: Config{
+				Account: AccountConfig{
+					Type: "operator",
+					Operator: &OperatorAccountConfig{
+						Accounts: map[string]AccountSigningConfig{
+							"AUTH": {
+								PublicKey:      "AAUTH1234567890123456789012345678901234567890123456789012345",
+								SigningKeyPath: "/path/to/auth-signing.nk",
+							},
+						},
+					},
+				},
+				Role: RoleConfig{
+					File: &FileRoleConfig{
+						Path: "/path/to/roles.json",
+					},
+				},
+				Policy: PolicyConfig{
+					File: &FilePolicyConfig{
+						Path: "/path/to/policies.json",
+					},
+				},
+				Authentication: AuthenticationConfig{
+					JWT: []JwtAuthenticationConfig{
+						{
+							ID:        "okta",
+							Accounts:  []string{"*"},
+							PublicKey: "-----BEGIN PUBLIC KEY-----\nMIIBIjANBg...\n-----END PUBLIC KEY-----",
+						},
+					},
+				},
+			},
+			wantErr: "authentication.jwt[0].issuer is required",
+		},
+		{
+			name: "missing jwt public key",
+			config: Config{
+				Account: AccountConfig{
+					Type: "operator",
+					Operator: &OperatorAccountConfig{
+						Accounts: map[string]AccountSigningConfig{
+							"AUTH": {
+								PublicKey:      "AAUTH1234567890123456789012345678901234567890123456789012345",
+								SigningKeyPath: "/path/to/auth-signing.nk",
+							},
+						},
+					},
+				},
+				Role: RoleConfig{
+					File: &FileRoleConfig{
+						Path: "/path/to/roles.json",
+					},
+				},
+				Policy: PolicyConfig{
+					File: &FilePolicyConfig{
+						Path: "/path/to/policies.json",
+					},
+				},
+				Authentication: AuthenticationConfig{
+					JWT: []JwtAuthenticationConfig{
+						{
+							ID:       "okta",
+							Accounts: []string{"*"},
+							Issuer:   "https://auth.example.com",
+						},
+					},
+				},
+			},
+			wantErr: "authentication.jwt[0].publicKey is required",
+		},
+		{
+			name: "duplicate provider ids",
+			config: Config{
+				Account: AccountConfig{
+					Type: "operator",
+					Operator: &OperatorAccountConfig{
+						Accounts: map[string]AccountSigningConfig{
+							"AUTH": {
+								PublicKey:      "AAUTH1234567890123456789012345678901234567890123456789012345",
+								SigningKeyPath: "/path/to/auth-signing.nk",
+							},
+						},
+					},
+				},
+				Role: RoleConfig{
+					File: &FileRoleConfig{
+						Path: "/path/to/roles.json",
+					},
+				},
+				Policy: PolicyConfig{
+					File: &FilePolicyConfig{
+						Path: "/path/to/policies.json",
+					},
+				},
+				Authentication: AuthenticationConfig{
+					File: []FileAuthenticationConfig{
+						{
+							ID:        "duplicate",
+							Accounts:  []string{"*"},
+							UsersPath: "/path/to/users1.json",
+						},
+					},
+					JWT: []JwtAuthenticationConfig{
+						{
+							ID:        "duplicate",
+							Accounts:  []string{"*"},
+							Issuer:    "https://auth.example.com",
+							PublicKey: "-----BEGIN PUBLIC KEY-----\nMIIBIjANBg...\n-----END PUBLIC KEY-----",
+						},
+					},
+				},
+			},
+			wantErr: "duplicate provider ID",
+		},
+		{
+			name: "no authentication providers",
+			config: Config{
+				Account: AccountConfig{
+					Type: "operator",
+					Operator: &OperatorAccountConfig{
+						Accounts: map[string]AccountSigningConfig{
+							"AUTH": {
+								PublicKey:      "AAUTH1234567890123456789012345678901234567890123456789012345",
+								SigningKeyPath: "/path/to/auth-signing.nk",
+							},
+						},
+					},
+				},
+				Role: RoleConfig{
+					File: &FileRoleConfig{
+						Path: "/path/to/roles.json",
+					},
+				},
+				Policy: PolicyConfig{
+					File: &FilePolicyConfig{
+						Path: "/path/to/policies.json",
+					},
+				},
+				Authentication: AuthenticationConfig{},
+			},
+			wantErr: "at least one authentication provider must be configured",
 		},
 	}
 

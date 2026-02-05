@@ -22,8 +22,8 @@ type Config struct {
 	// Policy provider configuration
 	Policy PolicyConfig `json:"policy"`
 
-	// Identity provider configuration
-	Identity IdentityConfig `json:"identity"`
+	// Authentication provider configuration
+	Authentication AuthenticationConfig `json:"authentication"`
 
 	// Server configuration (for serve mode)
 	Server ServerConfig `json:"server"`
@@ -100,38 +100,40 @@ type FilePolicyConfig struct {
 	Path string `json:"path"`
 }
 
-// IdentityConfig configures the identity provider.
-type IdentityConfig struct {
-	// Type specifies the identity provider type: "file" or "jwt".
-	Type string `json:"type"`
+// AuthenticationConfig configures the authentication providers.
+type AuthenticationConfig struct {
+	// File-based authentication providers
+	File []FileAuthenticationConfig `json:"file,omitempty"`
 
-	// File contains file-based provider configuration.
-	File *FileIdentityConfig `json:"file,omitempty"`
-
-	// JWT contains JWT-based provider configuration.
-	JWT *JwtIdentityConfig `json:"jwt,omitempty"`
+	// JWT-based authentication providers
+	JWT []JwtAuthenticationConfig `json:"jwt,omitempty"`
 }
 
-// FileIdentityConfig configures the file-based identity provider.
-type FileIdentityConfig struct {
+// FileAuthenticationConfig configures a file-based authentication provider.
+type FileAuthenticationConfig struct {
+	// ID is the provider identifier.
+	ID string `json:"id"`
+
+	// Accounts is the list of accounts this provider manages (supports wildcards).
+	Accounts []string `json:"accounts"`
+
 	// UsersPath is the path to the users JSON file.
 	UsersPath string `json:"usersPath"`
 }
 
-// JwtIdentityConfig configures the JWT-based identity provider.
-type JwtIdentityConfig struct {
-	// Issuers maps JWT issuer (iss claim) to their configuration.
-	Issuers map[string]JwtIssuerConfig `json:"issuers"`
-}
+// JwtAuthenticationConfig configures a JWT-based authentication provider.
+type JwtAuthenticationConfig struct {
+	// ID is the provider identifier.
+	ID string `json:"id"`
 
-// JwtIssuerConfig holds configuration for a single JWT issuer.
-type JwtIssuerConfig struct {
+	// Accounts is the list of accounts this provider manages (supports wildcards).
+	Accounts []string `json:"accounts"`
+
+	// Issuer is the expected JWT issuer (iss claim).
+	Issuer string `json:"issuer"`
+
 	// PublicKey is the PEM-encoded public key for JWT signature verification.
 	PublicKey string `json:"publicKey"`
-
-	// Accounts is the list of NATS accounts this issuer can manage.
-	// Supports wildcards: "*" matches any account, "tenant-a-*" matches accounts starting with "tenant-a-".
-	Accounts []string `json:"accounts"`
 
 	// RolesClaimPath is the path to roles in JWT claims (dot-separated).
 	// Default: "resource_access.nauts.roles"
@@ -252,38 +254,51 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("unsupported policy provider type: %s", c.Policy.Type)
 	}
 
-	// Validate identity config
-	if c.Identity.Type == "" {
-		c.Identity.Type = "file" // default to file
+	// Validate authentication config
+	if len(c.Authentication.File) == 0 && len(c.Authentication.JWT) == 0 {
+		return fmt.Errorf("at least one authentication provider must be configured")
 	}
-	switch c.Identity.Type {
-	case "file":
-		if c.Identity.File == nil {
-			return fmt.Errorf("identity.file configuration is required when type is 'file'")
+
+	// Check provider ID uniqueness
+	ids := make(map[string]bool)
+
+	// Validate file providers
+	for i, fileCfg := range c.Authentication.File {
+		if fileCfg.ID == "" {
+			return fmt.Errorf("authentication.file[%d].id is required", i)
 		}
-		if c.Identity.File.UsersPath == "" {
-			return fmt.Errorf("identity.file.usersPath is required")
+		if ids[fileCfg.ID] {
+			return fmt.Errorf("duplicate provider ID: %s", fileCfg.ID)
 		}
-	case "jwt":
-		if c.Identity.JWT == nil {
-			return fmt.Errorf("identity.jwt configuration is required when type is 'jwt'")
+		ids[fileCfg.ID] = true
+
+		if len(fileCfg.Accounts) == 0 {
+			return fmt.Errorf("authentication.file[%d].accounts must contain at least one account", i)
 		}
-		if len(c.Identity.JWT.Issuers) == 0 {
-			return fmt.Errorf("identity.jwt.issuers must contain at least one issuer")
+		if fileCfg.UsersPath == "" {
+			return fmt.Errorf("authentication.file[%d].usersPath is required", i)
 		}
-		for issuer, issuerCfg := range c.Identity.JWT.Issuers {
-			if issuer == "" {
-				return fmt.Errorf("identity.jwt.issuers contains an empty issuer name")
-			}
-			if issuerCfg.PublicKey == "" {
-				return fmt.Errorf("identity.jwt.issuers[%s].publicKey is required", issuer)
-			}
-			if len(issuerCfg.Accounts) == 0 {
-				return fmt.Errorf("identity.jwt.issuers[%s].accounts must contain at least one account", issuer)
-			}
+	}
+
+	// Validate JWT providers
+	for i, jwtCfg := range c.Authentication.JWT {
+		if jwtCfg.ID == "" {
+			return fmt.Errorf("authentication.jwt[%d].id is required", i)
 		}
-	default:
-		return fmt.Errorf("unsupported identity provider type: %s", c.Identity.Type)
+		if ids[jwtCfg.ID] {
+			return fmt.Errorf("duplicate provider ID: %s", jwtCfg.ID)
+		}
+		ids[jwtCfg.ID] = true
+
+		if len(jwtCfg.Accounts) == 0 {
+			return fmt.Errorf("authentication.jwt[%d].accounts must contain at least one account", i)
+		}
+		if jwtCfg.Issuer == "" {
+			return fmt.Errorf("authentication.jwt[%d].issuer is required", i)
+		}
+		if jwtCfg.PublicKey == "" {
+			return fmt.Errorf("authentication.jwt[%d].publicKey is required", i)
+		}
 	}
 
 	return nil
@@ -376,35 +391,38 @@ func NewAuthControllerWithConfig(config *Config, opts ...ControllerOption) (*Aut
 		}
 	}
 
-	// Initialize identity provider
-	var identityProvider identity.UserIdentityProvider
+	// Initialize authentication providers
+	var authProviders []identity.AuthenticationProvider
 
-	switch config.Identity.Type {
-	case "file":
-		identityProvider, err = identity.NewFileUserIdentityProvider(identity.FileUserIdentityProviderConfig{
-			UsersPath: config.Identity.File.UsersPath,
+	// Create file providers
+	for _, fileCfg := range config.Authentication.File {
+		provider, err := identity.NewFileAuthenticationProvider(identity.FileAuthenticationProviderConfig{
+			ID:        fileCfg.ID,
+			Accounts:  fileCfg.Accounts,
+			UsersPath: fileCfg.UsersPath,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("initializing file identity provider: %w", err)
+			return nil, fmt.Errorf("initializing file authentication provider %q: %w", fileCfg.ID, err)
 		}
-	case "jwt":
-		issuers := make(map[string]identity.IssuerConfig)
-		for issuer, issuerCfg := range config.Identity.JWT.Issuers {
-			issuers[issuer] = identity.IssuerConfig{
-				PublicKey:      issuerCfg.PublicKey,
-				Accounts:       issuerCfg.Accounts,
-				RolesClaimPath: issuerCfg.RolesClaimPath,
-			}
-		}
-		identityProvider, err = identity.NewJwtUserIdentityProvider(identity.JwtUserIdentityProviderConfig{
-			Issuers: issuers,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("initializing jwt identity provider: %w", err)
-		}
+		authProviders = append(authProviders, provider)
 	}
 
-	return NewAuthController(accountProvider, roleProvider, policyProvider, identityProvider, opts...), nil
+	// Create JWT providers
+	for _, jwtCfg := range config.Authentication.JWT {
+		provider, err := identity.NewJwtAuthenticationProvider(identity.JwtAuthenticationProviderConfig{
+			ID:             jwtCfg.ID,
+			Accounts:       jwtCfg.Accounts,
+			Issuer:         jwtCfg.Issuer,
+			PublicKey:      jwtCfg.PublicKey,
+			RolesClaimPath: jwtCfg.RolesClaimPath,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("initializing jwt authentication provider %q: %w", jwtCfg.ID, err)
+		}
+		authProviders = append(authProviders, provider)
+	}
+
+	return NewAuthController(accountProvider, roleProvider, policyProvider, authProviders, opts...), nil
 }
 
 // ToCalloutConfig converts the server configuration to a CalloutConfig.

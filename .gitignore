@@ -63,4 +63,6 @@ Temporary Items
 # End of https://www.toptal.com/developers/gitignore/api/go,dotenv,macos
 
 bin/
-scripts/testenv
+sdd/specs/
+sdd/plan/
+sdd/README.md
