@@ -14,7 +14,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-// JwtUserIdentityProvider errors.
+// JwtAuthenticationProvider errors.
 var (
 	// ErrIssuerNotConfigured is returned when the JWT issuer is not in the configuration.
 	ErrIssuerNotConfigured = errors.New("issuer not configured")
@@ -47,19 +47,19 @@ type IssuerConfig struct {
 	RolesClaimPath string `json:"rolesClaimPath,omitempty"`
 }
 
-// JwtUserIdentityProviderConfig holds configuration for JwtUserIdentityProvider.
-type JwtUserIdentityProviderConfig struct {
+// JwtAuthenticationProviderConfig holds configuration for JwtAuthenticationProvider.
+type JwtAuthenticationProviderConfig struct {
 	// Issuers maps JWT issuer (iss claim) to their configuration.
 	Issuers map[string]IssuerConfig `json:"issuers"`
 }
 
-// JwtUserIdentityProvider implements UserIdentityProvider using external JWTs.
+// JwtAuthenticationProvider implements AuthenticationProvider using external JWTs.
 // It verifies JWTs from configured issuers and extracts user information from claims.
 //
 // Roles in the JWT must follow the format "<account>.<role>" (e.g., "tenant-a.admin").
 // The provider validates that the issuer is allowed to manage the target account
 // and filters roles to only include those for the target account.
-type JwtUserIdentityProvider struct {
+type JwtAuthenticationProvider struct {
 	issuers map[string]*issuerEntry
 }
 
@@ -70,9 +70,9 @@ type issuerEntry struct {
 	rolesClaimPath []string // path to roles in JWT claims (split by ".")
 }
 
-// NewJwtUserIdentityProvider creates a new JwtUserIdentityProvider from the given configuration.
-func NewJwtUserIdentityProvider(cfg JwtUserIdentityProviderConfig) (*JwtUserIdentityProvider, error) {
-	provider := &JwtUserIdentityProvider{
+// NewJwtAuthenticationProvider creates a new JwtAuthenticationProvider from the given configuration.
+func NewJwtAuthenticationProvider(cfg JwtAuthenticationProviderConfig) (*JwtAuthenticationProvider, error) {
+	provider := &JwtAuthenticationProvider{
 		issuers: make(map[string]*issuerEntry),
 	}
 
@@ -141,7 +141,7 @@ func parsePublicKey(pemDataB64 string) (any, error) {
 //  7. Validate issuer is allowed to manage the target account (supports wildcards in config)
 //  8. Filter roles to only include those for the target account
 //  9. Strip account prefix from role names (e.g., "tenant-a.admin" becomes "admin")
-func (p *JwtUserIdentityProvider) Verify(_ context.Context, req AuthRequest) (*User, error) {
+func (p *JwtAuthenticationProvider) Verify(_ context.Context, req AuthRequest) (*User, error) {
 	// Step 1-3: Parse and verify JWT
 	token, issuerEntry, err := p.parseAndVerifyJWT(req.Token)
 	if err != nil {
@@ -200,7 +200,7 @@ func (p *JwtUserIdentityProvider) Verify(_ context.Context, req AuthRequest) (*U
 }
 
 // parseAndVerifyJWT parses the JWT, looks up the issuer, and verifies the signature.
-func (p *JwtUserIdentityProvider) parseAndVerifyJWT(tokenString string) (*jwt.Token, *issuerEntry, error) {
+func (p *JwtAuthenticationProvider) parseAndVerifyJWT(tokenString string) (*jwt.Token, *issuerEntry, error) {
 	// First, parse without verification to get the issuer
 	unverified, _, err := jwt.NewParser().ParseUnverified(tokenString, jwt.MapClaims{})
 	if err != nil {
@@ -309,7 +309,7 @@ func parseAccountRoles(roles []string) []accountRole {
 }
 
 // determineTargetAccount determines the target account from the request or roles.
-func (p *JwtUserIdentityProvider) determineTargetAccount(requestedAccount string, roles []accountRole) (string, error) {
+func (p *JwtAuthenticationProvider) determineTargetAccount(requestedAccount string, roles []accountRole) (string, error) {
 	// If account is explicitly specified, use it
 	if requestedAccount != "" {
 		// Validate no wildcards
@@ -345,7 +345,7 @@ func (p *JwtUserIdentityProvider) determineTargetAccount(requestedAccount string
 }
 
 // issuerCanManageAccount checks if the issuer is allowed to manage the target account.
-func (p *JwtUserIdentityProvider) issuerCanManageAccount(entry *issuerEntry, targetAccount string) bool {
+func (p *JwtAuthenticationProvider) issuerCanManageAccount(entry *issuerEntry, targetAccount string) bool {
 	for _, pattern := range entry.accounts {
 		if matchAccountPattern(pattern, targetAccount) {
 			return true

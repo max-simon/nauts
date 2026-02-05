@@ -79,10 +79,10 @@ func TestGetUser_NotFound(t *testing.T) {
 	}
 }
 
-func TestNewFileUserIdentityProvider_EmptyConfig(t *testing.T) {
-	fp, err := NewFileUserIdentityProvider(FileUserIdentityProviderConfig{})
+func TestNewFileAuthenticationProvider_EmptyConfig(t *testing.T) {
+	fp, err := NewFileAuthenticationProvider(FileAuthenticationProviderConfig{})
 	if err != nil {
-		t.Fatalf("NewFileUserIdentityProvider() error = %v", err)
+		t.Fatalf("NewFileAuthenticationProvider() error = %v", err)
 	}
 
 	_, err = fp.GetUser(context.Background(), "any")
@@ -91,27 +91,27 @@ func TestNewFileUserIdentityProvider_EmptyConfig(t *testing.T) {
 	}
 }
 
-func TestNewFileUserIdentityProvider_InvalidPath(t *testing.T) {
-	_, err := NewFileUserIdentityProvider(FileUserIdentityProviderConfig{
-		UsersPath: "/nonexistent/path",
+func TestNewFileAuthenticationProvider_InvalidPath(t *testing.T) {
+	_, err := NewFileAuthenticationProvider(FileAuthenticationProviderConfig{
+		UsersPath: "/nonexistent/path/users.json",
 	})
 	if err == nil {
-		t.Error("NewFileUserIdentityProvider() expected error for nonexistent path")
+		t.Error("NewFileAuthenticationProvider() expected error for nonexistent path")
 	}
 }
 
-func TestNewFileUserIdentityProvider_InvalidJSON(t *testing.T) {
+func TestNewFileAuthenticationProvider_InvalidJSON(t *testing.T) {
 	tmpDir := t.TempDir()
 	invalidFile := filepath.Join(tmpDir, "invalid.json")
 	if err := os.WriteFile(invalidFile, []byte("not json"), 0644); err != nil {
 		t.Fatalf("Failed to write test file: %v", err)
 	}
 
-	_, err := NewFileUserIdentityProvider(FileUserIdentityProviderConfig{
+	_, err := NewFileAuthenticationProvider(FileAuthenticationProviderConfig{
 		UsersPath: invalidFile,
 	})
 	if err == nil {
-		t.Error("NewFileUserIdentityProvider() expected error for invalid JSON")
+		t.Error("NewFileAuthenticationProvider() expected error for invalid JSON")
 	}
 }
 
@@ -176,7 +176,7 @@ func TestVerify_SingleAccount_AccountSpecifiedIgnored(t *testing.T) {
 }
 
 // createMultiAccountProvider creates a provider with a user having multiple accounts.
-func createMultiAccountProvider(t *testing.T) *FileUserIdentityProvider {
+func createMultiAccountProvider(t *testing.T) *FileAuthenticationProvider {
 	t.Helper()
 
 	tmpDir := t.TempDir()
@@ -199,16 +199,16 @@ func createMultiAccountProvider(t *testing.T) *FileUserIdentityProvider {
 		t.Fatalf("Failed to write test file: %v", err)
 	}
 
-	fp, err := NewFileUserIdentityProvider(FileUserIdentityProviderConfig{UsersPath: usersFile})
+	fp, err := NewFileAuthenticationProvider(FileAuthenticationProviderConfig{UsersPath: usersFile})
 	if err != nil {
-		t.Fatalf("NewFileUserIdentityProvider() error = %v", err)
+		t.Fatalf("NewFileAuthenticationProvider() error = %v", err)
 	}
 
 	return fp
 }
 
-// createTestProvider creates a FileUserIdentityProvider with test users.
-func createTestProvider(t *testing.T) *FileUserIdentityProvider {
+// createTestProvider creates a FileAuthenticationProvider with test users.
+func createTestProvider(t *testing.T) *FileAuthenticationProvider {
 	t.Helper()
 
 	tmpDir := t.TempDir()
@@ -241,9 +241,9 @@ func createTestProvider(t *testing.T) *FileUserIdentityProvider {
 		t.Fatalf("Failed to write test file: %v", err)
 	}
 
-	fp, err := NewFileUserIdentityProvider(FileUserIdentityProviderConfig{UsersPath: usersFile})
+	fp, err := NewFileAuthenticationProvider(FileAuthenticationProviderConfig{UsersPath: usersFile})
 	if err != nil {
-		t.Fatalf("NewFileUserIdentityProvider() error = %v", err)
+		t.Fatalf("NewFileAuthenticationProvider() error = %v", err)
 	}
 
 	return fp

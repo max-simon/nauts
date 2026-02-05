@@ -382,7 +382,7 @@ func createTestPolicyProvider(t *testing.T, tmpDir string) provider.PolicyProvid
 	return pp
 }
 
-func createTestIdentityProvider(t *testing.T, tmpDir string) identity.UserIdentityProvider {
+func createTestIdentityProvider(t *testing.T, tmpDir string) identity.AuthenticationProvider {
 	t.Helper()
 
 	usersFile := filepath.Join(tmpDir, "users.json")
@@ -403,7 +403,7 @@ func createTestIdentityProvider(t *testing.T, tmpDir string) identity.UserIdenti
 		t.Fatalf("writing users file: %v", err)
 	}
 
-	ip, err := identity.NewFileUserIdentityProvider(identity.FileUserIdentityProviderConfig{
+	ip, err := identity.NewFileAuthenticationProvider(identity.FileAuthenticationProviderConfig{
 		UsersPath: usersFile,
 	})
 	if err != nil {

@@ -51,10 +51,10 @@ func createTestJWT(t *testing.T, privateKey *rsa.PrivateKey, claims jwt.MapClaim
 	return tokenString
 }
 
-func TestJwtUserIdentityProvider_Verify_Success(t *testing.T) {
+func TestJwtAuthenticationProvider_Verify_Success(t *testing.T) {
 	privateKey, publicKeyPEM := generateTestKeyPair(t)
 
-	provider, err := NewJwtUserIdentityProvider(JwtUserIdentityProviderConfig{
+	provider, err := NewJwtAuthenticationProvider(JwtAuthenticationProviderConfig{
 		Issuers: map[string]IssuerConfig{
 			"https://auth.example.com": {
 				PublicKey: publicKeyPEM,
@@ -115,10 +115,10 @@ func TestJwtUserIdentityProvider_Verify_Success(t *testing.T) {
 	}
 }
 
-func TestJwtUserIdentityProvider_Verify_WithExplicitAccount(t *testing.T) {
+func TestJwtAuthenticationProvider_Verify_WithExplicitAccount(t *testing.T) {
 	privateKey, publicKeyPEM := generateTestKeyPair(t)
 
-	provider, err := NewJwtUserIdentityProvider(JwtUserIdentityProviderConfig{
+	provider, err := NewJwtAuthenticationProvider(JwtAuthenticationProviderConfig{
 		Issuers: map[string]IssuerConfig{
 			"https://auth.example.com": {
 				PublicKey: publicKeyPEM,
@@ -159,10 +159,10 @@ func TestJwtUserIdentityProvider_Verify_WithExplicitAccount(t *testing.T) {
 	}
 }
 
-func TestJwtUserIdentityProvider_Verify_IssuerNotConfigured(t *testing.T) {
+func TestJwtAuthenticationProvider_Verify_IssuerNotConfigured(t *testing.T) {
 	privateKey, publicKeyPEM := generateTestKeyPair(t)
 
-	provider, err := NewJwtUserIdentityProvider(JwtUserIdentityProviderConfig{
+	provider, err := NewJwtAuthenticationProvider(JwtAuthenticationProviderConfig{
 		Issuers: map[string]IssuerConfig{
 			"https://auth.example.com": {
 				PublicKey: publicKeyPEM,
@@ -187,10 +187,10 @@ func TestJwtUserIdentityProvider_Verify_IssuerNotConfigured(t *testing.T) {
 	}
 }
 
-func TestJwtUserIdentityProvider_Verify_IssuerNotAllowed(t *testing.T) {
+func TestJwtAuthenticationProvider_Verify_IssuerNotAllowed(t *testing.T) {
 	privateKey, publicKeyPEM := generateTestKeyPair(t)
 
-	provider, err := NewJwtUserIdentityProvider(JwtUserIdentityProviderConfig{
+	provider, err := NewJwtAuthenticationProvider(JwtAuthenticationProviderConfig{
 		Issuers: map[string]IssuerConfig{
 			"https://auth.example.com": {
 				PublicKey: publicKeyPEM,
@@ -220,10 +220,10 @@ func TestJwtUserIdentityProvider_Verify_IssuerNotAllowed(t *testing.T) {
 	}
 }
 
-func TestJwtUserIdentityProvider_Verify_AmbiguousAccount(t *testing.T) {
+func TestJwtAuthenticationProvider_Verify_AmbiguousAccount(t *testing.T) {
 	privateKey, publicKeyPEM := generateTestKeyPair(t)
 
-	provider, err := NewJwtUserIdentityProvider(JwtUserIdentityProviderConfig{
+	provider, err := NewJwtAuthenticationProvider(JwtAuthenticationProviderConfig{
 		Issuers: map[string]IssuerConfig{
 			"https://auth.example.com": {
 				PublicKey: publicKeyPEM,
@@ -253,10 +253,10 @@ func TestJwtUserIdentityProvider_Verify_AmbiguousAccount(t *testing.T) {
 	}
 }
 
-func TestJwtUserIdentityProvider_Verify_NoRoles(t *testing.T) {
+func TestJwtAuthenticationProvider_Verify_NoRoles(t *testing.T) {
 	privateKey, publicKeyPEM := generateTestKeyPair(t)
 
-	provider, err := NewJwtUserIdentityProvider(JwtUserIdentityProviderConfig{
+	provider, err := NewJwtAuthenticationProvider(JwtAuthenticationProviderConfig{
 		Issuers: map[string]IssuerConfig{
 			"https://auth.example.com": {
 				PublicKey: publicKeyPEM,
@@ -281,10 +281,10 @@ func TestJwtUserIdentityProvider_Verify_NoRoles(t *testing.T) {
 	}
 }
 
-func TestJwtUserIdentityProvider_Verify_InvalidRoleFormat(t *testing.T) {
+func TestJwtAuthenticationProvider_Verify_InvalidRoleFormat(t *testing.T) {
 	privateKey, publicKeyPEM := generateTestKeyPair(t)
 
-	provider, err := NewJwtUserIdentityProvider(JwtUserIdentityProviderConfig{
+	provider, err := NewJwtAuthenticationProvider(JwtAuthenticationProviderConfig{
 		Issuers: map[string]IssuerConfig{
 			"https://auth.example.com": {
 				PublicKey: publicKeyPEM,
@@ -314,10 +314,10 @@ func TestJwtUserIdentityProvider_Verify_InvalidRoleFormat(t *testing.T) {
 	}
 }
 
-func TestJwtUserIdentityProvider_Verify_ExpiredToken(t *testing.T) {
+func TestJwtAuthenticationProvider_Verify_ExpiredToken(t *testing.T) {
 	privateKey, publicKeyPEM := generateTestKeyPair(t)
 
-	provider, err := NewJwtUserIdentityProvider(JwtUserIdentityProviderConfig{
+	provider, err := NewJwtAuthenticationProvider(JwtAuthenticationProviderConfig{
 		Issuers: map[string]IssuerConfig{
 			"https://auth.example.com": {
 				PublicKey: publicKeyPEM,
@@ -347,12 +347,12 @@ func TestJwtUserIdentityProvider_Verify_ExpiredToken(t *testing.T) {
 	}
 }
 
-func TestJwtUserIdentityProvider_Verify_InvalidSignature(t *testing.T) {
+func TestJwtAuthenticationProvider_Verify_InvalidSignature(t *testing.T) {
 	_, publicKeyPEM1 := generateTestKeyPair(t)
 	privateKey2, _ := generateTestKeyPair(t)
 
 	// Provider configured with key1
-	provider, err := NewJwtUserIdentityProvider(JwtUserIdentityProviderConfig{
+	provider, err := NewJwtAuthenticationProvider(JwtAuthenticationProviderConfig{
 		Issuers: map[string]IssuerConfig{
 			"https://auth.example.com": {
 				PublicKey: publicKeyPEM1,
@@ -382,10 +382,10 @@ func TestJwtUserIdentityProvider_Verify_InvalidSignature(t *testing.T) {
 	}
 }
 
-func TestJwtUserIdentityProvider_Verify_WildcardInAccount(t *testing.T) {
+func TestJwtAuthenticationProvider_Verify_WildcardInAccount(t *testing.T) {
 	privateKey, publicKeyPEM := generateTestKeyPair(t)
 
-	provider, err := NewJwtUserIdentityProvider(JwtUserIdentityProviderConfig{
+	provider, err := NewJwtAuthenticationProvider(JwtAuthenticationProviderConfig{
 		Issuers: map[string]IssuerConfig{
 			"https://auth.example.com": {
 				PublicKey: publicKeyPEM,
@@ -418,10 +418,10 @@ func TestJwtUserIdentityProvider_Verify_WildcardInAccount(t *testing.T) {
 	}
 }
 
-func TestJwtUserIdentityProvider_CustomRolesPath(t *testing.T) {
+func TestJwtAuthenticationProvider_CustomRolesPath(t *testing.T) {
 	privateKey, publicKeyPEM := generateTestKeyPair(t)
 
-	provider, err := NewJwtUserIdentityProvider(JwtUserIdentityProviderConfig{
+	provider, err := NewJwtAuthenticationProvider(JwtAuthenticationProviderConfig{
 		Issuers: map[string]IssuerConfig{
 			"https://auth.example.com": {
 				PublicKey:      publicKeyPEM,
@@ -456,11 +456,11 @@ func TestJwtUserIdentityProvider_CustomRolesPath(t *testing.T) {
 	}
 }
 
-func TestJwtUserIdentityProvider_DifferentRolesPathPerIssuer(t *testing.T) {
+func TestJwtAuthenticationProvider_DifferentRolesPathPerIssuer(t *testing.T) {
 	privateKey1, publicKeyPEM1 := generateTestKeyPair(t)
 	privateKey2, publicKeyPEM2 := generateTestKeyPair(t)
 
-	provider, err := NewJwtUserIdentityProvider(JwtUserIdentityProviderConfig{
+	provider, err := NewJwtAuthenticationProvider(JwtAuthenticationProviderConfig{
 		Issuers: map[string]IssuerConfig{
 			"https://auth1.example.com": {
 				PublicKey:      publicKeyPEM1,

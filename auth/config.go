@@ -376,12 +376,12 @@ func NewAuthControllerWithConfig(config *Config, opts ...ControllerOption) (*Aut
 		}
 	}
 
-	// Initialize identity provider
-	var identityProvider identity.UserIdentityProvider
+	// Initialize authentication provider
+	var authProvider identity.AuthenticationProvider
 
 	switch config.Identity.Type {
 	case "file":
-		identityProvider, err = identity.NewFileUserIdentityProvider(identity.FileUserIdentityProviderConfig{
+		authProvider, err = identity.NewFileAuthenticationProvider(identity.FileAuthenticationProviderConfig{
 			UsersPath: config.Identity.File.UsersPath,
 		})
 		if err != nil {
@@ -396,7 +396,7 @@ func NewAuthControllerWithConfig(config *Config, opts ...ControllerOption) (*Aut
 				RolesClaimPath: issuerCfg.RolesClaimPath,
 			}
 		}
-		identityProvider, err = identity.NewJwtUserIdentityProvider(identity.JwtUserIdentityProviderConfig{
+		authProvider, err = identity.NewJwtAuthenticationProvider(identity.JwtAuthenticationProviderConfig{
 			Issuers: issuers,
 		})
 		if err != nil {
@@ -404,7 +404,7 @@ func NewAuthControllerWithConfig(config *Config, opts ...ControllerOption) (*Aut
 		}
 	}
 
-	return NewAuthController(accountProvider, roleProvider, policyProvider, identityProvider, opts...), nil
+	return NewAuthController(accountProvider, roleProvider, policyProvider, authProvider, opts...), nil
 }
 
 // ToCalloutConfig converts the server configuration to a CalloutConfig.

@@ -52,8 +52,8 @@ nauts/
 │   └── errors.go           # Provider errors (ErrNotFound, etc.)
 ├── identity/               # User identity management
 │   ├── user.go             # User type
-│   ├── provider.go         # UserIdentityProvider interface, IdentityToken
-│   └── file_user_provider.go # FileUserIdentityProvider (bcrypt passwords)
+│   ├── provider.go         # AuthenticationProvider interface, IdentityToken
+│   └── file_authentication_provider.go # FileAuthenticationProvider (bcrypt passwords)
 ├── jwt/                    # JWT issuance
 │   ├── signer.go           # Signer interface
 │   ├── local_signer.go     # LocalSigner (nkeys-based signing)
@@ -105,7 +105,7 @@ nauts/
 - Callout service: `CalloutService`, `NewCalloutService()`, `CalloutConfig`, `Start()`, `Stop()`
 - Configuration: `Config`, `LoadConfig()`, `AccountConfig`, `RoleConfig`, `PolicyConfig`, `IdentityConfig`, `ServerConfig`
 - Permissions: `NatsPermissions`, `Permission`, `PermissionSet`
-- Providers: `AccountProvider`, `OperatorAccountProvider`, `StaticAccountProvider`, `RoleProvider`, `FileRoleProvider`, `PolicyProvider`, `FilePolicyProvider`, `UserIdentityProvider`, `FileUserIdentityProvider`
+- Providers: `AccountProvider`, `OperatorAccountProvider`, `StaticAccountProvider`, `RoleProvider`, `FileRoleProvider`, `PolicyProvider`, `FilePolicyProvider`, `AuthenticationProvider`, `FileAuthenticationProvider`
 - JWT: `Signer`, `LocalSigner`, `IssueUserJWT()`
 - Entities: `Account`, `Role`, `User`
 
@@ -312,7 +312,7 @@ The `policy.Compile()` function transforms policies to NATS permissions:
 - Non-empty permissions → only `Allow` list is set (no `Deny`)
 
 The `auth.AuthController` orchestrates the full authentication flow:
-1. Verify identity token via `UserIdentityProvider` → returns `*identity.User`
+1. Verify identity token via `AuthenticationProvider` → returns `*identity.User`
 2. Resolve user's roles (including default role) from `RoleProvider`
 3. For each role, fetch both global and local roles, then compile policies with user/role context
 4. Deduplicate permissions with wildcard awareness
@@ -373,7 +373,7 @@ policyProvider, _ := provider.NewFilePolicyProvider(provider.FilePolicyProviderC
     PoliciesPath: "policies.json",
 })
 
-identityProvider, _ := identity.NewFileUserIdentityProvider(identity.FileUserIdentityProviderConfig{
+identityProvider, _ := identity.NewFileAuthenticationProvider(identity.FileAuthenticationProviderConfig{
     UsersPath: "users.json",
 })
 
@@ -442,7 +442,7 @@ type AuthRequest struct {
 }
 ```
 
-**FileUserIdentityProvider** (`identity/`):
+**FileAuthenticationProvider** (`identity/`):
 - Loads users from JSON file
 - Verifies passwords using bcrypt
 - Token format within AuthRequest: `"username:password"` (colon-separated)
@@ -469,14 +469,14 @@ type AuthRequest struct {
 }
 ```
 
-**Errors** (FileUserIdentityProvider):
+**Errors** (FileAuthenticationProvider):
 - `ErrInvalidCredentials`: Password verification failed
 - `ErrUserNotFound`: User does not exist
 - `ErrInvalidTokenType`: Token format is wrong
 - `ErrInvalidAccount`: Requested account is not valid for user
 - `ErrAccountRequired`: User has multiple accounts but no account specified
 
-**JwtUserIdentityProvider** (`identity/jwt_user_provider.go`):
+**JwtAuthenticationProvider** (`identity/jwt_authentication_provider.go`):
 Authenticates users using external JWTs (e.g., from Keycloak, Auth0, or other OIDC providers).
 
 **How it works**:
@@ -539,7 +539,7 @@ Standard JWT claims are extracted as user attributes:
 - `name` → `attributes["name"]`
 - `preferred_username` → `attributes["preferred_username"]`
 
-**Errors** (JwtUserIdentityProvider):
+**Errors** (JwtAuthenticationProvider):
 - `ErrInvalidCredentials`: JWT signature verification failed or token expired
 - `ErrIssuerNotConfigured`: JWT issuer not found in configuration
 - `ErrIssuerNotAllowed`: Issuer not allowed to manage target account
@@ -576,9 +576,9 @@ require (
 - [x] File role provider: `provider/file_role_provider.go` - JSON file backend for roles
 - [x] Policy provider: `provider/policy_provider.go` - `PolicyProvider` interface
 - [x] File policy provider: `provider/file_policy_provider.go` - JSON file backend for policies
-- [x] Identity provider: `identity/provider.go` - `UserIdentityProvider` interface
-- [x] File identity provider: `identity/file_user_provider.go` - Username/password with bcrypt
-- [x] JWT identity provider: `identity/jwt_user_provider.go` - External JWT verification with role mapping
+- [x] Identity provider: `identity/provider.go` - `AuthenticationProvider` interface
+- [x] File identity provider: `identity/file_authentication_provider.go` - Username/password with bcrypt
+- [x] JWT identity provider: `identity/jwt_authentication_provider.go` - External JWT verification with role mapping
 - [x] JWT issuance: `jwt/user.go` - `IssueUserJWT()` function
 - [x] Signer: `jwt/signer.go` - `Signer` interface and `LocalSigner`
 - [x] Auth controller: `auth/controller.go` - `AuthController` orchestrating full auth flow

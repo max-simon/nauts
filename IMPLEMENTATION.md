@@ -28,9 +28,9 @@ nauts/
 │   └── role.go             # Role type
 ├── identity/               # User identity management
 │   ├── user.go             # User type
-│   ├── provider.go         # UserIdentityProvider interface, AuthRequest
-│   ├── file_user_provider.go # FileUserIdentityProvider
-│   └── jwt_user_provider.go # JwtUserIdentityProvider
+│   ├── provider.go         # AuthenticationProvider interface, AuthRequest
+│   ├── file_user_provider.go # FileAuthenticationProvider
+│   └── jwt_user_provider.go # JwtAuthenticationProvider
 ├── jwt/                    # JWT issuance
 │   ├── signer.go           # Signer interface
 │   ├── local_signer.go     # LocalSigner (nkeys)
@@ -212,7 +212,7 @@ Simpler setup with single signing key for all accounts:
 
 ## Identity Providers
 
-### FileUserIdentityProvider
+### FileAuthenticationProvider
 
 Static user list with bcrypt password hashes.
 
@@ -234,7 +234,7 @@ Static user list with bcrypt password hashes.
 - If user has single account, `account` in request is optional
 - If user has multiple accounts, `account` must be specified
 
-### JwtUserIdentityProvider
+### JwtAuthenticationProvider
 
 Verify JWTs from external identity providers (Keycloak, Auth0, etc.).
 

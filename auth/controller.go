@@ -41,11 +41,11 @@ func (l *defaultLogger) Debug(msg string, args ...any) {
 
 // AuthController orchestrates user authentication, permission compilation, and JWT issuance.
 type AuthController struct {
-	accountProvider  provider.AccountProvider
-	roleProvider     provider.RoleProvider
-	policyProvider   provider.PolicyProvider
-	identityProvider identity.UserIdentityProvider
-	logger           Logger
+	accountProvider provider.AccountProvider
+	roleProvider    provider.RoleProvider
+	policyProvider  provider.PolicyProvider
+	authProvider    identity.AuthenticationProvider
+	logger          Logger
 }
 
 // ControllerOption configures an AuthController.
@@ -63,15 +63,15 @@ func NewAuthController(
 	accountProvider provider.AccountProvider,
 	roleProvider provider.RoleProvider,
 	policyProvider provider.PolicyProvider,
-	identityProvider identity.UserIdentityProvider,
+	authProvider identity.AuthenticationProvider,
 	opts ...ControllerOption,
 ) *AuthController {
 	c := &AuthController{
-		accountProvider:  accountProvider,
-		roleProvider:     roleProvider,
-		policyProvider:   policyProvider,
-		identityProvider: identityProvider,
-		logger:           &defaultLogger{},
+		accountProvider: accountProvider,
+		roleProvider:    roleProvider,
+		policyProvider:  policyProvider,
+		authProvider:    authProvider,
+		logger:          &defaultLogger{},
 	}
 	for _, opt := range opts {
 		opt(c)
@@ -97,7 +97,7 @@ func (c *AuthController) ResolveUser(ctx context.Context, token string) (*identi
 		return nil, NewAuthError("", "resolve_user", "failed to parse auth request", err)
 	}
 
-	user, err := c.identityProvider.Verify(ctx, authReq)
+	user, err := c.authProvider.Verify(ctx, authReq)
 	if err != nil {
 		return nil, NewAuthError("", "resolve_user", "failed to verify identity", err)
 	}

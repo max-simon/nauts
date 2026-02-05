@@ -28,20 +28,20 @@ type usersFile struct {
 	Users map[string]*fileUser `json:"users"`
 }
 
-// FileUserIdentityProvider implements UserIdentityProvider using a JSON file.
-type FileUserIdentityProvider struct {
+// FileAuthenticationProvider implements AuthenticationProvider using a JSON file.
+type FileAuthenticationProvider struct {
 	users map[string]*fileUser
 }
 
-// FileUserIdentityProviderConfig holds configuration for FileUserIdentityProvider.
-type FileUserIdentityProviderConfig struct {
+// FileAuthenticationProviderConfig holds configuration for FileAuthenticationProvider.
+type FileAuthenticationProviderConfig struct {
 	// UsersPath is the path to the users JSON file.
 	UsersPath string
 }
 
-// NewFileUserIdentityProvider creates a new FileUserIdentityProvider from the given configuration.
-func NewFileUserIdentityProvider(cfg FileUserIdentityProviderConfig) (*FileUserIdentityProvider, error) {
-	fp := &FileUserIdentityProvider{
+// NewFileAuthenticationProvider creates a new FileAuthenticationProvider from the given configuration.
+func NewFileAuthenticationProvider(cfg FileAuthenticationProviderConfig) (*FileAuthenticationProvider, error) {
+	fp := &FileAuthenticationProvider{
 		users: make(map[string]*fileUser),
 	}
 
@@ -55,7 +55,7 @@ func NewFileUserIdentityProvider(cfg FileUserIdentityProviderConfig) (*FileUserI
 }
 
 // loadUsers loads users from a JSON file.
-func (fp *FileUserIdentityProvider) loadUsers(path string) error {
+func (fp *FileAuthenticationProvider) loadUsers(path string) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return err
@@ -88,7 +88,7 @@ func parseUsernamePassword(token string) (*usernamePassword, error) {
 // Returns ErrInvalidCredentials if the password is incorrect.
 // Returns ErrInvalidAccount if the requested account is not valid for the user.
 // Returns ErrAccountRequired if user has multiple accounts but no account was specified.
-func (fp *FileUserIdentityProvider) Verify(_ context.Context, req AuthRequest) (*User, error) {
+func (fp *FileAuthenticationProvider) Verify(_ context.Context, req AuthRequest) (*User, error) {
 	creds, err := parseUsernamePassword(req.Token)
 	if err != nil {
 		return nil, ErrInvalidTokenType
@@ -150,7 +150,7 @@ func resolveAccount(accounts []string, requestedAccount string) (string, error) 
 // Returns ErrUserNotFound if the user does not exist.
 // Note: For users with multiple accounts, this returns the first account.
 // Use Verify with AuthRequest to specify a specific account.
-func (fp *FileUserIdentityProvider) GetUser(_ context.Context, id string) (*User, error) {
+func (fp *FileAuthenticationProvider) GetUser(_ context.Context, id string) (*User, error) {
 	fu, ok := fp.users[id]
 	if !ok {
 		return nil, ErrUserNotFound

@@ -36,8 +36,8 @@ type AuthRequest struct {
 	Token string `json:"token"`
 }
 
-// UserIdentityProvider resolves user identity from an authentication request.
-type UserIdentityProvider interface {
+// AuthenticationProvider resolves user identity from an authentication request.
+type AuthenticationProvider interface {
 	// Verify validates the authentication request and returns the user.
 	// Returns ErrInvalidCredentials if the credentials are invalid.
 	// Returns ErrUserNotFound if the user does not exist.
