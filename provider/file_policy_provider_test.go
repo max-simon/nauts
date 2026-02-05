@@ -12,7 +12,7 @@ import (
 func TestNewFilePolicyProvider(t *testing.T) {
 	cfg := FilePolicyProviderConfig{
 		PoliciesPath: "../test/policies.json",
-		RolesPath:    "../test/roles.json",
+		BindingsPath: "../test/bindings.json",
 	}
 
 	fp, err := NewFilePolicyProvider(cfg)
@@ -83,9 +83,8 @@ func TestNewFilePolicyProvider_EmptyConfig(t *testing.T) {
 
 func TestFilePolicyProvider_GetPoliciesForRole_NotFound(t *testing.T) {
 	fp := &FilePolicyProvider{
-		policies:    make(map[string]*policy.Policy),
-		localRoles:  make(map[string]*role),
-		globalRoles: make(map[string]*role),
+		policies: make(map[string]*policy.Policy),
+		bindings: make(map[string]*binding),
 	}
 
 	ctx := context.Background()

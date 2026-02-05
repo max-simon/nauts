@@ -55,7 +55,7 @@ nats --creds sentinel.creds --token '{"account":"APP","token":"bob:secret"}' pub
   },
   "policy": {
     "type": "file",
-    "file": { "policiesPath": "../policies.json", "rolesPath": "../roles.json" }
+    "file": { "policiesPath": "../policies.json", "bindingsPath": "../bindings.json" }
   },
   "auth": {
     "file": [

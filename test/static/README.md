@@ -47,7 +47,7 @@ nats --token '{"account":"APP","token":"bob:secret"}' pub public.test "Hello"
   },
   "policy": {
     "type": "file",
-    "file": { "policiesPath": "../policies.json", "rolesPath": "../roles.json" }
+    "file": { "policiesPath": "../policies.json", "bindingsPath": "../bindings.json" }
   },
   "auth": {
     "file": [

@@ -15,7 +15,7 @@ nauts is a framework for scalable, human-friendly permission management for [NAT
 ### Key Features
 
 - **Policy-Based Access Control**: Define permissions using intuitive policies with actions like `nats.pub`, `js.consume`, `kv.read` instead of raw NATS subjects
-- **Role-Based Authorization**: Assign policies to roles, and roles to users. Supports both global roles (`account: "*"`) and account-specific roles
+- **Role-Based Authorization**: Assign policies to roles, and roles to users via account-scoped role bindings
 - **Variable Interpolation**: Scope resources dynamically with `{{ user.id }}`, `{{ user.account }}`, `{{ role.name }}`
 - **Multiple Identity Providers**: Authenticate users via file-based credentials, external JWTs (Keycloak, Auth0, etc.), or custom providers
 - **NATS Auth Callout**: Built-in service implementing [NATS auth callout protocol](https://docs.nats.io/running-a-nats-service/configuration/securing_nats/auth_callout)
@@ -94,7 +94,7 @@ nauts uses a JSON configuration file. Here's a minimal example:
   },
   "policy": {
     "type": "file",
-    "file": { "policiesPath": "policies.json", "rolesPath": "roles.json" }
+    "file": { "policiesPath": "policies.json", "bindingsPath": "bindings.json" }
   },
   "auth": {
     "file": [
@@ -115,13 +115,12 @@ nauts uses a JSON configuration file. Here's a minimal example:
 
 ## Example Data Files
 
-### roles.json
+### bindings.json
 
 ```json
 [
-  { "name": "default", "account": "*", "policies": [] },
-  { "name": "readonly", "account": "*", "policies": ["read-access"] },
-  { "name": "admin", "account": "APP", "policies": ["read-access", "write-access"] }
+  { "role": "readonly", "account": "APP", "policies": ["read-access"] },
+  { "role": "admin", "account": "APP", "policies": ["read-access", "write-access"] }
 ]
 ```
 

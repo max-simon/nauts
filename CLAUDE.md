@@ -73,7 +73,7 @@ nauts/
 │   │   ├── nats-server.conf# NATS server config with accounts
 │   │   └── *.nk            # Account key and xkey
 │   ├── users.json          # Test users (alice, bob)
-│   ├── roles.json          # Test roles (readonly, full)
+│   ├── bindings.json       # Test role bindings (readonly, full)
 │   └── policies.json       # Test policies (read-access, write-access)
 └── docs/                   # Additional documentation
 ```
@@ -175,7 +175,7 @@ The CLI uses a JSON configuration file (`-c/--config`):
     "type": "file",
     "file": {
       "policiesPath": "policies.json",
-      "rolesPath": "roles.json"
+      "bindingsPath": "bindings.json"
     }
   },
   "auth": {
@@ -353,7 +353,7 @@ accountProvider, _ := provider.NewOperatorAccountProvider(provider.OperatorAccou
 
 policyProvider, _ := provider.NewFilePolicyProvider(provider.FilePolicyProviderConfig{
   PoliciesPath: "policies.json",
-  RolesPath:    "roles.json",
+  BindingsPath: "bindings.json",
 })
 
 identityProvider, _ := identity.NewFileAuthenticationProvider(identity.FileAuthenticationProviderConfig{

@@ -140,26 +140,20 @@ NATS JWT defaults to allowing everything when no permissions are specified. naut
 
 This ensures the principle of least privilege.
 
-## Role System
+## Role Bindings
 
-Roles replace the older "groups" concept. Each role has:
+Role bindings replace the older "groups" concept. Each binding maps a role name to a set of policy ids for a specific account:
 
 ```go
-type Role struct {
-    Name     string   `json:"name"`     // Part of unique key
-    Account  string   `json:"account"`  // "*" for global, specific account for local
-    Policies []string `json:"policies"` // Policy IDs
+type Binding struct {
+  Role     string   `json:"role"`     // Part of unique key
+  Account  string   `json:"account"`  // Account id (e.g. "APP")
+  Policies []string `json:"policies"` // Policy ids
 }
 ```
 
-- **Global roles** (`account: "*"`): Apply to all accounts
-- **Local roles** (specific account): Apply only to that account
-- **Composite key**: `(Name, Account)` is unique
-
-When resolving permissions, both global and account-specific roles are considered:
-1. Look up `roles[name:*]` (global role)
-2. Look up `roles[name:account]` (local role)
-3. Merge policies from both
+- **No global bindings**: bindings are resolved by exact `(account, role)` match
+- **Composite key**: `(Account, Role)` is unique (often represented as `account.role`)
 
 ## Account Providers
 
@@ -367,7 +361,7 @@ Environment variables:
     "type": "file",
     "file": {
       "policiesPath": "policies.json",
-      "rolesPath": "roles.json"
+      "bindingsPath": "bindings.json"
     }
   },
   "auth": {
@@ -406,7 +400,7 @@ Pre-configured environments in `test/`:
 test/
 ├── e2e_test.go         # Go e2e test suite
 ├── policies.json       # Shared policies
-├── roles.json          # Shared roles
+├── bindings.json       # Shared role bindings
 ├── users.json          # Shared users
 ├── operator/           # Operator mode setup
 │   ├── nauts.json

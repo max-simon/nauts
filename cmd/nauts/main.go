@@ -94,7 +94,7 @@ func runAuth(args []string) error {
 	},
 	"policy": {
 	  "type": "file",
-	  "file": { "policiesPath": "policies.json", "rolesPath": "roles.json" }
+	  "file": { "policiesPath": "policies.json", "bindingsPath": "bindings.json" }
 	},
 	"auth": {
 	  "file": [
@@ -170,7 +170,7 @@ func runServe(args []string) error {
 	},
 	"policy": {
 	  "type": "file",
-	  "file": { "policiesPath": "policies.json", "rolesPath": "roles.json" }
+	  "file": { "policiesPath": "policies.json", "bindingsPath": "bindings.json" }
 	},
 	"auth": {
 	  "file": [

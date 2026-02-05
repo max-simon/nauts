@@ -33,7 +33,7 @@ func TestLoadConfig(t *testing.T) {
 			"type": "file",
 			"file": {
 				"policiesPath": "/path/to/policies.json",
-				"rolesPath": "/path/to/roles.json"
+				"bindingsPath": "/path/to/bindings.json"
 			}
 		},
 		"auth": {
@@ -87,8 +87,8 @@ func TestLoadConfig(t *testing.T) {
 	if config.Policy.File.PoliciesPath != "/path/to/policies.json" {
 		t.Errorf("Policy.File.PoliciesPath = %q, want %q", config.Policy.File.PoliciesPath, "/path/to/policies.json")
 	}
-	if config.Policy.File.RolesPath != "/path/to/roles.json" {
-		t.Errorf("Policy.File.RolesPath = %q, want %q", config.Policy.File.RolesPath, "/path/to/roles.json")
+	if config.Policy.File.BindingsPath != "/path/to/bindings.json" {
+		t.Errorf("Policy.File.BindingsPath = %q, want %q", config.Policy.File.BindingsPath, "/path/to/bindings.json")
 	}
 
 	// Verify auth providers config
@@ -158,7 +158,7 @@ func TestConfig_Validate(t *testing.T) {
 				Policy: PolicyConfig{
 					File: &FilePolicyConfig{
 						PoliciesPath: "/path/to/policies.json",
-						RolesPath:    "/path/to/roles.json",
+						BindingsPath: "/path/to/bindings.json",
 					},
 				},
 				Auth: AuthConfig{
@@ -188,7 +188,7 @@ func TestConfig_Validate(t *testing.T) {
 				Policy: PolicyConfig{
 					File: &FilePolicyConfig{
 						PoliciesPath: "/path/to/policies.json",
-						RolesPath:    "/path/to/roles.json",
+						BindingsPath: "/path/to/bindings.json",
 					},
 				},
 				Auth: AuthConfig{
@@ -216,7 +216,7 @@ func TestConfig_Validate(t *testing.T) {
 				Policy: PolicyConfig{
 					File: &FilePolicyConfig{
 						PoliciesPath: "/path/to/policies.json",
-						RolesPath:    "/path/to/roles.json",
+						BindingsPath: "/path/to/bindings.json",
 					},
 				},
 				Auth: AuthConfig{
@@ -292,7 +292,7 @@ func TestConfig_Validate(t *testing.T) {
 			wantErr: "unsupported account provider type",
 		},
 		{
-			name: "missing policy roles path",
+			name: "missing policy bindings path",
 			config: Config{
 				Account: AccountConfig{
 					Type: "operator",
@@ -308,7 +308,7 @@ func TestConfig_Validate(t *testing.T) {
 				Policy: PolicyConfig{File: &FilePolicyConfig{PoliciesPath: "/path/to/policies.json"}},
 				Auth:   AuthConfig{File: []FileAuthProviderConfig{{ID: "local", UsersPath: "/path/to/users.json", Accounts: []string{"*"}}}},
 			},
-			wantErr: "policy.file.rolesPath is required",
+			wantErr: "policy.file.bindingsPath is required",
 		},
 		{
 			name: "missing policy policies path",
@@ -349,7 +349,7 @@ func TestConfig_Validate(t *testing.T) {
 				Policy: PolicyConfig{
 					File: &FilePolicyConfig{
 						PoliciesPath: "/path/to/policies.json",
-						RolesPath:    "/path/to/roles.json",
+						BindingsPath: "/path/to/bindings.json",
 					},
 				},
 			},
@@ -372,7 +372,7 @@ func TestConfig_Validate(t *testing.T) {
 				Policy: PolicyConfig{
 					File: &FilePolicyConfig{
 						PoliciesPath: "/path/to/policies.json",
-						RolesPath:    "/path/to/roles.json",
+						BindingsPath: "/path/to/bindings.json",
 					},
 				},
 				Auth: AuthConfig{
@@ -402,7 +402,7 @@ func TestConfig_Validate(t *testing.T) {
 				Policy: PolicyConfig{
 					File: &FilePolicyConfig{
 						PoliciesPath: "/path/to/policies.json",
-						RolesPath:    "/path/to/roles.json",
+						BindingsPath: "/path/to/bindings.json",
 					},
 				},
 				Auth: AuthConfig{
@@ -433,7 +433,7 @@ func TestConfig_Validate(t *testing.T) {
 				Policy: PolicyConfig{
 					File: &FilePolicyConfig{
 						PoliciesPath: "/path/to/policies.json",
-						RolesPath:    "/path/to/roles.json",
+						BindingsPath: "/path/to/bindings.json",
 					},
 				},
 				Auth: AuthConfig{
@@ -464,7 +464,7 @@ func TestConfig_Validate(t *testing.T) {
 				Policy: PolicyConfig{
 					File: &FilePolicyConfig{
 						PoliciesPath: "/path/to/policies.json",
-						RolesPath:    "/path/to/roles.json",
+						BindingsPath: "/path/to/bindings.json",
 					},
 				},
 				Auth: AuthConfig{

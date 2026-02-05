@@ -79,7 +79,7 @@ type PolicyConfig struct {
 // FilePolicyConfig configures the file-based policy provider.
 type FilePolicyConfig struct {
 	PoliciesPath string `json:"policiesPath"`
-	RolesPath    string `json:"rolesPath"`
+	BindingsPath string `json:"bindingsPath"`
 }
 
 // AuthConfig configures the authentication providers.
@@ -202,8 +202,8 @@ func (c *Config) Validate() error {
 		if c.Policy.File.PoliciesPath == "" {
 			return fmt.Errorf("policy.file.policiesPath is required")
 		}
-		if c.Policy.File.RolesPath == "" {
-			return fmt.Errorf("policy.file.rolesPath is required")
+		if c.Policy.File.BindingsPath == "" {
+			return fmt.Errorf("policy.file.bindingsPath is required")
 		}
 	default:
 		return fmt.Errorf("unsupported policy provider type: %s", c.Policy.Type)
@@ -321,7 +321,7 @@ func NewAuthControllerWithConfig(config *Config, opts ...ControllerOption) (*Aut
 	case "file":
 		policyProvider, err = provider.NewFilePolicyProvider(provider.FilePolicyProviderConfig{
 			PoliciesPath: config.Policy.File.PoliciesPath,
-			RolesPath:    config.Policy.File.RolesPath,
+			BindingsPath: config.Policy.File.BindingsPath,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("initializing file policy provider: %w", err)

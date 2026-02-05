@@ -355,7 +355,7 @@ func createTestPolicyProvider(t *testing.T, tmpDir string) provider.PolicyProvid
 	t.Helper()
 
 	policiesFile := filepath.Join(tmpDir, "policies.json")
-	rolesFile := filepath.Join(tmpDir, "roles.json")
+	bindingsFile := filepath.Join(tmpDir, "bindings.json")
 	policiesContent := `[
   {
     "id": "allow-basic",
@@ -373,25 +373,25 @@ func createTestPolicyProvider(t *testing.T, tmpDir string) provider.PolicyProvid
 		t.Fatalf("writing policies file: %v", err)
 	}
 
-	rolesContent := `[
+	bindingsContent := `[
 	{
-		"name": "default",
-		"account": "*",
+		"role": "default",
+		"account": "test-account",
 		"policies": []
 	},
 	{
-		"name": "workers",
-		"account": "*",
+		"role": "workers",
+		"account": "test-account",
 		"policies": ["allow-basic"]
 	}
 ]`
-	if err := os.WriteFile(rolesFile, []byte(rolesContent), 0644); err != nil {
-		t.Fatalf("writing roles file: %v", err)
+	if err := os.WriteFile(bindingsFile, []byte(bindingsContent), 0644); err != nil {
+		t.Fatalf("writing bindings file: %v", err)
 	}
 
 	pp, err := provider.NewFilePolicyProvider(provider.FilePolicyProviderConfig{
 		PoliciesPath: policiesFile,
-		RolesPath:    rolesFile,
+		BindingsPath: bindingsFile,
 	})
 	if err != nil {
 		t.Fatalf("creating policy provider: %v", err)

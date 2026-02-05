@@ -5,50 +5,41 @@ import (
 	"testing"
 )
 
-func TestRole_Validate(t *testing.T) {
+func TestBinding_Validate(t *testing.T) {
 	tests := []struct {
 		name    string
-		role    role
+		binding binding
 		wantErr bool
 	}{
 		{
-			name: "valid global role",
-			role: role{
-				Name:     "test-role",
-				Account:  GlobalAccountID,
-				Policies: []string{"policy-1"},
-			},
-			wantErr: false,
-		},
-		{
-			name: "valid local role",
-			role: role{
-				Name:     "test-role",
+			name: "valid binding",
+			binding: binding{
+				Role:     "test-role",
 				Account:  "APP",
 				Policies: []string{"policy-1"},
 			},
 			wantErr: false,
 		},
 		{
-			name: "valid role without policies",
-			role: role{
-				Name:    "test-role",
-				Account: GlobalAccountID,
+			name: "valid binding without policies",
+			binding: binding{
+				Role:    "test-role",
+				Account: "APP",
 			},
 			wantErr: false,
 		},
 		{
-			name: "missing name",
-			role: role{
-				Account:  GlobalAccountID,
+			name: "missing role",
+			binding: binding{
+				Account:  "APP",
 				Policies: []string{"policy-1"},
 			},
 			wantErr: true,
 		},
 		{
 			name: "missing account",
-			role: role{
-				Name:     "test-role",
+			binding: binding{
+				Role:     "test-role",
 				Policies: []string{"policy-1"},
 			},
 			wantErr: true,
@@ -57,90 +48,42 @@ func TestRole_Validate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := tt.role.Validate()
+			err := tt.binding.Validate()
 			if (err != nil) != tt.wantErr {
-				t.Errorf("Role.Validate() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("binding.Validate() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}
 }
 
-func TestRole_IsGlobal(t *testing.T) {
-	tests := []struct {
-		name string
-		role role
-		want bool
-	}{
-		{
-			name: "global role",
-			role: role{Name: "test", Account: GlobalAccountID},
-			want: true,
-		},
-		{
-			name: "local role",
-			role: role{Name: "test", Account: "APP"},
-			want: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.role.IsGlobal(); got != tt.want {
-				t.Errorf("Role.IsGlobal() = %v, want %v", got, tt.want)
-			}
-		})
+func TestBindingKey(t *testing.T) {
+	if got := bindingKey("APP", "admin"); got != "APP.admin" {
+		t.Errorf("bindingKey() = %v, want %v", got, "APP.admin")
 	}
 }
 
-func TestRole_Key(t *testing.T) {
-	tests := []struct {
-		name string
-		role role
-		want string
-	}{
-		{
-			name: "global role",
-			role: role{Name: "admin", Account: GlobalAccountID},
-			want: "admin:*",
-		},
-		{
-			name: "local role",
-			role: role{Name: "admin", Account: "APP"},
-			want: "admin:APP",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.role.Key(); got != tt.want {
-				t.Errorf("Role.Key() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestRole_JSON(t *testing.T) {
-	role := role{
-		Name:     "test-role",
-		Account:  GlobalAccountID,
+func TestBinding_JSON(t *testing.T) {
+	b := binding{
+		Role:     "test-role",
+		Account:  "APP",
 		Policies: []string{"policy-1", "policy-2"},
 	}
 
-	data, err := json.Marshal(role)
+	data, err := json.Marshal(b)
 	if err != nil {
 		t.Fatalf("Marshal error: %v", err)
 	}
 
-	var parsed role
+	var parsed binding
 	if err := json.Unmarshal(data, &parsed); err != nil {
 		t.Fatalf("Unmarshal error: %v", err)
 	}
 
-	if parsed.Name != role.Name {
-		t.Errorf("Name mismatch: got %v, want %v", parsed.Name, role.Name)
+	if parsed.Role != b.Role {
+		t.Errorf("Role mismatch: got %v, want %v", parsed.Role, b.Role)
 	}
-	if parsed.Account != role.Account {
-		t.Errorf("Account mismatch: got %v, want %v", parsed.Account, role.Account)
+	if parsed.Account != b.Account {
+		t.Errorf("Account mismatch: got %v, want %v", parsed.Account, b.Account)
 	}
 	if len(parsed.Policies) != 2 {
 		t.Errorf("Policies length mismatch: got %d, want 2", len(parsed.Policies))
@@ -150,11 +93,5 @@ func TestRole_JSON(t *testing.T) {
 func TestDefaultRoleName(t *testing.T) {
 	if DefaultRoleName != "default" {
 		t.Errorf("DefaultRoleName = %v, want %v", DefaultRoleName, "default")
-	}
-}
-
-func TestGlobalAccountID(t *testing.T) {
-	if GlobalAccountID != "*" {
-		t.Errorf("GlobalAccountID = %v, want %v", GlobalAccountID, "*")
 	}
 }

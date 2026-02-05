@@ -14,35 +14,26 @@ import (
 // FilePolicyProvider implements PolicyProvider using a JSON file.
 // Data is loaded once during initialization and cached in memory.
 type FilePolicyProvider struct {
-	policies    map[string]*policy.Policy
-	localRoles  map[string]*role
-	globalRoles map[string]*role
+	policies map[string]*policy.Policy
+	bindings map[string]*binding
 }
 
 // FilePolicyProviderConfig holds configuration for FilePolicyProvider.
 type FilePolicyProviderConfig struct {
 	// PoliciesPath is the path to policies JSON file.
 	PoliciesPath string
-	// RolesPath is the path to roles JSON file.
-	RolesPath string
+	// BindingsPath is the path to bindings JSON file.
+	BindingsPath string
 }
 
-// role represents a collection of policies that can be assigned to users.
+// binding represents a collection of policies attached to a role in an account.
 //
 // This struct exists to support FilePolicyProvider's role->policy mapping.
 // It is not used by the rest of the system.
-type role struct {
-	Name     string   `json:"name"`
+type binding struct {
+	Role     string   `json:"role"`
 	Account  string   `json:"account"`
 	Policies []string `json:"policies"`
-}
-
-func (r *role) IsGlobal() bool {
-	return r != nil && r.Account == GlobalAccountID
-}
-
-func (r *role) Key() string {
-	return r.Name + ":" + r.Account
 }
 
 type roleValidationError struct {
@@ -54,22 +45,25 @@ func (e *roleValidationError) Error() string {
 	return e.Field + ": " + e.Message
 }
 
-func (r *role) Validate() error {
-	if r.Name == "" {
-		return &roleValidationError{Field: "name", Message: "role name is required"}
+func (b *binding) Validate() error {
+	if b.Role == "" {
+		return &roleValidationError{Field: "role", Message: "role is required"}
 	}
-	if r.Account == "" {
-		return &roleValidationError{Field: "account", Message: "role account is required"}
+	if b.Account == "" {
+		return &roleValidationError{Field: "account", Message: "binding account is required"}
 	}
 	return nil
+}
+
+func bindingKey(account string, role string) string {
+	return account + "." + role
 }
 
 // NewFilePolicyProvider creates a new FilePolicyProvider from the given configuration.
 func NewFilePolicyProvider(cfg FilePolicyProviderConfig) (*FilePolicyProvider, error) {
 	fp := &FilePolicyProvider{
-		policies:    make(map[string]*policy.Policy),
-		localRoles:  make(map[string]*role),
-		globalRoles: make(map[string]*role),
+		policies: make(map[string]*policy.Policy),
+		bindings: make(map[string]*binding),
 	}
 
 	// Load policies
@@ -79,9 +73,9 @@ func NewFilePolicyProvider(cfg FilePolicyProviderConfig) (*FilePolicyProvider, e
 		}
 	}
 
-	// Load roles
-	if cfg.RolesPath != "" {
-		if err := fp.loadRoles(cfg.RolesPath); err != nil {
+	// Load bindings
+	if cfg.BindingsPath != "" {
+		if err := fp.loadBindings(cfg.BindingsPath); err != nil {
 			return nil, err
 		}
 	}
@@ -89,26 +83,22 @@ func NewFilePolicyProvider(cfg FilePolicyProviderConfig) (*FilePolicyProvider, e
 	return fp, nil
 }
 
-func (fp *FilePolicyProvider) loadRoles(path string) error {
+func (fp *FilePolicyProvider) loadBindings(path string) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return err
 	}
 
-	var roles []*role
-	if err := json.Unmarshal(data, &roles); err != nil {
+	var bindings []*binding
+	if err := json.Unmarshal(data, &bindings); err != nil {
 		return err
 	}
 
-	for _, r := range roles {
-		if err := r.Validate(); err != nil {
+	for _, b := range bindings {
+		if err := b.Validate(); err != nil {
 			return err
 		}
-		if r.IsGlobal() {
-			fp.globalRoles[r.Name] = r
-			continue
-		}
-		fp.localRoles[r.Key()] = r
+		fp.bindings[bindingKey(b.Account, b.Role)] = b
 	}
 
 	return nil
@@ -150,10 +140,13 @@ func (fp *FilePolicyProvider) GetPoliciesForRole(ctx context.Context, account st
 	if role == "" {
 		return nil, ErrRoleNotFound
 	}
+	account = strings.TrimSpace(account)
+	if account == "" {
+		return nil, ErrRoleNotFound
+	}
 
-	globalRole := fp.globalRoles[role]
-	localRole := fp.localRoles[role+":"+account]
-	if globalRole == nil && localRole == nil {
+	b := fp.bindings[bindingKey(account, role)]
+	if b == nil {
 		return nil, ErrRoleNotFound
 	}
 
@@ -171,15 +164,8 @@ func (fp *FilePolicyProvider) GetPoliciesForRole(ctx context.Context, account st
 		policyIDs = append(policyIDs, id)
 	}
 
-	if globalRole != nil {
-		for _, id := range globalRole.Policies {
-			addPolicyID(id)
-		}
-	}
-	if localRole != nil {
-		for _, id := range localRole.Policies {
-			addPolicyID(id)
-		}
+	for _, id := range b.Policies {
+		addPolicyID(id)
 	}
 
 	sort.Strings(policyIDs)
