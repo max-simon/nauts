@@ -442,8 +442,7 @@ func TestConfig_Validate(t *testing.T) {
 					JWT: &JwtIdentityConfig{
 						Accounts: []string{"*"},
 						Issuers: map[string]JwtIssuerConfig{
-							"https://auth.example.com": {
-							},
+							"https://auth.example.com": {},
 						},
 					},
 				},
