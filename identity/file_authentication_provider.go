@@ -30,19 +30,24 @@ type usersFile struct {
 
 // FileAuthenticationProvider implements AuthenticationProvider using a JSON file.
 type FileAuthenticationProvider struct {
-	users map[string]*fileUser
+	users              map[string]*fileUser
+	manageableAccounts []string
 }
 
 // FileAuthenticationProviderConfig holds configuration for FileAuthenticationProvider.
 type FileAuthenticationProviderConfig struct {
 	// UsersPath is the path to the users JSON file.
 	UsersPath string
+	// Accounts is the list of NATS accounts this provider can manage.
+	// Patterns support wildcards in the form of "*" (all) or "prefix*".
+	Accounts []string
 }
 
 // NewFileAuthenticationProvider creates a new FileAuthenticationProvider from the given configuration.
 func NewFileAuthenticationProvider(cfg FileAuthenticationProviderConfig) (*FileAuthenticationProvider, error) {
 	fp := &FileAuthenticationProvider{
-		users: make(map[string]*fileUser),
+		users:              make(map[string]*fileUser),
+		manageableAccounts: append([]string(nil), cfg.Accounts...),
 	}
 
 	if cfg.UsersPath != "" {
@@ -52,6 +57,10 @@ func NewFileAuthenticationProvider(cfg FileAuthenticationProviderConfig) (*FileA
 	}
 
 	return fp, nil
+}
+
+func (fp *FileAuthenticationProvider) ManageableAccounts() []string {
+	return append([]string(nil), fp.manageableAccounts...)
 }
 
 // loadUsers loads users from a JSON file.
@@ -87,7 +96,6 @@ func parseUsernamePassword(token string) (*usernamePassword, error) {
 // Returns ErrUserNotFound if the user does not exist.
 // Returns ErrInvalidCredentials if the password is incorrect.
 // Returns ErrInvalidAccount if the requested account is not valid for the user.
-// Returns ErrAccountRequired if user has multiple accounts but no account was specified.
 func (fp *FileAuthenticationProvider) Verify(_ context.Context, req AuthRequest) (*User, error) {
 	creds, err := parseUsernamePassword(req.Token)
 	if err != nil {
@@ -104,68 +112,63 @@ func (fp *FileAuthenticationProvider) Verify(_ context.Context, req AuthRequest)
 		return nil, ErrInvalidCredentials
 	}
 
-	// Determine the account
-	account, err := resolveAccount(fu.Accounts, req.Account)
-	if err != nil {
-		return nil, err
+	// Validate requested account is in user's accounts list
+	if !contains(fu.Accounts, req.Account) {
+		return nil, ErrInvalidAccount
+	}
+
+	// Parse all roles as AccountRole objects (no filtering by account)
+	// Account filtering will be done by the AuthController
+	var roles []AccountRole
+	for _, roleID := range fu.Roles {
+		role, err := ParseRoleID(roleID)
+		if err != nil {
+			// Skip invalid role IDs
+			continue
+		}
+		roles = append(roles, role)
 	}
 
 	return &User{
 		ID:         creds.Username,
-		Account:    account,
-		Roles:      fu.Roles,
+		Roles:      roles,
 		Attributes: fu.Attributes,
 	}, nil
 }
 
-// resolveAccount determines the account based on the user's accounts and the requested account.
-// If user has single account, returns it (ignoring requested account).
-// If user has multiple accounts, requires and validates the requested account.
-func resolveAccount(accounts []string, requestedAccount string) (string, error) {
-	if len(accounts) == 0 {
-		return "", ErrInvalidAccount
-	}
-
-	if len(accounts) == 1 {
-		// Single account - use it regardless of request
-		return accounts[0], nil
-	}
-
-	// Multiple accounts - require explicit account selection
-	if requestedAccount == "" {
-		return "", ErrAccountRequired
-	}
-
-	// Validate requested account is in user's accounts list
-	for _, acc := range accounts {
-		if acc == requestedAccount {
-			return requestedAccount, nil
+// contains checks if a string slice contains a specific value.
+func contains(slice []string, value string) bool {
+	for _, item := range slice {
+		if item == value {
+			return true
 		}
 	}
-
-	return "", ErrInvalidAccount
+	return false
 }
 
 // GetUser retrieves a user by ID without verifying credentials.
 // Returns ErrUserNotFound if the user does not exist.
-// Note: For users with multiple accounts, this returns the first account.
-// Use Verify with AuthRequest to specify a specific account.
+// Note: This returns all roles for all accounts the user has access to.
 func (fp *FileAuthenticationProvider) GetUser(_ context.Context, id string) (*User, error) {
 	fu, ok := fp.users[id]
 	if !ok {
 		return nil, ErrUserNotFound
 	}
 
-	// For GetUser, use the first account (or empty if no accounts)
-	account := ""
-	if len(fu.Accounts) > 0 {
-		account = fu.Accounts[0]
+	// Parse all roles as AccountRole objects
+	var roles []AccountRole
+	for _, roleID := range fu.Roles {
+		role, err := ParseRoleID(roleID)
+		if err != nil {
+			// Skip invalid role IDs
+			continue
+		}
+		roles = append(roles, role)
 	}
 
 	return &User{
 		ID:         id,
-		Account:    account,
-		Roles:      fu.Roles,
+		Roles:      roles,
 		Attributes: fu.Attributes,
 	}, nil
 }

@@ -55,10 +55,10 @@ func TestJwtAuthenticationProvider_Verify_Success(t *testing.T) {
 	privateKey, publicKeyPEM := generateTestKeyPair(t)
 
 	provider, err := NewJwtAuthenticationProvider(JwtAuthenticationProviderConfig{
+		Accounts: []string{"*"},
 		Issuers: map[string]IssuerConfig{
 			"https://auth.example.com": {
 				PublicKey: publicKeyPEM,
-				Accounts:  []string{"tenant-a-*", "dev"},
 			},
 		},
 	})
@@ -79,7 +79,7 @@ func TestJwtAuthenticationProvider_Verify_Success(t *testing.T) {
 		"name":  "Test User",
 	})
 
-	user, err := provider.Verify(context.Background(), AuthRequest{Token: tokenString})
+	user, err := provider.Verify(context.Background(), AuthRequest{Account: "tenant-a-acc", Token: tokenString})
 	if err != nil {
 		t.Fatalf("Verify() error = %v", err)
 	}
@@ -87,17 +87,17 @@ func TestJwtAuthenticationProvider_Verify_Success(t *testing.T) {
 	if user.ID != "user-123" {
 		t.Errorf("user.ID = %q, want %q", user.ID, "user-123")
 	}
-	if user.Account != "tenant-a-acc" {
-		t.Errorf("user.Account = %q, want %q", user.Account, "tenant-a-acc")
-	}
 	if len(user.Roles) != 2 {
 		t.Errorf("len(user.Roles) = %d, want 2", len(user.Roles))
 	}
 
-	// Check roles are stripped of account prefix
+	// Check roles include account
 	roleSet := make(map[string]bool)
 	for _, r := range user.Roles {
-		roleSet[r] = true
+		if r.Account != "tenant-a-acc" {
+			t.Errorf("role account = %q, want %q", r.Account, "tenant-a-acc")
+		}
+		roleSet[r.Role] = true
 	}
 	if !roleSet["admin"] {
 		t.Error("expected role 'admin' not found")
@@ -119,10 +119,10 @@ func TestJwtAuthenticationProvider_Verify_WithExplicitAccount(t *testing.T) {
 	privateKey, publicKeyPEM := generateTestKeyPair(t)
 
 	provider, err := NewJwtAuthenticationProvider(JwtAuthenticationProviderConfig{
+		Accounts: []string{"*"},
 		Issuers: map[string]IssuerConfig{
 			"https://auth.example.com": {
 				PublicKey: publicKeyPEM,
-				Accounts:  []string{"*"}, // Allow all accounts
 			},
 		},
 	})
@@ -151,11 +151,17 @@ func TestJwtAuthenticationProvider_Verify_WithExplicitAccount(t *testing.T) {
 		t.Fatalf("Verify() error = %v", err)
 	}
 
-	if user.Account != "account-a" {
-		t.Errorf("user.Account = %q, want %q", user.Account, "account-a")
+	// Should return all roles (filtering done by AuthController)
+	if len(user.Roles) != 2 {
+		t.Errorf("user.Roles length = %d, want 2", len(user.Roles))
 	}
-	if len(user.Roles) != 1 || user.Roles[0] != "admin" {
-		t.Errorf("user.Roles = %v, want [admin]", user.Roles)
+	// Verify both accounts are present
+	accounts := make(map[string]string)
+	for _, role := range user.Roles {
+		accounts[role.Account] = role.Role
+	}
+	if accounts["account-a"] != "admin" || accounts["account-b"] != "viewer" {
+		t.Errorf("user.Roles = %v, want account-a.admin and account-b.viewer", user.Roles)
 	}
 }
 
@@ -163,10 +169,10 @@ func TestJwtAuthenticationProvider_Verify_IssuerNotConfigured(t *testing.T) {
 	privateKey, publicKeyPEM := generateTestKeyPair(t)
 
 	provider, err := NewJwtAuthenticationProvider(JwtAuthenticationProviderConfig{
+		Accounts: []string{"*"},
 		Issuers: map[string]IssuerConfig{
 			"https://auth.example.com": {
 				PublicKey: publicKeyPEM,
-				Accounts:  []string{"*"},
 			},
 		},
 	})
@@ -181,75 +187,9 @@ func TestJwtAuthenticationProvider_Verify_IssuerNotConfigured(t *testing.T) {
 		"exp": time.Now().Add(time.Hour).Unix(),
 	})
 
-	_, err = provider.Verify(context.Background(), AuthRequest{Token: tokenString})
+	_, err = provider.Verify(context.Background(), AuthRequest{Account: "any", Token: tokenString})
 	if !errors.Is(err, ErrIssuerNotConfigured) {
 		t.Errorf("Verify() error = %v, want %v", err, ErrIssuerNotConfigured)
-	}
-}
-
-func TestJwtAuthenticationProvider_Verify_IssuerNotAllowed(t *testing.T) {
-	privateKey, publicKeyPEM := generateTestKeyPair(t)
-
-	provider, err := NewJwtAuthenticationProvider(JwtAuthenticationProviderConfig{
-		Issuers: map[string]IssuerConfig{
-			"https://auth.example.com": {
-				PublicKey: publicKeyPEM,
-				Accounts:  []string{"tenant-a-*"}, // Only tenant-a accounts
-			},
-		},
-	})
-	if err != nil {
-		t.Fatalf("creating provider: %v", err)
-	}
-
-	// User tries to access tenant-b account
-	tokenString := createTestJWT(t, privateKey, jwt.MapClaims{
-		"iss": "https://auth.example.com",
-		"sub": "user-123",
-		"exp": time.Now().Add(time.Hour).Unix(),
-		"resource_access": map[string]any{
-			"nauts": map[string]any{
-				"roles": []any{"tenant-b-acc.admin"},
-			},
-		},
-	})
-
-	_, err = provider.Verify(context.Background(), AuthRequest{Token: tokenString})
-	if !errors.Is(err, ErrIssuerNotAllowed) {
-		t.Errorf("Verify() error = %v, want %v", err, ErrIssuerNotAllowed)
-	}
-}
-
-func TestJwtAuthenticationProvider_Verify_AmbiguousAccount(t *testing.T) {
-	privateKey, publicKeyPEM := generateTestKeyPair(t)
-
-	provider, err := NewJwtAuthenticationProvider(JwtAuthenticationProviderConfig{
-		Issuers: map[string]IssuerConfig{
-			"https://auth.example.com": {
-				PublicKey: publicKeyPEM,
-				Accounts:  []string{"*"},
-			},
-		},
-	})
-	if err != nil {
-		t.Fatalf("creating provider: %v", err)
-	}
-
-	// Roles span multiple accounts, no account specified
-	tokenString := createTestJWT(t, privateKey, jwt.MapClaims{
-		"iss": "https://auth.example.com",
-		"sub": "user-123",
-		"exp": time.Now().Add(time.Hour).Unix(),
-		"resource_access": map[string]any{
-			"nauts": map[string]any{
-				"roles": []any{"account-a.admin", "account-b.viewer"},
-			},
-		},
-	})
-
-	_, err = provider.Verify(context.Background(), AuthRequest{Token: tokenString})
-	if !errors.Is(err, ErrAmbiguousAccount) {
-		t.Errorf("Verify() error = %v, want %v", err, ErrAmbiguousAccount)
 	}
 }
 
@@ -257,10 +197,10 @@ func TestJwtAuthenticationProvider_Verify_NoRoles(t *testing.T) {
 	privateKey, publicKeyPEM := generateTestKeyPair(t)
 
 	provider, err := NewJwtAuthenticationProvider(JwtAuthenticationProviderConfig{
+		Accounts: []string{"*"},
 		Issuers: map[string]IssuerConfig{
 			"https://auth.example.com": {
 				PublicKey: publicKeyPEM,
-				Accounts:  []string{"*"},
 			},
 		},
 	})
@@ -285,10 +225,10 @@ func TestJwtAuthenticationProvider_Verify_InvalidRoleFormat(t *testing.T) {
 	privateKey, publicKeyPEM := generateTestKeyPair(t)
 
 	provider, err := NewJwtAuthenticationProvider(JwtAuthenticationProviderConfig{
+		Accounts: []string{"*"},
 		Issuers: map[string]IssuerConfig{
 			"https://auth.example.com": {
 				PublicKey: publicKeyPEM,
-				Accounts:  []string{"*"},
 			},
 		},
 	})
@@ -318,10 +258,10 @@ func TestJwtAuthenticationProvider_Verify_ExpiredToken(t *testing.T) {
 	privateKey, publicKeyPEM := generateTestKeyPair(t)
 
 	provider, err := NewJwtAuthenticationProvider(JwtAuthenticationProviderConfig{
+		Accounts: []string{"*"},
 		Issuers: map[string]IssuerConfig{
 			"https://auth.example.com": {
 				PublicKey: publicKeyPEM,
-				Accounts:  []string{"*"},
 			},
 		},
 	})
@@ -353,10 +293,10 @@ func TestJwtAuthenticationProvider_Verify_InvalidSignature(t *testing.T) {
 
 	// Provider configured with key1
 	provider, err := NewJwtAuthenticationProvider(JwtAuthenticationProviderConfig{
+		Accounts: []string{"*"},
 		Issuers: map[string]IssuerConfig{
 			"https://auth.example.com": {
 				PublicKey: publicKeyPEM1,
-				Accounts:  []string{"*"},
 			},
 		},
 	})
@@ -382,50 +322,14 @@ func TestJwtAuthenticationProvider_Verify_InvalidSignature(t *testing.T) {
 	}
 }
 
-func TestJwtAuthenticationProvider_Verify_WildcardInAccount(t *testing.T) {
-	privateKey, publicKeyPEM := generateTestKeyPair(t)
-
-	provider, err := NewJwtAuthenticationProvider(JwtAuthenticationProviderConfig{
-		Issuers: map[string]IssuerConfig{
-			"https://auth.example.com": {
-				PublicKey: publicKeyPEM,
-				Accounts:  []string{"*"},
-			},
-		},
-	})
-	if err != nil {
-		t.Fatalf("creating provider: %v", err)
-	}
-
-	tokenString := createTestJWT(t, privateKey, jwt.MapClaims{
-		"iss": "https://auth.example.com",
-		"sub": "user-123",
-		"exp": time.Now().Add(time.Hour).Unix(),
-		"resource_access": map[string]any{
-			"nauts": map[string]any{
-				"roles": []any{"account.admin"},
-			},
-		},
-	})
-
-	// Request with wildcard in account
-	_, err = provider.Verify(context.Background(), AuthRequest{
-		Token:   tokenString,
-		Account: "tenant-*",
-	})
-	if !errors.Is(err, ErrWildcardInAccount) {
-		t.Errorf("Verify() error = %v, want %v", err, ErrWildcardInAccount)
-	}
-}
-
 func TestJwtAuthenticationProvider_CustomRolesPath(t *testing.T) {
 	privateKey, publicKeyPEM := generateTestKeyPair(t)
 
 	provider, err := NewJwtAuthenticationProvider(JwtAuthenticationProviderConfig{
+		Accounts: []string{"*"},
 		Issuers: map[string]IssuerConfig{
 			"https://auth.example.com": {
 				PublicKey:      publicKeyPEM,
-				Accounts:       []string{"*"},
 				RolesClaimPath: "realm_access.roles", // Custom path per issuer
 			},
 		},
@@ -443,16 +347,13 @@ func TestJwtAuthenticationProvider_CustomRolesPath(t *testing.T) {
 		},
 	})
 
-	user, err := provider.Verify(context.Background(), AuthRequest{Token: tokenString})
+	user, err := provider.Verify(context.Background(), AuthRequest{Account: "myaccount", Token: tokenString})
 	if err != nil {
 		t.Fatalf("Verify() error = %v", err)
 	}
 
-	if user.Account != "myaccount" {
-		t.Errorf("user.Account = %q, want %q", user.Account, "myaccount")
-	}
-	if len(user.Roles) != 1 || user.Roles[0] != "myrole" {
-		t.Errorf("user.Roles = %v, want [myrole]", user.Roles)
+	if len(user.Roles) != 1 || user.Roles[0].Account != "myaccount" || user.Roles[0].Role != "myrole" {
+		t.Errorf("user.Roles = %v, want [{myaccount myrole}]", user.Roles)
 	}
 }
 
@@ -461,15 +362,14 @@ func TestJwtAuthenticationProvider_DifferentRolesPathPerIssuer(t *testing.T) {
 	privateKey2, publicKeyPEM2 := generateTestKeyPair(t)
 
 	provider, err := NewJwtAuthenticationProvider(JwtAuthenticationProviderConfig{
+		Accounts: []string{"*"},
 		Issuers: map[string]IssuerConfig{
 			"https://auth1.example.com": {
 				PublicKey:      publicKeyPEM1,
-				Accounts:       []string{"*"},
 				RolesClaimPath: "realm_access.roles",
 			},
 			"https://auth2.example.com": {
 				PublicKey:      publicKeyPEM2,
-				Accounts:       []string{"*"},
 				RolesClaimPath: "custom.path.to.roles",
 			},
 		},
@@ -488,12 +388,12 @@ func TestJwtAuthenticationProvider_DifferentRolesPathPerIssuer(t *testing.T) {
 		},
 	})
 
-	user1, err := provider.Verify(context.Background(), AuthRequest{Token: token1})
+	user1, err := provider.Verify(context.Background(), AuthRequest{Account: "account1", Token: token1})
 	if err != nil {
 		t.Fatalf("Verify() issuer1 error = %v", err)
 	}
-	if user1.Account != "account1" || user1.Roles[0] != "admin" {
-		t.Errorf("issuer1: got account=%q roles=%v, want account1/admin", user1.Account, user1.Roles)
+	if len(user1.Roles) != 1 || user1.Roles[0].Account != "account1" || user1.Roles[0].Role != "admin" {
+		t.Errorf("issuer1: got roles=%v, want [{account1 admin}]", user1.Roles)
 	}
 
 	// Test issuer 2 with custom.path.to.roles
@@ -510,68 +410,35 @@ func TestJwtAuthenticationProvider_DifferentRolesPathPerIssuer(t *testing.T) {
 		},
 	})
 
-	user2, err := provider.Verify(context.Background(), AuthRequest{Token: token2})
+	user2, err := provider.Verify(context.Background(), AuthRequest{Account: "account2", Token: token2})
 	if err != nil {
 		t.Fatalf("Verify() issuer2 error = %v", err)
 	}
-	if user2.Account != "account2" || user2.Roles[0] != "viewer" {
-		t.Errorf("issuer2: got account=%q roles=%v, want account2/viewer", user2.Account, user2.Roles)
+	if len(user2.Roles) != 1 || user2.Roles[0].Account != "account2" || user2.Roles[0].Role != "viewer" {
+		t.Errorf("issuer2: got roles=%v, want [{account2 viewer}]", user2.Roles)
 	}
 }
 
-func TestMatchAccountPattern(t *testing.T) {
-	tests := []struct {
-		pattern string
-		account string
-		want    bool
-	}{
-		// Exact match
-		{"dev", "dev", true},
-		{"dev", "prod", false},
-
-		// Wildcard all
-		{"*", "anything", true},
-		{"*", "dev", true},
-
-		// Prefix wildcard
-		{"tenant-a-*", "tenant-a-acc-1", true},
-		{"tenant-a-*", "tenant-a-", true},
-		{"tenant-a-*", "tenant-b-acc-1", false},
-		{"tenant-*", "tenant-a", true},
-		{"tenant-*", "tenant-", true},
-		{"tenant-*", "other", false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.pattern+"_"+tt.account, func(t *testing.T) {
-			got := matchAccountPattern(tt.pattern, tt.account)
-			if got != tt.want {
-				t.Errorf("matchAccountPattern(%q, %q) = %v, want %v", tt.pattern, tt.account, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestParseAccountRoles(t *testing.T) {
+func TestParseJWTAccountRoles(t *testing.T) {
 	tests := []struct {
 		name  string
 		roles []string
-		want  []accountRole
+		want  []AccountRole
 	}{
 		{
 			name:  "valid roles",
 			roles: []string{"account.admin", "account.viewer"},
-			want: []accountRole{
-				{account: "account", role: "admin"},
-				{account: "account", role: "viewer"},
+			want: []AccountRole{
+				{Account: "account", Role: "admin"},
+				{Account: "account", Role: "viewer"},
 			},
 		},
 		{
 			name:  "mixed valid and invalid",
 			roles: []string{"account.admin", "invalid", "account.viewer", ".norole", "noaccount."},
-			want: []accountRole{
-				{account: "account", role: "admin"},
-				{account: "account", role: "viewer"},
+			want: []AccountRole{
+				{Account: "account", Role: "admin"},
+				{Account: "account", Role: "viewer"},
 			},
 		},
 		{
@@ -582,22 +449,22 @@ func TestParseAccountRoles(t *testing.T) {
 		{
 			name:  "role with multiple dots",
 			roles: []string{"account.role.with.dots"},
-			want: []accountRole{
-				{account: "account", role: "role.with.dots"},
+			want: []AccountRole{
+				{Account: "account", Role: "role.with.dots"},
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := parseAccountRoles(tt.roles)
+			got := parseJWTAccountRoles(tt.roles)
 			if len(got) != len(tt.want) {
-				t.Errorf("parseAccountRoles() = %v, want %v", got, tt.want)
+				t.Errorf("parseJWTAccountRoles() = %v, want %v", got, tt.want)
 				return
 			}
 			for i := range got {
 				if got[i] != tt.want[i] {
-					t.Errorf("parseAccountRoles()[%d] = %v, want %v", i, got[i], tt.want[i])
+					t.Errorf("parseJWTAccountRoles()[%d] = %v, want %v", i, got[i], tt.want[i])
 				}
 			}
 		})

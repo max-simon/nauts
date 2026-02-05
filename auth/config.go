@@ -116,10 +116,16 @@ type IdentityConfig struct {
 type FileIdentityConfig struct {
 	// UsersPath is the path to the users JSON file.
 	UsersPath string `json:"usersPath"`
+	// Accounts is the list of NATS accounts this provider can manage.
+	// Patterns support wildcards in the form of "*" (all) or "prefix*".
+	Accounts []string `json:"accounts"`
 }
 
 // JwtIdentityConfig configures the JWT-based identity provider.
 type JwtIdentityConfig struct {
+	// Accounts is the list of NATS accounts this provider can manage.
+	// Patterns support wildcards in the form of "*" (all) or "prefix*".
+	Accounts []string `json:"accounts"`
 	// Issuers maps JWT issuer (iss claim) to their configuration.
 	Issuers map[string]JwtIssuerConfig `json:"issuers"`
 }
@@ -128,10 +134,6 @@ type JwtIdentityConfig struct {
 type JwtIssuerConfig struct {
 	// PublicKey is the PEM-encoded public key for JWT signature verification.
 	PublicKey string `json:"publicKey"`
-
-	// Accounts is the list of NATS accounts this issuer can manage.
-	// Supports wildcards: "*" matches any account, "tenant-a-*" matches accounts starting with "tenant-a-".
-	Accounts []string `json:"accounts"`
 
 	// RolesClaimPath is the path to roles in JWT claims (dot-separated).
 	// Default: "resource_access.nauts.roles"
@@ -264,9 +266,15 @@ func (c *Config) Validate() error {
 		if c.Identity.File.UsersPath == "" {
 			return fmt.Errorf("identity.file.usersPath is required")
 		}
+		if len(c.Identity.File.Accounts) == 0 {
+			return fmt.Errorf("identity.file.accounts must contain at least one account")
+		}
 	case "jwt":
 		if c.Identity.JWT == nil {
 			return fmt.Errorf("identity.jwt configuration is required when type is 'jwt'")
+		}
+		if len(c.Identity.JWT.Accounts) == 0 {
+			return fmt.Errorf("identity.jwt.accounts must contain at least one account")
 		}
 		if len(c.Identity.JWT.Issuers) == 0 {
 			return fmt.Errorf("identity.jwt.issuers must contain at least one issuer")
@@ -277,9 +285,6 @@ func (c *Config) Validate() error {
 			}
 			if issuerCfg.PublicKey == "" {
 				return fmt.Errorf("identity.jwt.issuers[%s].publicKey is required", issuer)
-			}
-			if len(issuerCfg.Accounts) == 0 {
-				return fmt.Errorf("identity.jwt.issuers[%s].accounts must contain at least one account", issuer)
 			}
 		}
 	default:
@@ -383,6 +388,7 @@ func NewAuthControllerWithConfig(config *Config, opts ...ControllerOption) (*Aut
 	case "file":
 		authProvider, err = identity.NewFileAuthenticationProvider(identity.FileAuthenticationProviderConfig{
 			UsersPath: config.Identity.File.UsersPath,
+			Accounts:  config.Identity.File.Accounts,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("initializing file identity provider: %w", err)
@@ -392,12 +398,12 @@ func NewAuthControllerWithConfig(config *Config, opts ...ControllerOption) (*Aut
 		for issuer, issuerCfg := range config.Identity.JWT.Issuers {
 			issuers[issuer] = identity.IssuerConfig{
 				PublicKey:      issuerCfg.PublicKey,
-				Accounts:       issuerCfg.Accounts,
 				RolesClaimPath: issuerCfg.RolesClaimPath,
 			}
 		}
 		authProvider, err = identity.NewJwtAuthenticationProvider(identity.JwtAuthenticationProviderConfig{
-			Issuers: issuers,
+			Accounts: config.Identity.JWT.Accounts,
+			Issuers:  issuers,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("initializing jwt identity provider: %w", err)

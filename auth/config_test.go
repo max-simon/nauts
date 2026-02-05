@@ -166,6 +166,7 @@ func TestConfig_Validate(t *testing.T) {
 				Identity: IdentityConfig{
 					File: &FileIdentityConfig{
 						UsersPath: "/path/to/users.json",
+						Accounts:  []string{"*"},
 					},
 				},
 			},
@@ -198,10 +199,10 @@ func TestConfig_Validate(t *testing.T) {
 				Identity: IdentityConfig{
 					Type: "jwt",
 					JWT: &JwtIdentityConfig{
+						Accounts: []string{"*"},
 						Issuers: map[string]JwtIssuerConfig{
 							"https://auth.example.com": {
 								PublicKey: "-----BEGIN PUBLIC KEY-----\nMIIBIjANBg...\n-----END PUBLIC KEY-----",
-								Accounts:  []string{"*"},
 							},
 						},
 					},
@@ -233,6 +234,7 @@ func TestConfig_Validate(t *testing.T) {
 				Identity: IdentityConfig{
 					File: &FileIdentityConfig{
 						UsersPath: "/path/to/users.json",
+						Accounts:  []string{"*"},
 					},
 				},
 			},
@@ -404,7 +406,9 @@ func TestConfig_Validate(t *testing.T) {
 				},
 				Identity: IdentityConfig{
 					Type: "jwt",
-					JWT:  &JwtIdentityConfig{},
+					JWT: &JwtIdentityConfig{
+						Accounts: []string{"*"},
+					},
 				},
 			},
 			wantErr: "identity.jwt.issuers must contain at least one issuer",
@@ -436,9 +440,9 @@ func TestConfig_Validate(t *testing.T) {
 				Identity: IdentityConfig{
 					Type: "jwt",
 					JWT: &JwtIdentityConfig{
+						Accounts: []string{"*"},
 						Issuers: map[string]JwtIssuerConfig{
 							"https://auth.example.com": {
-								Accounts: []string{"*"},
 							},
 						},
 					},
@@ -447,7 +451,7 @@ func TestConfig_Validate(t *testing.T) {
 			wantErr: "identity.jwt.issuers[https://auth.example.com].publicKey is required",
 		},
 		{
-			name: "missing jwt issuer accounts",
+			name: "missing jwt accounts",
 			config: Config{
 				Account: AccountConfig{
 					Type: "operator",
@@ -481,7 +485,7 @@ func TestConfig_Validate(t *testing.T) {
 					},
 				},
 			},
-			wantErr: "identity.jwt.issuers[https://auth.example.com].accounts must contain at least one account",
+			wantErr: "identity.jwt.accounts must contain at least one account",
 		},
 	}
 

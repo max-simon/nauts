@@ -277,8 +277,18 @@ func (s *CalloutService) handleRequest(msg *nats.Msg) {
 
 	s.logger.Debug("authentication successful for user: %s", result.User.ID)
 
+	// Get account from user's roles
+	accountID := ""
+	if len(result.User.Roles) > 0 {
+		accountID = result.User.Roles[0].Account
+	} else {
+		s.logger.Warn("user %s has no roles", result.User.ID)
+		s.respondWithError(msg, responseConfig, "user has no roles")
+		return
+	}
+
 	// Get account for IssuerAccount
-	account, err := s.controller.AccountProvider().GetAccount(ctx, result.User.Account)
+	account, err := s.controller.AccountProvider().GetAccount(ctx, accountID)
 	if err != nil {
 		s.logger.Warn("failed to get account for user %s: %v", result.User.ID, err)
 		s.respondWithError(msg, responseConfig, "internal error")

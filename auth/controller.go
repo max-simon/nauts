@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"strings"
 	"time"
 
 	natsjwt "github.com/nats-io/jwt/v2"
@@ -85,27 +86,95 @@ func (c *AuthController) AccountProvider() provider.AccountProvider {
 }
 
 // ResolveUser verifies the identity token and returns the user.
-// The token should be a JSON object with the structure: { "account"?: string, "token": string }
+// The token should be a JSON object with the structure: { "account": string, "token": string }
 // Returns identity.ErrInvalidCredentials if the credentials are invalid.
 // Returns identity.ErrUserNotFound if the user does not exist.
 // Returns identity.ErrInvalidTokenType if the token type is wrong for the provider.
 // Returns identity.ErrInvalidAccount if the requested account is not valid for the user.
-// Returns identity.ErrAccountRequired if user has multiple accounts but no account was specified.
 func (c *AuthController) ResolveUser(ctx context.Context, token string) (*identity.User, error) {
 	authReq, err := parseAuthRequest(token)
 	if err != nil {
 		return nil, NewAuthError("", "resolve_user", "failed to parse auth request", err)
+	}
+	if strings.Contains(authReq.Account, "*") {
+		return nil, NewAuthError("", "resolve_user", "account must not contain wildcards", nil)
+	}
+	if !accountIsManageableByProvider(c.authProvider.ManageableAccounts(), authReq.Account) {
+		return nil, NewAuthError("", "resolve_user", "account is not manageable by provider", nil)
 	}
 
 	user, err := c.authProvider.Verify(ctx, authReq)
 	if err != nil {
 		return nil, NewAuthError("", "resolve_user", "failed to verify identity", err)
 	}
+
+	// Validate that roles do not contain wildcards
+	for _, role := range user.Roles {
+		if strings.Contains(role.Account, "*") || strings.Contains(role.Role, "*") {
+			return nil, NewAuthError(user.ID, "resolve_user", "invalid role: wildcards not allowed", nil)
+		}
+	}
+
+	// Filter user roles to only include those for the requested account
+	// This is the authorization step - separating it from authentication
+	filteredRoles := make([]identity.AccountRole, 0, len(user.Roles))
+	for _, role := range user.Roles {
+		if role.Account == authReq.Account {
+			filteredRoles = append(filteredRoles, role)
+		}
+	}
+	user.Roles = filteredRoles
 	return user, nil
 }
 
+func accountIsManageableByProvider(patterns []string, account string) bool {
+	if account == "" {
+		return false
+	}
+	if account == "SYS" || account == "AUTH" {
+		for _, p := range patterns {
+			if p == account {
+				return true
+			}
+		}
+		return false
+	}
+
+	for _, pattern := range patterns {
+		if matchAccountPattern(pattern, account) {
+			return true
+		}
+	}
+	return false
+}
+
+// matchAccountPattern checks if an account matches a pattern.
+// Patterns can be:
+//   - "*" matches any account (except SYS/AUTH; those must be explicitly listed)
+//   - "prefix*" matches accounts starting with "prefix" (except SYS/AUTH)
+//   - "exact" matches only "exact"
+func matchAccountPattern(pattern, account string) bool {
+	if pattern == "" || account == "" {
+		return false
+	}
+	if pattern == account {
+		return true
+	}
+	if pattern == "*" {
+		return true
+	}
+	if strings.HasSuffix(pattern, "*") {
+		prefix := strings.TrimSuffix(pattern, "*")
+		if prefix == "" {
+			return true
+		}
+		return strings.HasPrefix(account, prefix)
+	}
+	return false
+}
+
 // parseAuthRequest parses the JSON token into an AuthRequest.
-// Expected format: { "account"?: string, "token": string }
+// Expected format: { "account": string, "token": string }
 func parseAuthRequest(token string) (identity.AuthRequest, error) {
 	var req identity.AuthRequest
 	if err := json.Unmarshal([]byte(token), &req); err != nil {
@@ -113,6 +182,9 @@ func parseAuthRequest(token string) (identity.AuthRequest, error) {
 	}
 	if req.Token == "" {
 		return identity.AuthRequest{}, errors.New("token field is required")
+	}
+	if req.Account == "" {
+		return identity.AuthRequest{}, errors.New("account field is required")
 	}
 	return req, nil
 }
@@ -127,17 +199,25 @@ func (c *AuthController) ResolveNatsPermissions(ctx context.Context, user *ident
 		return nil, NewAuthError("", "resolve_permissions", "user is nil", nil)
 	}
 
+	// Get account from user's roles (all roles should have the same account)
+	account := ""
+	if len(user.Roles) > 0 {
+		account = user.Roles[0].Account
+	} else {
+		return nil, NewAuthError(user.ID, "resolve_permissions", "user has no roles", nil)
+	}
+
 	// Collect all role names (including default)
 	roleNames := c.collectRoleNames(user)
 
 	result := policy.NewNatsPermissions()
 
 	// Convert user to context once
-	userCtx := userToContext(user)
+	userCtx := userToContext(user, account)
 
 	// Process each role name
 	for _, roleName := range roleNames {
-		globalRole, localRole, err := c.roleProvider.GetRoles(ctx, roleName, user.Account)
+		globalRole, localRole, err := c.roleProvider.GetRoles(ctx, roleName, account)
 		if err != nil {
 			if errors.Is(err, provider.ErrRoleNotFound) {
 				c.logger.Warn("role not found: %s (user: %s)", roleName, user.ID)
@@ -276,8 +356,16 @@ func (c *AuthController) CreateUserJWT(
 		return "", NewAuthError("", "create_jwt", "user is nil", nil)
 	}
 
+	// Get account from user's roles (all roles should have the same account)
+	account := ""
+	if len(user.Roles) > 0 {
+		account = user.Roles[0].Account
+	} else {
+		return "", NewAuthError(user.ID, "create_jwt", "user has no roles", nil)
+	}
+
 	// Get the account from the account provider
-	account, err := c.accountProvider.GetAccount(ctx, user.Account)
+	accountEntity, err := c.accountProvider.GetAccount(ctx, account)
 	if err != nil {
 		return "", NewAuthError(user.ID, "create_jwt", "failed to get account", err)
 	}
@@ -287,17 +375,17 @@ func (c *AuthController) CreateUserJWT(
 	// In non-operator mode, set audience to account name
 	audienceAccount := ""
 	if !c.accountProvider.IsOperatorMode() {
-		audienceAccount = user.Account
+		audienceAccount = account
 	}
 
 	// In operator mode, the issuerAccount has to be set to support signing keys
 	issuerAccount := ""
 	if c.accountProvider.IsOperatorMode() {
-		issuerAccount = account.PublicKey()
+		issuerAccount = accountEntity.PublicKey()
 	}
 
 	// Issue the JWT using the account's signer
-	token, err := jwt.IssueUserJWT(user.ID, userPublicKey, ttl, permissions, account.Signer(), audienceAccount, issuerAccount)
+	token, err := jwt.IssueUserJWT(user.ID, userPublicKey, ttl, permissions, accountEntity.Signer(), audienceAccount, issuerAccount)
 	if err != nil {
 		return "", NewAuthError(user.ID, "create_jwt", "failed to issue JWT", err)
 	}
@@ -316,11 +404,11 @@ func (c *AuthController) collectRoleNames(user *identity.User) []string {
 		roles = append(roles, provider.DefaultRoleName)
 	}
 
-	// Add user's roles
+	// Add user's roles (extract role name from AccountRole)
 	for _, r := range user.Roles {
-		if !seen[r] {
-			seen[r] = true
-			roles = append(roles, r)
+		if !seen[r.Role] {
+			seen[r.Role] = true
+			roles = append(roles, r.Role)
 		}
 	}
 
@@ -328,13 +416,13 @@ func (c *AuthController) collectRoleNames(user *identity.User) []string {
 }
 
 // userToContext converts an identity.User to a policy.UserContext for interpolation.
-func userToContext(user *identity.User) *policy.UserContext {
+func userToContext(user *identity.User, account string) *policy.UserContext {
 	if user == nil {
 		return nil
 	}
 	return &policy.UserContext{
 		ID:         user.ID,
-		Account:    user.Account,
+		Account:    account,
 		Attributes: user.Attributes,
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -39,7 +40,7 @@ func (l *testLogger) Debug(msg string, args ...any) {
 func TestResolveUser_ValidCredentials(t *testing.T) {
 	ctrl := createTestController(t)
 
-	user, err := ctrl.ResolveUser(context.Background(), `{"token":"alice:secret123"}`)
+	user, err := ctrl.ResolveUser(context.Background(), `{"account":"test-account","token":"alice:secret123"}`)
 	if err != nil {
 		t.Fatalf("ResolveUser() error = %v", err)
 	}
@@ -47,15 +48,15 @@ func TestResolveUser_ValidCredentials(t *testing.T) {
 	if user.ID != "alice" {
 		t.Errorf("user.ID = %q, want %q", user.ID, "alice")
 	}
-	if user.Account != "test-account" {
-		t.Errorf("user.Account = %q, want %q", user.Account, "test-account")
+	if len(user.Roles) == 0 || user.Roles[0].Account != "test-account" {
+		t.Errorf("user account = %v, want test-account", user.Roles)
 	}
 }
 
 func TestResolveUser_InvalidCredentials(t *testing.T) {
 	ctrl := createTestController(t)
 
-	_, err := ctrl.ResolveUser(context.Background(), `{"token":"alice:wrongpassword"}`)
+	_, err := ctrl.ResolveUser(context.Background(), `{"account":"test-account","token":"alice:wrongpassword"}`)
 	if err == nil {
 		t.Fatal("ResolveUser() expected error")
 	}
@@ -69,13 +70,84 @@ func TestResolveUser_InvalidCredentials(t *testing.T) {
 	}
 }
 
+func TestResolveUser_WildcardInRole(t *testing.T) {
+	ctrl := createTestController(t)
+
+	// Create a mock identity provider that returns roles with wildcards
+	mockProvider := &mockAuthProviderWithWildcard{}
+	ctrl.authProvider = mockProvider
+
+	_, err := ctrl.ResolveUser(context.Background(), `{"account":"test-account","token":"test"}`)
+	if err == nil {
+		t.Fatal("ResolveUser() expected error for wildcard in role")
+	}
+
+	var authErr *AuthError
+	if !errors.As(err, &authErr) {
+		t.Fatalf("error is not AuthError: %T", err)
+	}
+	if authErr.Phase != "resolve_user" {
+		t.Errorf("AuthError.Phase = %q, want %q", authErr.Phase, "resolve_user")
+	}
+}
+
+func TestAccountIsManageableByProvider(t *testing.T) {
+	tests := []struct {
+		name     string
+		patterns []string
+		account  string
+		want     bool
+	}{
+		{name: "wildcard allows normal accounts", patterns: []string{"*"}, account: "tenant-a", want: true},
+		{name: "wildcard does not allow SYS", patterns: []string{"*"}, account: "SYS", want: false},
+		{name: "wildcard does not allow AUTH", patterns: []string{"*"}, account: "AUTH", want: false},
+		{name: "explicit SYS allowed", patterns: []string{"SYS"}, account: "SYS", want: true},
+		{name: "explicit AUTH allowed", patterns: []string{"AUTH"}, account: "AUTH", want: true},
+		{name: "prefix wildcard matches", patterns: []string{"tenant-*"}, account: "tenant-a", want: true},
+		{name: "prefix wildcard misses", patterns: []string{"tenant-*"}, account: "other", want: false},
+		{name: "exact match works", patterns: []string{"dev"}, account: "dev", want: true},
+		{name: "empty account rejected", patterns: []string{"*"}, account: "", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := accountIsManageableByProvider(tt.patterns, tt.account)
+			if got != tt.want {
+				t.Fatalf("accountIsManageableByProvider(%v, %q) = %v, want %v", tt.patterns, tt.account, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestResolveUser_AccountNotManageableByProvider(t *testing.T) {
+	ctrl := createTestController(t)
+	ctrl.authProvider = &mockAuthProviderManageableAccounts{patterns: []string{"dev"}}
+
+	_, err := ctrl.ResolveUser(context.Background(), `{"account":"prod","token":"anything"}`)
+	if err == nil {
+		t.Fatal("ResolveUser() expected error")
+	}
+
+	var authErr *AuthError
+	if !errors.As(err, &authErr) {
+		t.Fatalf("error is not AuthError: %T", err)
+	}
+	if authErr.Phase != "resolve_user" {
+		t.Errorf("AuthError.Phase = %q, want %q", authErr.Phase, "resolve_user")
+	}
+	if !strings.Contains(authErr.Message, "manageable") {
+		t.Errorf("AuthError.Message = %q, want it to mention manageability", authErr.Message)
+	}
+}
+
 func TestResolveNatsPermissions_Basic(t *testing.T) {
 	ctrl := createTestController(t)
 
 	user := &identity.User{
-		ID:      "alice",
-		Account: "test-account",
-		Roles:   []string{"workers"},
+		ID: "alice",
+		Roles: []identity.AccountRole{
+			{Account: "test-account", Role: "workers"},
+		},
 		Attributes: map[string]string{
 			"department": "engineering",
 		},
@@ -104,9 +176,10 @@ func TestResolveNatsPermissions_DefaultRole(t *testing.T) {
 	ctrl := createTestController(t)
 
 	user := &identity.User{
-		ID:      "test",
-		Account: "test-account",
-		Roles:   []string{},
+		ID: "test",
+		Roles: []identity.AccountRole{
+			{Account: "test-account", Role: "default"},
+		},
 	}
 
 	perms, err := ctrl.ResolveNatsPermissions(context.Background(), user)
@@ -122,9 +195,10 @@ func TestCreateUserJWT(t *testing.T) {
 	ctrl := createTestController(t)
 
 	user := &identity.User{
-		ID:      "alice",
-		Account: "test-account",
-		Roles:   []string{"workers"},
+		ID: "alice",
+		Roles: []identity.AccountRole{
+			{Account: "test-account", Role: "workers"},
+		},
 	}
 
 	perms, err := ctrl.ResolveNatsPermissions(context.Background(), user)
@@ -165,9 +239,10 @@ func TestCreateUserJWT_AccountNotFound(t *testing.T) {
 	ctrl := createTestController(t)
 
 	user := &identity.User{
-		ID:      "alice",
-		Account: "nonexistent-account",
-		Roles:   []string{},
+		ID: "alice",
+		Roles: []identity.AccountRole{
+			{Account: "nonexistent-account", Role: "default"},
+		},
 	}
 
 	_, err := ctrl.CreateUserJWT(context.Background(), user, "UABC", nil, time.Hour)
@@ -190,7 +265,7 @@ func TestAuthenticate_Success(t *testing.T) {
 	}
 
 	result, err := ctrl.Authenticate(context.Background(), natsjwt.ConnectOptions{
-		Token: `{"token":"alice:secret123"}`,
+		Token: `{"account":"test-account","token":"alice:secret123"}`,
 	}, userPub, time.Hour)
 	if err != nil {
 		t.Fatalf("Authenticate() error = %v", err)
@@ -223,7 +298,7 @@ func TestAuthenticate_InvalidCredentials(t *testing.T) {
 	}
 
 	_, err = ctrl.Authenticate(context.Background(), natsjwt.ConnectOptions{
-		Token: `{"token":"alice:wrongpassword"}`,
+		Token: `{"account":"test-account","token":"alice:wrongpassword"}`,
 	}, userPub, time.Hour)
 	if err == nil {
 		t.Fatal("Authenticate() expected error")
@@ -235,7 +310,7 @@ func TestAuthenticate_EphemeralKey(t *testing.T) {
 
 	// Authenticate with empty userPublicKey - should generate ephemeral key
 	result, err := ctrl.Authenticate(context.Background(), natsjwt.ConnectOptions{
-		Token: `{"token":"alice:secret123"}`,
+		Token: `{"account":"test-account","token":"alice:secret123"}`,
 	}, "", time.Hour) // Empty userPublicKey
 	if err != nil {
 		t.Fatalf("Authenticate() error = %v", err)
@@ -391,7 +466,7 @@ func createTestIdentityProvider(t *testing.T, tmpDir string) identity.Authentica
   "users": {
     "alice": {
       "accounts": ["test-account"],
-      "roles": ["workers"],
+      "roles": ["test-account.workers"],
       "passwordHash": "` + string(aliceHash) + `",
       "attributes": {
         "department": "engineering"
@@ -405,10 +480,39 @@ func createTestIdentityProvider(t *testing.T, tmpDir string) identity.Authentica
 
 	ip, err := identity.NewFileAuthenticationProvider(identity.FileAuthenticationProviderConfig{
 		UsersPath: usersFile,
+		Accounts:  []string{"*"},
 	})
 	if err != nil {
 		t.Fatalf("creating identity provider: %v", err)
 	}
 
 	return ip
+}
+
+// mockAuthProviderWithWildcard is a mock authentication provider that returns roles with wildcards
+type mockAuthProviderWithWildcard struct{}
+
+func (m *mockAuthProviderWithWildcard) ManageableAccounts() []string {
+	return []string{"*"}
+}
+
+func (m *mockAuthProviderWithWildcard) Verify(_ context.Context, req identity.AuthRequest) (*identity.User, error) {
+	return &identity.User{
+		ID: "test-user",
+		Roles: []identity.AccountRole{
+			{Account: req.Account, Role: "admin*"}, // wildcard in role
+		},
+	}, nil
+}
+
+type mockAuthProviderManageableAccounts struct {
+	patterns []string
+}
+
+func (m *mockAuthProviderManageableAccounts) ManageableAccounts() []string {
+	return append([]string(nil), m.patterns...)
+}
+
+func (m *mockAuthProviderManageableAccounts) Verify(_ context.Context, _ identity.AuthRequest) (*identity.User, error) {
+	return &identity.User{ID: "test"}, nil
 }
