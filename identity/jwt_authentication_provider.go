@@ -209,17 +209,12 @@ func parseJWTAccountRoles(roles []string) []AccountRole {
 	return parsed
 }
 
-// extractAttributes extracts user attributes from standard JWT claims.
+// extractAttributes extracts user attributes from JWT claims.
 func extractAttributes(claims jwt.MapClaims) map[string]string {
 	attrs := make(map[string]string)
-	if email, ok := claims["email"].(string); ok && email != "" {
-		attrs["email"] = email
-	}
-	if name, ok := claims["name"].(string); ok && name != "" {
-		attrs["name"] = name
-	}
-	if preferredUsername, ok := claims["preferred_username"].(string); ok && preferredUsername != "" {
-		attrs["preferred_username"] = preferredUsername
+	// For now, only extract the subject claim.
+	if sub, ok := claims["sub"].(string); ok && sub != "" {
+		attrs["sub"] = sub
 	}
 	return attrs
 }

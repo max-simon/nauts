@@ -521,18 +521,13 @@ Optionally select a specific auth provider by id:
 ```
 
 **Extracted user attributes**:
-Standard JWT claims are extracted as user attributes:
-- `email` → `attributes["email"]`
-- `name` → `attributes["name"]`
-- `preferred_username` → `attributes["preferred_username"]`
+For now, nauts only extracts the standard subject claim:
+- `sub` → `attributes["sub"]`
 
 **Errors** (JwtAuthenticationProvider):
-- `ErrInvalidCredentials`: JWT signature verification failed or token expired
-- `ErrIssuerNotConfigured`: JWT issuer not found in configuration
-- `ErrIssuerNotAllowed`: Issuer not allowed to manage target account
-- `ErrNoRolesFound`: No valid roles found in JWT claims
-- `ErrAmbiguousAccount`: Roles span multiple accounts and no account specified
-- `ErrWildcardInAccount`: Target account contains wildcard characters
+- `ErrInvalidCredentials`: JWT signature verification failed, token expired, or issuer mismatch
+- `ErrInvalidTokenType`: token claims type is not supported
+- `ErrNoRolesFound`: no valid roles found in JWT claims
 
 ## Dependencies
 

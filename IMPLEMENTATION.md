@@ -27,8 +27,8 @@ nauts/
 ├── identity/               # User identity management
 │   ├── user.go             # User type
 │   ├── provider.go         # AuthenticationProvider interface, AuthRequest
-│   ├── file_user_provider.go # FileAuthenticationProvider
-│   └── jwt_user_provider.go # JwtAuthenticationProvider
+│   ├── file_authentication_provider.go # FileAuthenticationProvider
+│   └── jwt_authentication_provider.go # JwtAuthenticationProvider
 ├── jwt/                    # JWT issuance
 │   ├── signer.go           # Signer interface
 │   ├── local_signer.go     # LocalSigner (nkeys)
@@ -105,7 +105,7 @@ config, _ := auth.LoadConfig("nauts.json")
 controller, _ := auth.NewAuthControllerWithConfig(config)
 
 // Authenticate
-result, err := controller.Authenticate(ctx, jwt.ConnectOptions{
+result, err := controller.Authenticate(ctx, natsjwt.ConnectOptions{
   Token: `{"account":"APP","token":"alice:secret"}`,
 }, userPublicKey, time.Hour)
 // result.User, result.Permissions, result.JWT

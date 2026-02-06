@@ -104,11 +104,8 @@ func TestJwtAuthenticationProvider_Verify_Success(t *testing.T) {
 	}
 
 	// Check attributes
-	if user.Attributes["email"] != "user@example.com" {
-		t.Errorf("user.Attributes[email] = %q, want %q", user.Attributes["email"], "user@example.com")
-	}
-	if user.Attributes["name"] != "Test User" {
-		t.Errorf("user.Attributes[name] = %q, want %q", user.Attributes["name"], "Test User")
+	if user.Attributes["sub"] != "user-123" {
+		t.Errorf("user.Attributes[sub] = %q, want %q", user.Attributes["sub"], "user-123")
 	}
 }
 

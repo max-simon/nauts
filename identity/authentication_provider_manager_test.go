@@ -8,8 +8,8 @@ import (
 )
 
 type recordingAuthProvider struct {
-	patterns []string
-	userID   string
+	patterns  []string
+	userID    string
 	verifyErr error
 
 	called  int
