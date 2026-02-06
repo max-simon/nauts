@@ -36,7 +36,7 @@ nauts/
 │   ├── errors.go           # Policy errors (PolicyError, ValidationError)
 │   ├── interpolate.go      # Variable interpolation ({{ user.id }}, etc.)
 │   ├── mapper.go           # Action+Resource to NATS permissions mapping
-│   ├── permissions.go      # NatsPermissions with Allow/Deny and wildcard dedup
+│   ├── permissions.go      # NatsPermissions with Allow/Deny, wildcard dedup and queue handling
 │   ├── policy.go           # Policy, Statement, Effect types
 │   └── resource.go         # Resource parsing and validation
 ├── provider/               # Account, role, and policy providers
@@ -44,16 +44,13 @@ nauts/
 │   ├── account_provider.go # AccountProvider interface
 │   ├── operator_account_provider.go # OperatorAccountProvider (operator mode with signing keys)
 │   ├── static_account_provider.go # StaticAccountProvider (single key for all accounts)
-│   ├── role_provider.go    # RoleProvider interface
-│   ├── file_role_provider.go # FileRoleProvider (JSON file backend)
 │   ├── policy_provider.go  # PolicyProvider interface
 │   ├── file_policy_provider.go # FilePolicyProvider (JSON file backend)
-│   ├── role.go             # Role type with validation
 │   └── errors.go           # Provider errors (ErrNotFound, etc.)
 ├── identity/               # User identity management
 │   ├── user.go             # User type
-│   ├── provider.go         # UserIdentityProvider interface, IdentityToken
-│   └── file_user_provider.go # FileUserIdentityProvider (bcrypt passwords)
+│   ├── provider.go         # AuthenticationProvider interface, IdentityToken
+│   └── file_authentication_provider.go # FileAuthenticationProvider (bcrypt passwords)
 ├── jwt/                    # JWT issuance
 │   ├── signer.go           # Signer interface
 │   ├── local_signer.go     # LocalSigner (nkeys-based signing)
@@ -76,7 +73,7 @@ nauts/
 │   │   ├── nats-server.conf# NATS server config with accounts
 │   │   └── *.nk            # Account key and xkey
 │   ├── users.json          # Test users (alice, bob)
-│   ├── roles.json          # Test roles (readonly, full)
+│   ├── bindings.json       # Test role bindings (readonly, full)
 │   └── policies.json       # Test policies (read-access, write-access)
 └── docs/                   # Additional documentation
 ```
@@ -103,9 +100,9 @@ nauts/
 - Actions: `Action`, `ActionDef`, `ResolveActions()`
 - Auth controller: `AuthController`, `NewAuthController()`, `NewAuthControllerWithConfig()`, `Authenticate()`, `ResolveUser()`, `ResolveNatsPermissions()`, `CreateUserJWT()`
 - Callout service: `CalloutService`, `NewCalloutService()`, `CalloutConfig`, `Start()`, `Stop()`
-- Configuration: `Config`, `LoadConfig()`, `AccountConfig`, `RoleConfig`, `PolicyConfig`, `IdentityConfig`, `ServerConfig`
+- Configuration: `Config`, `LoadConfig()`, `AccountConfig`, `PolicyConfig`, `IdentityConfig`, `ServerConfig`
 - Permissions: `NatsPermissions`, `Permission`, `PermissionSet`
-- Providers: `AccountProvider`, `OperatorAccountProvider`, `StaticAccountProvider`, `RoleProvider`, `FileRoleProvider`, `PolicyProvider`, `FilePolicyProvider`, `UserIdentityProvider`, `FileUserIdentityProvider`
+- Providers: `AccountProvider`, `OperatorAccountProvider`, `StaticAccountProvider`, `PolicyProvider`, `FilePolicyProvider`, `AuthenticationProvider`, `FileAuthenticationProvider`
 - JWT: `Signer`, `LocalSigner`, `IssueUserJWT()`
 - Entities: `Account`, `Role`, `User`
 
@@ -139,9 +136,7 @@ golangci-lint run
 go build -o bin/nauts ./cmd/nauts
 
 # One-shot authentication (get JWT)
-# Token is JSON format: { "account"?: string, "token": string }
-./bin/nauts auth -c nauts.json -token '{"token":"alice:secret"}'
-# For multi-account users, specify the account:
+# Token is JSON format: { "account": string, "token": string, "ap"?: string }
 ./bin/nauts auth -c nauts.json -token '{"account":"APP","token":"alice:secret"}'
 
 # Run auth callout service
@@ -176,23 +171,21 @@ The CLI uses a JSON configuration file (`-c/--config`):
       }
     }
   },
-  "role": {
-    "type": "file",
-    "file": {
-      "path": "roles.json"
-    }
-  },
   "policy": {
     "type": "file",
     "file": {
-      "path": "policies.json"
+      "policiesPath": "policies.json",
+      "bindingsPath": "bindings.json"
     }
   },
-  "identity": {
-    "type": "file",
-    "file": {
-      "usersPath": "users.json"
-    }
+  "auth": {
+    "file": [
+      {
+        "id": "local",
+        "accounts": ["*"],
+        "userPath": "users.json"
+      }
+    ]
   },
   "server": {
     "natsUrl": "nats://localhost:4222",
@@ -242,21 +235,19 @@ nauts supports two account provider modes:
 
 Clients authenticate using a JSON token with the following structure:
 ```json
-{ "account": "APP", "token": "username:password" }
+{ "account": "APP", "token": "username:password", "ap": "local" }
 ```
 
-The `account` field is optional if the user has only one account configured. If the user has multiple accounts, the `account` field is required to specify which account to authenticate to.
+The `account` field is required. The `ap` field is optional and can be used to select a specific authentication provider by id.
 
 **Static mode**: Clients connect with just a token:
 ```bash
-nats --token '{"token":"alice:secret"}' pub test "hello"
-# Or with account specified:
 nats --token '{"account":"APP","token":"alice:secret"}' pub test "hello"
 ```
 
 **Operator mode**: Clients must use sentinel credentials + token. The sentinel user authenticates to the AUTH account, which triggers auth callout with the provided token:
 ```bash
-nats --creds sentinel.creds --token '{"token":"alice:secret"}' pub test "hello"
+nats --creds sentinel.creds --token '{"account":"APP","token":"alice:secret"}' pub test "hello"
 ```
 
 The sentinel user is a special user in the AUTH account that:
@@ -312,9 +303,10 @@ The `policy.Compile()` function transforms policies to NATS permissions:
 - Non-empty permissions → only `Allow` list is set (no `Deny`)
 
 The `auth.AuthController` orchestrates the full authentication flow:
-1. Verify identity token via `UserIdentityProvider` → returns `*identity.User`
-2. Resolve user's roles (including default role) from `RoleProvider`
-3. For each role, fetch both global and local roles, then compile policies with user/role context
+1. Verify identity token via `AuthenticationProviderManager` → returns `*identity.User` (internal)
+  - `ResolveUser()` returns `*auth.AccountScopedUser` (identity + requested `Account`)
+2. Resolve user's roles (including default role) from identity provider claims
+3. For each role, fetch policies via `PolicyProvider.GetPoliciesForRole()` (global+local), then compile with user/role context
 4. Deduplicate permissions with wildcard awareness
 5. Create signed JWT via `jwt.IssueUserJWT()` using account's signer from `AccountProvider`
 6. Return `AuthResult` containing user, permissions, and JWT
@@ -337,16 +329,11 @@ config, _ := auth.LoadConfig("nauts.json")
 controller, _ := auth.NewAuthControllerWithConfig(config)
 
 // Authenticate using ConnectOptions (same as auth callout)
-// Token is JSON: { "account"?: string, "token": string }
+// Token is JSON: { "account": string, "token": string, "ap"?: string }
 result, err := controller.Authenticate(ctx, jwt.ConnectOptions{
-    Token: `{"token":"alice:secret"}`,  // JSON token format
+  Token: `{"account":"APP","token":"alice:secret"}`,
 }, userPublicKey, time.Hour)
 // result.User, result.Permissions, result.JWT available
-
-// For multi-account users, specify the account:
-result, err := controller.Authenticate(ctx, jwt.ConnectOptions{
-    Token: `{"account":"CORP","token":"bob:secret"}`,
-}, userPublicKey, time.Hour)
 ```
 
 **Manual provider setup (operator mode)**:
@@ -365,20 +352,21 @@ accountProvider, _ := provider.NewOperatorAccountProvider(provider.OperatorAccou
     },
 })
 
-roleProvider, _ := provider.NewFileRoleProvider(provider.FileRoleProviderConfig{
-    RolesPath: "roles.json",
-})
-
 policyProvider, _ := provider.NewFilePolicyProvider(provider.FilePolicyProviderConfig{
-    PoliciesPath: "policies.json",
+  PoliciesPath: "policies.json",
+  BindingsPath: "bindings.json",
 })
 
-identityProvider, _ := identity.NewFileUserIdentityProvider(identity.FileUserIdentityProviderConfig{
+identityProvider, _ := identity.NewFileAuthenticationProvider(identity.FileAuthenticationProviderConfig{
     UsersPath: "users.json",
 })
 
+authProviders := identity.NewAuthenticationProviderManager(map[string]identity.AuthenticationProvider{
+  "local": identityProvider,
+})
+
 // Create controller
-controller := auth.NewAuthController(accountProvider, roleProvider, policyProvider, identityProvider)
+controller := auth.NewAuthController(accountProvider, policyProvider, authProviders)
 
 // Or use individual methods
 user, err := controller.ResolveUser(ctx, token)
@@ -437,18 +425,17 @@ Identity providers verify credentials and return user information.
 The authentication token is expected to be a JSON object:
 ```go
 type AuthRequest struct {
-    Account string `json:"account,omitempty"` // Optional if user has single account
-    Token   string `json:"token"`             // Provider-specific token (e.g., "user:pass")
+  Account string `json:"account"`           // Required
+  Token   string `json:"token"`             // Provider-specific token (e.g., "user:pass")
+  AP      string `json:"ap,omitempty"`      // Optional provider id
 }
 ```
 
-**FileUserIdentityProvider** (`identity/`):
+**FileAuthenticationProvider** (`identity/`):
 - Loads users from JSON file
 - Verifies passwords using bcrypt
 - Token format within AuthRequest: `"username:password"` (colon-separated)
-- **Multi-account support**: Users can have multiple accounts
-  - Single account: `account` field in AuthRequest is optional (user's account is used)
-  - Multiple accounts: `account` field is required and validated against user's accounts list
+- The controller filters roles for the requested account (authorization)
 
 **Users JSON file format**:
 ```json
@@ -456,65 +443,60 @@ type AuthRequest struct {
   "users": {
     "alice": {
       "accounts": ["APP"],
-      "roles": ["readonly"],
+      "roles": ["APP.readonly"],
       "passwordHash": "$2a$10$...",
       "attributes": { "department": "engineering" }
     },
     "bob": {
       "accounts": ["APP", "CORP"],
-      "roles": ["full"],
+      "roles": ["APP.full"],
       "passwordHash": "$2a$10$..."
     }
   }
 }
 ```
 
-**Errors** (FileUserIdentityProvider):
+**Errors** (FileAuthenticationProvider):
 - `ErrInvalidCredentials`: Password verification failed
 - `ErrUserNotFound`: User does not exist
 - `ErrInvalidTokenType`: Token format is wrong
 - `ErrInvalidAccount`: Requested account is not valid for user
 - `ErrAccountRequired`: User has multiple accounts but no account specified
 
-**JwtUserIdentityProvider** (`identity/jwt_user_provider.go`):
+**JwtAuthenticationProvider** (`identity/jwt_authentication_provider.go`):
 Authenticates users using external JWTs (e.g., from Keycloak, Auth0, or other OIDC providers).
 
 **How it works**:
-1. **Decode JWT**: Parse the token to extract the issuer (`iss` claim)
-2. **Verify signature**: Look up issuer's public key from configuration and verify JWT signature
+1. **Verify signature**: Verify JWT signature using the provider's configured public key
+2. **Validate issuer**: Ensure the `iss` claim matches the provider's configured issuer
 3. **Extract roles**: Get roles from configurable claim path (default: `resource_access.nauts.roles`)
    - Roles must follow format `<account>.<role>` (e.g., `tenant-a.admin`, `app.viewer`)
    - Invalid formats are silently skipped
-4. **Determine target account**:
-   - If `AuthRequest.Account` is provided, use it directly
-   - Otherwise, derive from roles: if all roles belong to the same account, use that account
-   - If roles span multiple accounts without explicit account selection, return error
-5. **Validate issuer permissions**: Check that the issuer is allowed to manage the target account
+4. **Validate manageability**: Ensure the provider is allowed to manage the requested account
    - Configuration supports wildcards: `*` (any account), `tenant-*` (prefix match)
    - Wildcards in target account are rejected
-6. **Filter and transform roles**:
-   - Keep only roles belonging to the target account
-   - Strip account prefix from role names (`tenant-a.admin` → `admin`)
+5. **Return roles**: Return all roles; the controller filters roles by requested account
 
 **Configuration**:
 ```json
 {
-  "identity": {
-    "type": "jwt",
-    "jwt": {
-      "issuers": {
-        "https://auth.example.com/realms/myrealm": {
-          "publicKey": "<base64 encoded public key>",
-          "accounts": ["tenant-a-*", "dev"],
-          "rolesClaimPath": "resource_access.nauts.roles"
-        },
-        "https://another-idp.com": {
-          "publicKey": "<base64 encoded public key>",
-          "accounts": ["*"],
-          "rolesClaimPath": "custom.claims.roles"
-        }
+  "auth": {
+    "jwt": [
+      {
+        "id": "idp-1",
+        "accounts": ["tenant-a-*", "dev"],
+        "issuer": "https://auth.example.com/realms/myrealm",
+        "publicKey": "<base64 encoded PEM public key>",
+        "rolesClaimPath": "resource_access.nauts.roles"
+      },
+      {
+        "id": "idp-2",
+        "accounts": ["*"],
+        "issuer": "https://another-idp.com",
+        "publicKey": "<base64 encoded PEM public key>",
+        "rolesClaimPath": "custom.claims.roles"
       }
-    }
+    ]
   }
 }
 ```
@@ -531,21 +513,21 @@ Authenticates users using external JWTs (e.g., from Keycloak, Auth0, or other OI
 The `AuthRequest.Token` is the raw JWT string from the external identity provider.
 ```json
 { "account": "tenant-a-acc-1", "token": "eyJhbGciOiJSUzI1NiIs..." }
+
+Optionally select a specific auth provider by id:
+```json
+{ "account": "tenant-a-acc-1", "token": "eyJhbGciOiJSUzI1NiIs...", "ap": "idp-1" }
+```
 ```
 
 **Extracted user attributes**:
-Standard JWT claims are extracted as user attributes:
-- `email` → `attributes["email"]`
-- `name` → `attributes["name"]`
-- `preferred_username` → `attributes["preferred_username"]`
+For now, nauts only extracts the standard subject claim:
+- `sub` → `attributes["sub"]`
 
-**Errors** (JwtUserIdentityProvider):
-- `ErrInvalidCredentials`: JWT signature verification failed or token expired
-- `ErrIssuerNotConfigured`: JWT issuer not found in configuration
-- `ErrIssuerNotAllowed`: Issuer not allowed to manage target account
-- `ErrNoRolesFound`: No valid roles found in JWT claims
-- `ErrAmbiguousAccount`: Roles span multiple accounts and no account specified
-- `ErrWildcardInAccount`: Target account contains wildcard characters
+**Errors** (JwtAuthenticationProvider):
+- `ErrInvalidCredentials`: JWT signature verification failed, token expired, or issuer mismatch
+- `ErrInvalidTokenType`: token claims type is not supported
+- `ErrNoRolesFound`: no valid roles found in JWT claims
 
 ## Dependencies
 
@@ -572,13 +554,11 @@ require (
 - [x] Account provider: `provider/account_provider.go` - `AccountProvider` interface with `IsOperatorMode()`
 - [x] Operator account provider: `provider/operator_account_provider.go` - Per-account signing keys for operator mode
 - [x] Static account provider: `provider/static_account_provider.go` - Single key for all accounts
-- [x] Role provider: `provider/role_provider.go` - `RoleProvider` interface
-- [x] File role provider: `provider/file_role_provider.go` - JSON file backend for roles
 - [x] Policy provider: `provider/policy_provider.go` - `PolicyProvider` interface
 - [x] File policy provider: `provider/file_policy_provider.go` - JSON file backend for policies
-- [x] Identity provider: `identity/provider.go` - `UserIdentityProvider` interface
-- [x] File identity provider: `identity/file_user_provider.go` - Username/password with bcrypt
-- [x] JWT identity provider: `identity/jwt_user_provider.go` - External JWT verification with role mapping
+- [x] Identity provider: `identity/provider.go` - `AuthenticationProvider` interface
+- [x] File identity provider: `identity/file_authentication_provider.go` - Username/password with bcrypt
+- [x] JWT identity provider: `identity/jwt_authentication_provider.go` - External JWT verification with role mapping
 - [x] JWT issuance: `jwt/user.go` - `IssueUserJWT()` function
 - [x] Signer: `jwt/signer.go` - `Signer` interface and `LocalSigner`
 - [x] Auth controller: `auth/controller.go` - `AuthController` orchestrating full auth flow

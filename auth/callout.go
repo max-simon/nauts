@@ -277,8 +277,15 @@ func (s *CalloutService) handleRequest(msg *nats.Msg) {
 
 	s.logger.Debug("authentication successful for user: %s", result.User.ID)
 
+	accountID := result.User.Account
+	if accountID == "" {
+		s.logger.Warn("user %s has empty account scope", result.User.ID)
+		s.respondWithError(msg, responseConfig, "internal error")
+		return
+	}
+
 	// Get account for IssuerAccount
-	account, err := s.controller.AccountProvider().GetAccount(ctx, result.User.Account)
+	account, err := s.controller.AccountProvider().GetAccount(ctx, accountID)
 	if err != nil {
 		s.logger.Warn("failed to get account for user %s: %v", result.User.ID, err)
 		s.respondWithError(msg, responseConfig, "internal error")

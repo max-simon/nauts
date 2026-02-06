@@ -21,16 +21,14 @@ nauts/
 │   ├── account_provider.go # AccountProvider interface
 │   ├── operator_account_provider.go # OperatorAccountProvider (operator mode)
 │   ├── static_account_provider.go # StaticAccountProvider
-│   ├── role_provider.go    # RoleProvider interface
-│   ├── file_role_provider.go # FileRoleProvider
 │   ├── policy_provider.go  # PolicyProvider interface
 │   ├── file_policy_provider.go # FilePolicyProvider
-│   └── role.go             # Role type
+│   └── errors.go           # Provider errors
 ├── identity/               # User identity management
 │   ├── user.go             # User type
-│   ├── provider.go         # UserIdentityProvider interface, AuthRequest
-│   ├── file_user_provider.go # FileUserIdentityProvider
-│   └── jwt_user_provider.go # JwtUserIdentityProvider
+│   ├── provider.go         # AuthenticationProvider interface, AuthRequest
+│   ├── file_authentication_provider.go # FileAuthenticationProvider
+│   └── jwt_authentication_provider.go # JwtAuthenticationProvider
 ├── jwt/                    # JWT issuance
 │   ├── signer.go           # Signer interface
 │   ├── local_signer.go     # LocalSigner (nkeys)
@@ -60,8 +58,8 @@ nauts/
 │    identity/    │    │    provider/    │         │      jwt/       │
 │                 │    │                 │         │                 │
 │ ┌─────────────┐ │    │ ┌─────────────┐ │         │ ┌─────────────┐ │
-│ │    User     │ │    │ │RoleProvider │ │         │ │   Signer    │ │
-│ │IdentityProv│ │    │ │PolicyProvider│ │         │ │ IssueUserJWT│ │
+│ │    User     │ │    │ │PolicyProvider│ │         │ │   Signer    │ │
+│ │IdentityProv│ │    │ │ (roles+pols) │ │         │ │ IssueUserJWT│ │
 │ └─────────────┘ │    │ └─────────────┘ │         │ └─────────────┘ │
 └─────────────────┘    │ ┌─────────────┐ │         └────────┬────────┘
                        │ │AccountProvider│                  │
@@ -85,7 +83,7 @@ nauts/
 | Package | Responsibility |
 |---------|---------------|
 | `policy/` | Policy specification, compilation, variable interpolation, action mapping |
-| `provider/` | NATS account management, policy storage, role storage |
+| `provider/` | NATS account management, policy storage, role→policy mapping |
 | `identity/` | User authentication and identity resolution |
 | `jwt/` | NATS JWT creation and signing |
 | `auth/` | Authentication orchestration and NATS auth callout service |
@@ -107,8 +105,8 @@ config, _ := auth.LoadConfig("nauts.json")
 controller, _ := auth.NewAuthControllerWithConfig(config)
 
 // Authenticate
-result, err := controller.Authenticate(ctx, jwt.ConnectOptions{
-    Token: `{"token":"alice:secret"}`,
+result, err := controller.Authenticate(ctx, natsjwt.ConnectOptions{
+  Token: `{"account":"APP","token":"alice:secret"}`,
 }, userPublicKey, time.Hour)
 // result.User, result.Permissions, result.JWT
 ```
@@ -131,37 +129,33 @@ The `policy.Compile()` function transforms policies to NATS permissions:
 - `foo.bar` covered by `foo.*` → remove `foo.bar`
 - `foo.bar` covered by `foo.>` → remove `foo.bar`
 - `foo.*` covered by `foo.>` → remove `foo.*`
+- Queue subscriptions are handled separately unless covered by a broader subscription without queue.
 
 ## JWT Permission Encoding
 
-NATS JWT defaults to allowing everything when no permissions are specified. nauts handles this by explicitly denying all when no allow permissions are granted:
+NATS JWT defaults to empowering everything when no permissions are specified. nauts handles this by explicitly denying all when no allow permissions are granted:
 
 - Empty pub permissions → `Pub.Deny: [">"]` (user cannot publish)
 - Empty sub permissions → `Sub.Deny: [">"]` (user cannot subscribe)
 - Non-empty permissions → only `Allow` list is set
+- Queue subscriptions are merged into the main `Allow` list as NATS JWTs do not support specific queue restrictions.
 
 This ensures the principle of least privilege.
 
-## Role System
+## Role Bindings
 
-Roles replace the older "groups" concept. Each role has:
+Role bindings replace the older "groups" concept. Each binding maps a role name to a set of policy ids for a specific account:
 
 ```go
-type Role struct {
-    Name     string   `json:"name"`     // Part of unique key
-    Account  string   `json:"account"`  // "*" for global, specific account for local
-    Policies []string `json:"policies"` // Policy IDs
+type Binding struct {
+  Role     string   `json:"role"`     // Part of unique key
+  Account  string   `json:"account"`  // Account id (e.g. "APP")
+  Policies []string `json:"policies"` // Policy ids
 }
 ```
 
-- **Global roles** (`account: "*"`): Apply to all accounts
-- **Local roles** (specific account): Apply only to that account
-- **Composite key**: `(Name, Account)` is unique
-
-When resolving permissions, both global and account-specific roles are considered:
-1. Look up `roles[name:*]` (global role)
-2. Look up `roles[name:account]` (local role)
-3. Merge policies from both
+- **No global bindings**: bindings are resolved by exact `(account, role)` match
+- **Composite key**: `(Account, Role)` is unique (often represented as `account.role`)
 
 ## Account Providers
 
@@ -210,20 +204,22 @@ Simpler setup with single signing key for all accounts:
 }
 ```
 
-## Identity Providers
+## Authentication Providers
 
-### FileUserIdentityProvider
+### FileAuthenticationProvider
 
 Static user list with bcrypt password hashes.
 
 **Token format**: `{"account":"APP","token":"username:password"}`
+
+**Optional provider selection**: `{"account":"APP","token":"username:password","ap":"local"}`
 
 ```json
 {
   "users": {
     "alice": {
       "accounts": ["APP"],
-      "roles": ["readonly"],
+      "roles": ["APP.readonly"],
       "passwordHash": "$2a$10$...",
       "attributes": { "department": "engineering" }
     }
@@ -231,42 +227,39 @@ Static user list with bcrypt password hashes.
 }
 ```
 
-- If user has single account, `account` in request is optional
-- If user has multiple accounts, `account` must be specified
+`account` is required in the request.
 
-### JwtUserIdentityProvider
+### JwtAuthenticationProvider
 
 Verify JWTs from external identity providers (Keycloak, Auth0, etc.).
 
 **Token format**: `{"account":"APP","token":"<external-jwt>"}`
 
+**Optional provider selection**: `{"account":"APP","token":"<external-jwt>","ap":"keycloak"}`
+
 **Configuration**:
 ```json
 {
-  "identity": {
-    "type": "jwt",
-    "jwt": {
-      "issuers": {
-        "https://keycloak.example.com/realms/myrealm": {
-          "publicKey": "<base64 encoded public key>",
-          "accounts": ["tenant-*", "shared"],
-          "rolesClaimPath": "resource_access.nauts.roles"
-        }
+  "auth": {
+    "jwt": [
+      {
+        "id": "keycloak",
+        "accounts": ["tenant-*", "shared"],
+        "issuer": "https://keycloak.example.com/realms/myrealm",
+        "publicKey": "<base64 encoded PEM public key>",
+        "rolesClaimPath": "resource_access.nauts.roles"
       }
-    }
+    ]
   }
 }
 ```
 
 **Verification process**:
-1. Parse JWT to extract issuer (iss claim)
-2. Look up issuer configuration
-3. Verify signature using issuer's public key (RSA or ECDSA)
-4. Extract roles from claims at issuer's configured path (default: `resource_access.nauts.roles`)
-5. Parse roles: format is `<account>.<role>` (e.g., `tenant-a.admin`)
-6. Determine target account from request or derive from roles
-7. Validate issuer can manage target account (supports wildcards)
-8. Filter roles for target account and strip account prefix
+1. Verify signature using the provider's configured public key (RSA or ECDSA)
+2. Validate issuer (iss claim) matches the provider's configured issuer
+3. Extract roles from claims at the provider's configured path (default: `resource_access.nauts.roles`)
+4. Parse roles: format is `<account>.<role>` (e.g., `tenant-a.admin`)
+5. Return all roles; authorization later filters roles by the requested account
 
 **Account wildcards**:
 - `*` matches any account
@@ -366,23 +359,21 @@ Environment variables:
       }
     }
   },
-  "role": {
-    "type": "file",
-    "file": {
-      "path": "roles.json"
-    }
-  },
   "policy": {
     "type": "file",
     "file": {
-      "path": "policies.json"
+      "policiesPath": "policies.json",
+      "bindingsPath": "bindings.json"
     }
   },
-  "identity": {
-    "type": "file",
-    "file": {
-      "usersPath": "users.json"
-    }
+  "auth": {
+    "file": [
+      {
+        "id": "local",
+        "accounts": ["*"],
+        "userPath": "users.json"
+      }
+    ]
   },
   "server": {
     "natsUrl": "nats://localhost:4222",
@@ -411,7 +402,7 @@ Pre-configured environments in `test/`:
 test/
 ├── e2e_test.go         # Go e2e test suite
 ├── policies.json       # Shared policies
-├── roles.json          # Shared roles
+├── bindings.json       # Shared role bindings
 ├── users.json          # Shared users
 ├── operator/           # Operator mode setup
 │   ├── nauts.json
@@ -426,8 +417,8 @@ test/
 **Test users**:
 | User | Token | Roles | Account | Permissions |
 |------|-------|-------|---------|-------------|
-| alice | `{"token":"alice:secret"}` | readonly | APP | Subscribe to `public.>` |
-| bob | `{"token":"bob:secret"}` | full | APP | Pub/Sub to `public.>` |
+| alice | `{"account":"APP","token":"alice:secret"}` | readonly | APP | Subscribe to `public.>` |
+| bob | `{"account":"APP","token":"bob:secret"}` | full | APP | Pub/Sub to `public.>` |
 
 ## Future Enhancements
 

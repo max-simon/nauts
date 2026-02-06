@@ -21,12 +21,12 @@ var (
 )
 
 type testEnv struct {
-	t            *testing.T
-	mode         string
-	baseDir      string
-	natsCmd      *exec.Cmd
-	nautsCmd     *exec.Cmd
-	credsFile    string // sentinel creds for operator mode
+	t         *testing.T
+	mode      string
+	baseDir   string
+	natsCmd   *exec.Cmd
+	nautsCmd  *exec.Cmd
+	credsFile string // sentinel creds for operator mode
 }
 
 func newTestEnv(t *testing.T, mode string) *testEnv {
@@ -108,7 +108,7 @@ func (e *testEnv) stopNats() {
 }
 
 func (e *testEnv) connect(username, password string) (*nats.Conn, error) {
-	return e.connectWithAccount(username, password, "")
+	return e.connectWithAccount(username, password, "APP")
 }
 
 func (e *testEnv) connectWithAccount(username, password, account string) (*nats.Conn, error) {
@@ -117,14 +117,9 @@ func (e *testEnv) connectWithAccount(username, password, account string) (*nats.
 		nats.Timeout(5 * time.Second),
 	}
 
-	// Build JSON token: { "account"?: string, "token": "username:password" }
+	// Build JSON token: { "account": string, "token": "username:password" }
 	innerToken := username + ":" + password
-	var token string
-	if account != "" {
-		token = fmt.Sprintf(`{"account":%q,"token":%q}`, account, innerToken)
-	} else {
-		token = fmt.Sprintf(`{"token":%q}`, innerToken)
-	}
+	token := fmt.Sprintf(`{"account":%q,"token":%q}`, account, innerToken)
 	opts = append(opts, nats.Token(token))
 
 	// In operator mode, use sentinel credentials file

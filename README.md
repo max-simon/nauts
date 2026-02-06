@@ -15,7 +15,7 @@ nauts is a framework for scalable, human-friendly permission management for [NAT
 ### Key Features
 
 - **Policy-Based Access Control**: Define permissions using intuitive policies with actions like `nats.pub`, `js.consume`, `kv.read` instead of raw NATS subjects
-- **Role-Based Authorization**: Assign policies to roles, and roles to users. Supports both global roles (`account: "*"`) and account-specific roles
+- **Role-Based Authorization**: Assign policies to roles, and roles to users via account-scoped role bindings
 - **Variable Interpolation**: Scope resources dynamically with `{{ user.id }}`, `{{ user.account }}`, `{{ role.name }}`
 - **Multiple Identity Providers**: Authenticate users via file-based credentials, external JWTs (Keycloak, Auth0, etc.), or custom providers
 - **NATS Auth Callout**: Built-in service implementing [NATS auth callout protocol](https://docs.nats.io/running-a-nats-service/configuration/securing_nats/auth_callout)
@@ -33,7 +33,7 @@ go build -o bin/nauts ./cmd/nauts
 
 ```bash
 # Get a signed NATS JWT for a user
-./bin/nauts auth -c nauts.json -token '{"token":"alice:secret"}'
+./bin/nauts auth -c nauts.json -token '{"account":"APP","token":"alice:secret"}'
 ```
 
 ### Run Auth Callout Service
@@ -50,10 +50,10 @@ nats-server -c nats-server.conf
 
 ```bash
 # Static mode - just use token
-nats --token '{"token":"alice:secret"}' sub "public.>"
+nats --token '{"account":"APP","token":"alice:secret"}' sub "public.>"
 
 # Operator mode - requires sentinel credentials + token
-nats --creds sentinel.creds --token '{"token":"alice:secret"}' sub "public.>"
+nats --creds sentinel.creds --token '{"account":"APP","token":"alice:secret"}' sub "public.>"
 ```
 
 ## How It Works
@@ -92,17 +92,18 @@ nauts uses a JSON configuration file. Here's a minimal example:
       "accounts": ["APP"]
     }
   },
-  "role": {
-    "type": "file",
-    "file": { "path": "roles.json" }
-  },
   "policy": {
     "type": "file",
-    "file": { "path": "policies.json" }
+    "file": { "policiesPath": "policies.json", "bindingsPath": "bindings.json" }
   },
-  "identity": {
-    "type": "file",
-    "file": { "usersPath": "users.json" }
+  "auth": {
+    "file": [
+      {
+        "id": "local",
+        "accounts": ["APP"],
+        "userPath": "users.json"
+      }
+    ]
   },
   "server": {
     "natsUrl": "nats://localhost:4222",
@@ -114,13 +115,12 @@ nauts uses a JSON configuration file. Here's a minimal example:
 
 ## Example Data Files
 
-### roles.json
+### bindings.json
 
 ```json
 [
-  { "name": "default", "account": "*", "policies": [] },
-  { "name": "readonly", "account": "*", "policies": ["read-access"] },
-  { "name": "admin", "account": "APP", "policies": ["read-access", "write-access"] }
+  { "role": "readonly", "account": "APP", "policies": ["read-access"] },
+  { "role": "admin", "account": "APP", "policies": ["read-access", "write-access"] }
 ]
 ```
 
@@ -145,48 +145,53 @@ nauts uses a JSON configuration file. Here's a minimal example:
 ]
 ```
 
-### users.json (file identity provider)
+### users.json (file auth provider)
 
 ```json
 {
   "users": {
     "alice": {
       "accounts": ["APP"],
-      "roles": ["readonly"],
+      "roles": ["APP.readonly"],
       "passwordHash": "$2a$10$..."
     }
   }
 }
 ```
 
-## Identity Providers
+## Authentication Providers
 
 ### File-Based (username/password)
 
-Static user list with bcrypt password hashes. Token format: `{"token":"username:password"}`
+Static user list with bcrypt password hashes.
+
+Token format: `{"account":"APP","token":"username:password"}`
+
+Optional provider selection: `{"account":"APP","token":"username:password","ap":"local"}`
 
 ### JWT-Based (external IdP)
 
-Verify JWTs from external identity providers like Keycloak or Auth0. Configure issuer public keys and account mappings:
+Verify JWTs from external identity providers like Keycloak or Auth0.
 
 ```json
 {
-  "identity": {
-    "type": "jwt",
-    "jwt": {
-      "issuers": {
-        "https://keycloak.example.com/realms/myrealm": {
-          "publicKey": "<base64 encoded public key>",
-          "accounts": ["tenant-*"],
-          "rolesClaimPath": "resource_access.nauts.roles"
-        }
+  "auth": {
+    "jwt": [
+      {
+        "id": "keycloak",
+        "accounts": ["tenant-*"],
+        "issuer": "https://keycloak.example.com/realms/myrealm",
+        "publicKey": "<base64 encoded PEM public key>",
+        "rolesClaimPath": "resource_access.nauts.roles"
       }
-    }
+    ]
   }
 }
 ```
 
 Roles in JWT claims follow format `<account>.<role>` (e.g., `tenant-a.admin`).
+
+If multiple auth providers are configured, the request can set `ap` to pick a provider by id. If `ap` is omitted, nauts auto-selects the single provider whose `accounts` patterns match the requested `account`.
 
 ## Policy Specification
 

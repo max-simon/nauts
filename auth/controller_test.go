@@ -39,7 +39,7 @@ func (l *testLogger) Debug(msg string, args ...any) {
 func TestResolveUser_ValidCredentials(t *testing.T) {
 	ctrl := createTestController(t)
 
-	user, err := ctrl.ResolveUser(context.Background(), `{"token":"alice:secret123"}`)
+	user, err := ctrl.ResolveUser(context.Background(), `{"account":"test-account","token":"alice:secret123"}`)
 	if err != nil {
 		t.Fatalf("ResolveUser() error = %v", err)
 	}
@@ -50,14 +50,42 @@ func TestResolveUser_ValidCredentials(t *testing.T) {
 	if user.Account != "test-account" {
 		t.Errorf("user.Account = %q, want %q", user.Account, "test-account")
 	}
+	if len(user.Roles) == 0 || user.Roles[0].Account != "test-account" {
+		t.Errorf("user roles = %v, want account scoped to test-account", user.Roles)
+	}
 }
 
 func TestResolveUser_InvalidCredentials(t *testing.T) {
 	ctrl := createTestController(t)
 
-	_, err := ctrl.ResolveUser(context.Background(), `{"token":"alice:wrongpassword"}`)
+	_, err := ctrl.ResolveUser(context.Background(), `{"account":"test-account","token":"alice:wrongpassword"}`)
 	if err == nil {
 		t.Fatal("ResolveUser() expected error")
+	}
+
+	var authErr *AuthError
+	if !errors.As(err, &authErr) {
+		t.Fatalf("error is not AuthError: %T", err)
+	}
+	if authErr.Phase != "resolve_user" {
+		t.Errorf("AuthError.Phase = %q, want %q", authErr.Phase, "resolve_user")
+	}
+}
+
+func TestResolveUser_WildcardInRole(t *testing.T) {
+	ctrl := createTestController(t)
+
+	// Create a mock identity provider that returns roles with wildcards
+	mockProvider := &mockAuthProviderWithWildcard{}
+	manager, err := identity.NewAuthenticationProviderManager(map[string]identity.AuthenticationProvider{"mock": mockProvider})
+	if err != nil {
+		t.Fatalf("creating provider manager: %v", err)
+	}
+	ctrl.authProviders = manager
+
+	_, err = ctrl.ResolveUser(context.Background(), `{"account":"test-account","token":"test"}`)
+	if err == nil {
+		t.Fatal("ResolveUser() expected error for wildcard in role")
 	}
 
 	var authErr *AuthError
@@ -72,13 +100,17 @@ func TestResolveUser_InvalidCredentials(t *testing.T) {
 func TestResolveNatsPermissions_Basic(t *testing.T) {
 	ctrl := createTestController(t)
 
-	user := &identity.User{
-		ID:      "alice",
-		Account: "test-account",
-		Roles:   []string{"workers"},
-		Attributes: map[string]string{
-			"department": "engineering",
+	user := &AccountScopedUser{
+		User: identity.User{
+			ID: "alice",
+			Roles: []identity.AccountRole{
+				{Account: "test-account", Role: "workers"},
+			},
+			Attributes: map[string]string{
+				"department": "engineering",
+			},
 		},
+		Account: "test-account",
 	}
 
 	perms, err := ctrl.ResolveNatsPermissions(context.Background(), user)
@@ -103,10 +135,14 @@ func TestResolveNatsPermissions_NilUser(t *testing.T) {
 func TestResolveNatsPermissions_DefaultRole(t *testing.T) {
 	ctrl := createTestController(t)
 
-	user := &identity.User{
-		ID:      "test",
+	user := &AccountScopedUser{
+		User: identity.User{
+			ID: "test",
+			Roles: []identity.AccountRole{
+				{Account: "test-account", Role: "default"},
+			},
+		},
 		Account: "test-account",
-		Roles:   []string{},
 	}
 
 	perms, err := ctrl.ResolveNatsPermissions(context.Background(), user)
@@ -121,10 +157,14 @@ func TestResolveNatsPermissions_DefaultRole(t *testing.T) {
 func TestCreateUserJWT(t *testing.T) {
 	ctrl := createTestController(t)
 
-	user := &identity.User{
-		ID:      "alice",
+	user := &AccountScopedUser{
+		User: identity.User{
+			ID: "alice",
+			Roles: []identity.AccountRole{
+				{Account: "test-account", Role: "workers"},
+			},
+		},
 		Account: "test-account",
-		Roles:   []string{"workers"},
 	}
 
 	perms, err := ctrl.ResolveNatsPermissions(context.Background(), user)
@@ -164,10 +204,14 @@ func TestCreateUserJWT_NilUser(t *testing.T) {
 func TestCreateUserJWT_AccountNotFound(t *testing.T) {
 	ctrl := createTestController(t)
 
-	user := &identity.User{
-		ID:      "alice",
+	user := &AccountScopedUser{
+		User: identity.User{
+			ID: "alice",
+			Roles: []identity.AccountRole{
+				{Account: "nonexistent-account", Role: "default"},
+			},
+		},
 		Account: "nonexistent-account",
-		Roles:   []string{},
 	}
 
 	_, err := ctrl.CreateUserJWT(context.Background(), user, "UABC", nil, time.Hour)
@@ -190,7 +234,7 @@ func TestAuthenticate_Success(t *testing.T) {
 	}
 
 	result, err := ctrl.Authenticate(context.Background(), natsjwt.ConnectOptions{
-		Token: `{"token":"alice:secret123"}`,
+		Token: `{"account":"test-account","token":"alice:secret123"}`,
 	}, userPub, time.Hour)
 	if err != nil {
 		t.Fatalf("Authenticate() error = %v", err)
@@ -223,7 +267,7 @@ func TestAuthenticate_InvalidCredentials(t *testing.T) {
 	}
 
 	_, err = ctrl.Authenticate(context.Background(), natsjwt.ConnectOptions{
-		Token: `{"token":"alice:wrongpassword"}`,
+		Token: `{"account":"test-account","token":"alice:wrongpassword"}`,
 	}, userPub, time.Hour)
 	if err == nil {
 		t.Fatal("Authenticate() expected error")
@@ -235,7 +279,7 @@ func TestAuthenticate_EphemeralKey(t *testing.T) {
 
 	// Authenticate with empty userPublicKey - should generate ephemeral key
 	result, err := ctrl.Authenticate(context.Background(), natsjwt.ConnectOptions{
-		Token: `{"token":"alice:secret123"}`,
+		Token: `{"account":"test-account","token":"alice:secret123"}`,
 	}, "", time.Hour) // Empty userPublicKey
 	if err != nil {
 		t.Fatalf("Authenticate() error = %v", err)
@@ -273,17 +317,18 @@ func createTestController(t *testing.T) *AuthController {
 	// Create account provider
 	accountProvider := createTestAccountProvider(t, tmpDir)
 
-	// Create role provider
-	roleProvider := createTestRoleProvider(t, tmpDir)
-
 	// Create policy provider
 	policyProvider := createTestPolicyProvider(t, tmpDir)
 
 	// Create identity provider (users)
 	identityProvider := createTestIdentityProvider(t, tmpDir)
+	manager, err := identity.NewAuthenticationProviderManager(map[string]identity.AuthenticationProvider{"file": identityProvider})
+	if err != nil {
+		t.Fatalf("creating provider manager: %v", err)
+	}
 
 	logger := &testLogger{}
-	return NewAuthController(accountProvider, roleProvider, policyProvider, identityProvider, WithLogger(logger))
+	return NewAuthController(accountProvider, policyProvider, manager, WithLogger(logger))
 }
 
 func createTestAccountProvider(t *testing.T, tmpDir string) provider.AccountProvider {
@@ -321,40 +366,11 @@ func createTestAccountProvider(t *testing.T, tmpDir string) provider.AccountProv
 	return ap
 }
 
-func createTestRoleProvider(t *testing.T, tmpDir string) provider.RoleProvider {
-	t.Helper()
-
-	rolesFile := filepath.Join(tmpDir, "roles.json")
-	rolesContent := `[
-  {
-    "name": "default",
-    "account": "*",
-    "policies": []
-  },
-  {
-    "name": "workers",
-    "account": "*",
-    "policies": ["allow-basic"]
-  }
-]`
-	if err := os.WriteFile(rolesFile, []byte(rolesContent), 0644); err != nil {
-		t.Fatalf("writing roles file: %v", err)
-	}
-
-	rp, err := provider.NewFileRoleProvider(provider.FileRoleProviderConfig{
-		RolesPath: rolesFile,
-	})
-	if err != nil {
-		t.Fatalf("creating role provider: %v", err)
-	}
-
-	return rp
-}
-
 func createTestPolicyProvider(t *testing.T, tmpDir string) provider.PolicyProvider {
 	t.Helper()
 
 	policiesFile := filepath.Join(tmpDir, "policies.json")
+	bindingsFile := filepath.Join(tmpDir, "bindings.json")
 	policiesContent := `[
   {
     "id": "allow-basic",
@@ -372,8 +388,25 @@ func createTestPolicyProvider(t *testing.T, tmpDir string) provider.PolicyProvid
 		t.Fatalf("writing policies file: %v", err)
 	}
 
+	bindingsContent := `[
+	{
+		"role": "default",
+		"account": "test-account",
+		"policies": []
+	},
+	{
+		"role": "workers",
+		"account": "test-account",
+		"policies": ["allow-basic"]
+	}
+]`
+	if err := os.WriteFile(bindingsFile, []byte(bindingsContent), 0644); err != nil {
+		t.Fatalf("writing bindings file: %v", err)
+	}
+
 	pp, err := provider.NewFilePolicyProvider(provider.FilePolicyProviderConfig{
 		PoliciesPath: policiesFile,
+		BindingsPath: bindingsFile,
 	})
 	if err != nil {
 		t.Fatalf("creating policy provider: %v", err)
@@ -382,7 +415,7 @@ func createTestPolicyProvider(t *testing.T, tmpDir string) provider.PolicyProvid
 	return pp
 }
 
-func createTestIdentityProvider(t *testing.T, tmpDir string) identity.UserIdentityProvider {
+func createTestIdentityProvider(t *testing.T, tmpDir string) identity.AuthenticationProvider {
 	t.Helper()
 
 	usersFile := filepath.Join(tmpDir, "users.json")
@@ -391,7 +424,7 @@ func createTestIdentityProvider(t *testing.T, tmpDir string) identity.UserIdenti
   "users": {
     "alice": {
       "accounts": ["test-account"],
-      "roles": ["workers"],
+      "roles": ["test-account.workers"],
       "passwordHash": "` + string(aliceHash) + `",
       "attributes": {
         "department": "engineering"
@@ -403,12 +436,29 @@ func createTestIdentityProvider(t *testing.T, tmpDir string) identity.UserIdenti
 		t.Fatalf("writing users file: %v", err)
 	}
 
-	ip, err := identity.NewFileUserIdentityProvider(identity.FileUserIdentityProviderConfig{
+	ip, err := identity.NewFileAuthenticationProvider(identity.FileAuthenticationProviderConfig{
 		UsersPath: usersFile,
+		Accounts:  []string{"*"},
 	})
 	if err != nil {
 		t.Fatalf("creating identity provider: %v", err)
 	}
 
 	return ip
+}
+
+// mockAuthProviderWithWildcard is a mock authentication provider that returns roles with wildcards
+type mockAuthProviderWithWildcard struct{}
+
+func (m *mockAuthProviderWithWildcard) ManageableAccounts() []string {
+	return []string{"*"}
+}
+
+func (m *mockAuthProviderWithWildcard) Verify(_ context.Context, req identity.AuthRequest) (*identity.User, error) {
+	return &identity.User{
+		ID: "test-user",
+		Roles: []identity.AccountRole{
+			{Account: req.Account, Role: "admin*"}, // wildcard in role
+		},
+	}, nil
 }

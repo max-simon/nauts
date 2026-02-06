@@ -31,7 +31,7 @@ func TestCompile_BasicPolicy(t *testing.T) {
 
 	perms.Deduplicate()
 	pubList := perms.PubList()
-	if len(pubList) != 1 || pubList[0] != "orders" {
+	if len(pubList) != 1 || pubList[0].Subject != "orders" {
 		t.Errorf("expected [orders], got %v", pubList)
 	}
 
@@ -68,7 +68,7 @@ func TestCompile_WithInterpolation(t *testing.T) {
 
 	perms.Deduplicate()
 	pubList := perms.PubList()
-	if len(pubList) != 1 || pubList[0] != "user.alice.orders" {
+	if len(pubList) != 1 || pubList[0].Subject != "user.alice.orders" {
 		t.Errorf("expected [user.alice.orders], got %v", pubList)
 	}
 }
@@ -99,7 +99,7 @@ func TestCompile_WithRoleInterpolation(t *testing.T) {
 
 	perms.Deduplicate()
 	subList := perms.SubList()
-	if len(subList) != 1 || subList[0] != "role.workers.>" {
+	if len(subList) != 1 || subList[0].Subject != "role.workers.>" {
 		t.Errorf("expected [role.workers.>], got %v", subList)
 	}
 }
@@ -131,13 +131,13 @@ func TestCompile_AddsInboxForJSAction(t *testing.T) {
 	perms.Deduplicate()
 
 	pubList := perms.PubList()
-	if len(pubList) != 1 || pubList[0] != "$JS.API.STREAM.INFO.mystream" {
+	if len(pubList) != 1 || pubList[0].Subject != "$JS.API.STREAM.INFO.mystream" {
 		t.Errorf("expected [$JS.API.STREAM.INFO.mystream], got %v", pubList)
 	}
 
 	// js.readStream requires inbox, should be added directly
 	subList := perms.SubList()
-	if len(subList) != 1 || subList[0] != "_INBOX.>" {
+	if len(subList) != 1 || subList[0].Subject != "_INBOX.>" {
 		t.Errorf("expected [_INBOX.>], got %v", subList)
 	}
 }
@@ -239,12 +239,12 @@ func TestCompile_MultiplePolicies(t *testing.T) {
 	perms.Deduplicate()
 
 	pubList := perms.PubList()
-	if len(pubList) != 1 || pubList[0] != "orders" {
+	if len(pubList) != 1 || pubList[0].Subject != "orders" {
 		t.Errorf("expected [orders], got %v", pubList)
 	}
 
 	subList := perms.SubList()
-	if len(subList) != 1 || subList[0] != "events" {
+	if len(subList) != 1 || subList[0].Subject != "events" {
 		t.Errorf("expected [events], got %v", subList)
 	}
 }
@@ -280,7 +280,7 @@ func TestCompile_ActionGroup(t *testing.T) {
 	// nats.sub -> SUB orders
 	// nats.req -> PUB orders, SUB _INBOX.>
 	pubList := perms.PubList()
-	if len(pubList) != 1 || pubList[0] != "orders" {
+	if len(pubList) != 1 || pubList[0].Subject != "orders" {
 		t.Errorf("expected [orders], got %v", pubList)
 	}
 
@@ -375,7 +375,7 @@ func TestCompile_NilContexts(t *testing.T) {
 
 	perms.Deduplicate()
 	pubList := perms.PubList()
-	if len(pubList) != 1 || pubList[0] != "orders" {
+	if len(pubList) != 1 || pubList[0].Subject != "orders" {
 		t.Errorf("expected [orders], got %v", pubList)
 	}
 }

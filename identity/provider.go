@@ -18,31 +18,34 @@ var (
 
 	// ErrInvalidAccount is returned when the requested account is not valid for the user.
 	ErrInvalidAccount = errors.New("invalid account for user")
-
-	// ErrAccountRequired is returned when the user has multiple accounts but no account was specified.
-	ErrAccountRequired = errors.New("account is required when user has multiple accounts")
 )
 
 // AuthRequest represents the parsed authentication request from the token.
 // The token is expected to be a JSON object with the following structure:
 //
-//	{ "account": "ACME", "token": "username:password" }
+//	{ "account": "ACME", "token": "username:password", "ap": "provider-id" }
 //
-// The account field is optional if the user has only one account.
+// The account field is required.
 type AuthRequest struct {
-	// Account is the requested account (optional if user has single account).
-	Account string `json:"account,omitempty"`
+	// Account is the requested account (required).
+	Account string `json:"account"`
 	// Token is the authentication token (e.g., "username:password").
 	Token string `json:"token"`
+	// AP is an optional authentication provider id.
+	// If set, the authentication request is routed to that provider.
+	AP string `json:"ap,omitempty"`
 }
 
-// UserIdentityProvider resolves user identity from an authentication request.
-type UserIdentityProvider interface {
+// AuthenticationProvider resolves user identity from an authentication request.
+type AuthenticationProvider interface {
 	// Verify validates the authentication request and returns the user.
 	// Returns ErrInvalidCredentials if the credentials are invalid.
 	// Returns ErrUserNotFound if the user does not exist.
 	// Returns ErrInvalidTokenType if the token is the wrong type for this provider.
 	// Returns ErrInvalidAccount if the requested account is not valid for the user.
-	// Returns ErrAccountRequired if user has multiple accounts but no account was specified.
 	Verify(ctx context.Context, req AuthRequest) (*User, error)
+
+	// ManageableAccounts returns the list of account patterns this provider can manage.
+	// Patterns support wildcards in the form of "*" (all) or "prefix*".
+	ManageableAccounts() []string
 }

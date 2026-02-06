@@ -1,0 +1,17 @@
+[
+  {
+    "role": "default",
+    "account": "APP",
+    "policies": []
+  },
+  {
+    "role": "readonly",
+    "account": "APP",
+    "policies": ["read-access"]
+  },
+  {
+    "role": "full",
+    "account": "APP",
+    "policies": ["read-access", "write-access"]
+  }
+]

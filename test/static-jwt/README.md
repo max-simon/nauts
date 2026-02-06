@@ -10,22 +10,21 @@ Create a JWT and keypair using Python script
 python3 generate_jwt.py APP.readonly AUTH.full SYS.full
 ```
 
-Copy the public key (base64 encoded) and paste it to the identity provider configuration section in `nauts.json`:
+Copy the public key (base64 encoded) and paste it to the auth provider configuration section in `nauts.json`:
 
 
 ```json
-"identity": {
-    "type": "jwt",
-    "jwt": {
-      "issuers": {
-        "e2e": {
-          "publicKey": "<issuer public key>",
-          "accounts": ["APP", "AUTH"],
-          "rolesClaimPath": "nauts.roles"
-        }
-      }
+"auth": {
+  "jwt": [
+    {
+      "id": "e2e",
+      "accounts": ["APP", "AUTH"],
+      "issuer": "e2e",
+      "publicKey": "<issuer public key>",
+      "rolesClaimPath": "nauts.roles"
     }
-  },
+  ]
+},
 ```
 
 Save the JWT to file, e.g. `sample.jwt`.

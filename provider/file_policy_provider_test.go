@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -12,6 +13,7 @@ import (
 func TestNewFilePolicyProvider(t *testing.T) {
 	cfg := FilePolicyProviderConfig{
 		PoliciesPath: "../test/policies.json",
+		BindingsPath: "../test/bindings.json",
 	}
 
 	fp, err := NewFilePolicyProvider(cfg)
@@ -37,6 +39,18 @@ func TestNewFilePolicyProvider(t *testing.T) {
 	}
 	if len(policies) < 1 {
 		t.Errorf("ListPolicies() returned %d policies, want at least 1", len(policies))
+	}
+
+	// Test GetPoliciesForRole
+	rolePolicies, err := fp.GetPoliciesForRole(ctx, "APP", "readonly")
+	if err != nil {
+		t.Fatalf("GetPoliciesForRole() error = %v", err)
+	}
+	if len(rolePolicies) != 1 {
+		t.Fatalf("GetPoliciesForRole() returned %d policies, want 1", len(rolePolicies))
+	}
+	if rolePolicies[0].ID != "read-access" {
+		t.Errorf("GetPoliciesForRole() first policy ID = %q, want %q", rolePolicies[0].ID, "read-access")
 	}
 }
 
@@ -65,6 +79,19 @@ func TestNewFilePolicyProvider_EmptyConfig(t *testing.T) {
 	}
 	if len(policies) != 0 {
 		t.Errorf("ListPolicies() = %d, want 0 for empty config", len(policies))
+	}
+}
+
+func TestFilePolicyProvider_GetPoliciesForRole_NotFound(t *testing.T) {
+	fp := &FilePolicyProvider{
+		policies: make(map[string]*policy.Policy),
+		bindings: make(map[string]*binding),
+	}
+
+	ctx := context.Background()
+	_, err := fp.GetPoliciesForRole(ctx, "APP", "nonexistent")
+	if err != ErrRoleNotFound {
+		t.Errorf("GetPoliciesForRole() error = %v, want ErrRoleNotFound", err)
 	}
 }
 
@@ -105,5 +132,90 @@ func TestNewFilePolicyProvider_InvalidPolicy(t *testing.T) {
 	})
 	if err == nil {
 		t.Error("NewFilePolicyProvider() expected error for invalid policy")
+	}
+}
+
+func TestBinding_Validate(t *testing.T) {
+	tests := []struct {
+		name    string
+		binding binding
+		wantErr bool
+	}{
+		{
+			name: "valid binding",
+			binding: binding{
+				Role:     "test-role",
+				Account:  "APP",
+				Policies: []string{"policy-1"},
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid binding without policies",
+			binding: binding{
+				Role:    "test-role",
+				Account: "APP",
+			},
+			wantErr: false,
+		},
+		{
+			name: "missing role",
+			binding: binding{
+				Account:  "APP",
+				Policies: []string{"policy-1"},
+			},
+			wantErr: true,
+		},
+		{
+			name: "missing account",
+			binding: binding{
+				Role:     "test-role",
+				Policies: []string{"policy-1"},
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.binding.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("binding.Validate() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestBindingKey(t *testing.T) {
+	if got := bindingKey("APP", "admin"); got != "APP.admin" {
+		t.Errorf("bindingKey() = %v, want %v", got, "APP.admin")
+	}
+}
+
+func TestBinding_JSON(t *testing.T) {
+	b := binding{
+		Role:     "test-role",
+		Account:  "APP",
+		Policies: []string{"policy-1", "policy-2"},
+	}
+
+	data, err := json.Marshal(b)
+	if err != nil {
+		t.Fatalf("Marshal error: %v", err)
+	}
+
+	var parsed binding
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("Unmarshal error: %v", err)
+	}
+
+	if parsed.Role != b.Role {
+		t.Errorf("Role mismatch: got %v, want %v", parsed.Role, b.Role)
+	}
+	if parsed.Account != b.Account {
+		t.Errorf("Account mismatch: got %v, want %v", parsed.Account, b.Account)
+	}
+	if len(parsed.Policies) != 2 {
+		t.Errorf("Policies length mismatch: got %d, want 2", len(parsed.Policies))
 	}
 }

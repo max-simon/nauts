@@ -9,23 +9,21 @@
       ]
     }
   },
-  "role": {
-    "type": "file",
-    "file": {
-      "path": "../roles.json"
-    }
-  },
   "policy": {
     "type": "file",
     "file": {
-      "path": "../policies.json"
+      "policiesPath": "../policies.json",
+      "bindingsPath": "../bindings.json"
     }
   },
-  "identity": {
-    "type": "file",
-    "file": {
-      "usersPath": "../users.json"
-    }
+  "auth": {
+    "file": [
+      {
+        "id": "local",
+        "accounts": ["*", "AUTH"],
+        "userPath": "../users.json"
+      }
+    ]
   },
   "server": {
     "natsUrl": "nats://localhost:4222",
