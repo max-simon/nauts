@@ -21,9 +21,9 @@ type FilePolicyProvider struct {
 // FilePolicyProviderConfig holds configuration for FilePolicyProvider.
 type FilePolicyProviderConfig struct {
 	// PoliciesPath is the path to policies JSON file.
-	PoliciesPath string
+	PoliciesPath string `json:"policiesPath"`
 	// BindingsPath is the path to bindings JSON file.
-	BindingsPath string
+	BindingsPath string `json:"bindingsPath"`
 }
 
 // binding represents a collection of policies attached to a role in an account.

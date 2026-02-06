@@ -45,6 +45,12 @@ The `auth` package is the top-level coordinator of nauts. `AuthController` wires
 
 ## Public API
 
+### Constants
+
+```go
+const DefaultRoleName = "default"   // Implicit role for all users
+```
+
 ### Types
 
 #### `AuthController`

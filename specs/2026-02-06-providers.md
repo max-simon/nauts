@@ -23,7 +23,6 @@ The `provider` package defines two core interfaces — `AccountProvider` (NATS a
 - `PolicyProvider` interface and one implementation (File)  
 - `Account` entity  
 - Role bindings model  
-- Constants: `DefaultRoleName`, `GlobalAccountID`  
 
 **Out of scope:** User identity, authentication, JWT issuance, policy compilation.
 
@@ -44,13 +43,6 @@ The `provider` package defines two core interfaces — `AccountProvider` (NATS a
 ---
 
 ## Public API
-
-### Constants
-
-```go
-const DefaultRoleName = "default"   // Implicit role for all users
-const GlobalAccountID = "*"         // Account value for global roles
-```
 
 ### Entity
 

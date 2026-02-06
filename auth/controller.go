@@ -307,15 +307,18 @@ func (c *AuthController) CreateUserJWT(
 	return token, nil
 }
 
+// DefaultRoleName is the implicit role applied to every user.
+const DefaultRoleName = "default"
+
 // collectRoleNames returns all role names for a user, always including "default".
 func (c *AuthController) collectRoleNames(user *AccountScopedUser) []string {
 	seen := make(map[string]bool)
 	var roles []string
 
 	// Always include default role first
-	if !seen[provider.DefaultRoleName] {
-		seen[provider.DefaultRoleName] = true
-		roles = append(roles, provider.DefaultRoleName)
+	if !seen[DefaultRoleName] {
+		seen[DefaultRoleName] = true
+		roles = append(roles, DefaultRoleName)
 	}
 
 	// Add user's roles (extract role name from AccountRole)
