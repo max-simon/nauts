@@ -82,13 +82,13 @@ func (c *AuthController) AccountProvider() provider.AccountProvider {
 	return c.accountProvider
 }
 
-// ResolveUser verifies the identity token and returns the user.
+// ResolveUser verifies the identity token and returns the user scoped to a single account.
 // The token should be a JSON object with the structure: { "account": string, "token": string }
 // Returns identity.ErrInvalidCredentials if the credentials are invalid.
 // Returns identity.ErrUserNotFound if the user does not exist.
 // Returns identity.ErrInvalidTokenType if the token type is wrong for the provider.
 // Returns identity.ErrInvalidAccount if the requested account is not valid for the user.
-func (c *AuthController) ResolveUser(ctx context.Context, token string) (*identity.User, error) {
+func (c *AuthController) ResolveUser(ctx context.Context, token string) (*AccountScopedUser, error) {
 	authReq, err := parseAuthRequest(token)
 	if err != nil {
 		return nil, NewAuthError("", "resolve_user", "failed to parse auth request", err)
@@ -117,8 +117,13 @@ func (c *AuthController) ResolveUser(ctx context.Context, token string) (*identi
 			filteredRoles = append(filteredRoles, role)
 		}
 	}
-	user.Roles = filteredRoles
-	return user, nil
+
+	scoped := &AccountScopedUser{
+		User:    *user,
+		Account: authReq.Account,
+	}
+	scoped.Roles = filteredRoles
+	return scoped, nil
 }
 
 // parseAuthRequest parses the JSON token into an AuthRequest.
@@ -142,18 +147,12 @@ func parseAuthRequest(token string) (identity.AuthRequest, error) {
 // 1. Resolve user's roles (always include "default")
 // 2. For each role name, fetch both global and local roles and compile policies
 // 3. Deduplicate and return permissions
-func (c *AuthController) ResolveNatsPermissions(ctx context.Context, user *identity.User) (*policy.NatsPermissions, error) {
+func (c *AuthController) ResolveNatsPermissions(ctx context.Context, user *AccountScopedUser) (*policy.NatsPermissions, error) {
 	if user == nil {
 		return nil, NewAuthError("", "resolve_permissions", "user is nil", nil)
 	}
 
-	// Get account from user's roles (all roles should have the same account)
-	account := ""
-	if len(user.Roles) > 0 {
-		account = user.Roles[0].Account
-	} else {
-		return nil, NewAuthError(user.ID, "resolve_permissions", "user has no roles", nil)
-	}
+	account := user.Account
 
 	// Collect all role names (including default)
 	roleNames := c.collectRoleNames(user)
@@ -161,7 +160,7 @@ func (c *AuthController) ResolveNatsPermissions(ctx context.Context, user *ident
 	result := policy.NewNatsPermissions()
 
 	// Convert user to context once
-	userCtx := userToContext(user, account)
+	userCtx := userToContext(user)
 
 	// Process each role name
 	for _, roleName := range roleNames {
@@ -193,7 +192,7 @@ func (c *AuthController) compilePoliciesForRole(userCtx *policy.UserContext, acc
 
 // AuthResult contains the result of a successful authentication.
 type AuthResult struct {
-	User          *identity.User
+	User          *AccountScopedUser
 	UserPublicKey string
 	Permissions   *policy.NatsPermissions
 	JWT           string
@@ -268,7 +267,7 @@ func generateEphemeralUserKey() (string, error) {
 //   - ttl: time-to-live for the JWT (0 means no expiry)
 func (c *AuthController) CreateUserJWT(
 	ctx context.Context,
-	user *identity.User,
+	user *AccountScopedUser,
 	userPublicKey string,
 	permissions *policy.NatsPermissions,
 	ttl time.Duration,
@@ -277,13 +276,7 @@ func (c *AuthController) CreateUserJWT(
 		return "", NewAuthError("", "create_jwt", "user is nil", nil)
 	}
 
-	// Get account from user's roles (all roles should have the same account)
-	account := ""
-	if len(user.Roles) > 0 {
-		account = user.Roles[0].Account
-	} else {
-		return "", NewAuthError(user.ID, "create_jwt", "user has no roles", nil)
-	}
+	account := user.Account
 
 	// Get the account from the account provider
 	accountEntity, err := c.accountProvider.GetAccount(ctx, account)
@@ -315,7 +308,7 @@ func (c *AuthController) CreateUserJWT(
 }
 
 // collectRoleNames returns all role names for a user, always including "default".
-func (c *AuthController) collectRoleNames(user *identity.User) []string {
+func (c *AuthController) collectRoleNames(user *AccountScopedUser) []string {
 	seen := make(map[string]bool)
 	var roles []string
 
@@ -336,14 +329,14 @@ func (c *AuthController) collectRoleNames(user *identity.User) []string {
 	return roles
 }
 
-// userToContext converts an identity.User to a policy.UserContext for interpolation.
-func userToContext(user *identity.User, account string) *policy.UserContext {
+// userToContext converts an AccountScopedUser to a policy.UserContext for interpolation.
+func userToContext(user *AccountScopedUser) *policy.UserContext {
 	if user == nil {
 		return nil
 	}
 	return &policy.UserContext{
 		ID:         user.ID,
-		Account:    account,
+		Account:    user.Account,
 		Attributes: user.Attributes,
 	}
 }

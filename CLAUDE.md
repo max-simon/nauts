@@ -303,7 +303,8 @@ The `policy.Compile()` function transforms policies to NATS permissions:
 - Non-empty permissions → only `Allow` list is set (no `Deny`)
 
 The `auth.AuthController` orchestrates the full authentication flow:
-1. Verify identity token via `AuthenticationProviderManager` → returns `*identity.User`
+1. Verify identity token via `AuthenticationProviderManager` → returns `*identity.User` (internal)
+  - `ResolveUser()` returns `*auth.AccountScopedUser` (identity + requested `Account`)
 2. Resolve user's roles (including default role) from identity provider claims
 3. For each role, fetch policies via `PolicyProvider.GetPoliciesForRole()` (global+local), then compile with user/role context
 4. Deduplicate permissions with wildcard awareness

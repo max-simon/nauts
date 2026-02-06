@@ -47,8 +47,11 @@ func TestResolveUser_ValidCredentials(t *testing.T) {
 	if user.ID != "alice" {
 		t.Errorf("user.ID = %q, want %q", user.ID, "alice")
 	}
+	if user.Account != "test-account" {
+		t.Errorf("user.Account = %q, want %q", user.Account, "test-account")
+	}
 	if len(user.Roles) == 0 || user.Roles[0].Account != "test-account" {
-		t.Errorf("user account = %v, want test-account", user.Roles)
+		t.Errorf("user roles = %v, want account scoped to test-account", user.Roles)
 	}
 }
 
@@ -97,14 +100,17 @@ func TestResolveUser_WildcardInRole(t *testing.T) {
 func TestResolveNatsPermissions_Basic(t *testing.T) {
 	ctrl := createTestController(t)
 
-	user := &identity.User{
-		ID: "alice",
-		Roles: []identity.AccountRole{
-			{Account: "test-account", Role: "workers"},
+	user := &AccountScopedUser{
+		User: identity.User{
+			ID: "alice",
+			Roles: []identity.AccountRole{
+				{Account: "test-account", Role: "workers"},
+			},
+			Attributes: map[string]string{
+				"department": "engineering",
+			},
 		},
-		Attributes: map[string]string{
-			"department": "engineering",
-		},
+		Account: "test-account",
 	}
 
 	perms, err := ctrl.ResolveNatsPermissions(context.Background(), user)
@@ -129,11 +135,14 @@ func TestResolveNatsPermissions_NilUser(t *testing.T) {
 func TestResolveNatsPermissions_DefaultRole(t *testing.T) {
 	ctrl := createTestController(t)
 
-	user := &identity.User{
-		ID: "test",
-		Roles: []identity.AccountRole{
-			{Account: "test-account", Role: "default"},
+	user := &AccountScopedUser{
+		User: identity.User{
+			ID: "test",
+			Roles: []identity.AccountRole{
+				{Account: "test-account", Role: "default"},
+			},
 		},
+		Account: "test-account",
 	}
 
 	perms, err := ctrl.ResolveNatsPermissions(context.Background(), user)
@@ -148,11 +157,14 @@ func TestResolveNatsPermissions_DefaultRole(t *testing.T) {
 func TestCreateUserJWT(t *testing.T) {
 	ctrl := createTestController(t)
 
-	user := &identity.User{
-		ID: "alice",
-		Roles: []identity.AccountRole{
-			{Account: "test-account", Role: "workers"},
+	user := &AccountScopedUser{
+		User: identity.User{
+			ID: "alice",
+			Roles: []identity.AccountRole{
+				{Account: "test-account", Role: "workers"},
+			},
 		},
+		Account: "test-account",
 	}
 
 	perms, err := ctrl.ResolveNatsPermissions(context.Background(), user)
@@ -192,11 +204,14 @@ func TestCreateUserJWT_NilUser(t *testing.T) {
 func TestCreateUserJWT_AccountNotFound(t *testing.T) {
 	ctrl := createTestController(t)
 
-	user := &identity.User{
-		ID: "alice",
-		Roles: []identity.AccountRole{
-			{Account: "nonexistent-account", Role: "default"},
+	user := &AccountScopedUser{
+		User: identity.User{
+			ID: "alice",
+			Roles: []identity.AccountRole{
+				{Account: "nonexistent-account", Role: "default"},
+			},
 		},
+		Account: "nonexistent-account",
 	}
 
 	_, err := ctrl.CreateUserJWT(context.Background(), user, "UABC", nil, time.Hour)

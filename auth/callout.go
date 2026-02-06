@@ -277,13 +277,10 @@ func (s *CalloutService) handleRequest(msg *nats.Msg) {
 
 	s.logger.Debug("authentication successful for user: %s", result.User.ID)
 
-	// Get account from user's roles
-	accountID := ""
-	if len(result.User.Roles) > 0 {
-		accountID = result.User.Roles[0].Account
-	} else {
-		s.logger.Warn("user %s has no roles", result.User.ID)
-		s.respondWithError(msg, responseConfig, "user has no roles")
+	accountID := result.User.Account
+	if accountID == "" {
+		s.logger.Warn("user %s has empty account scope", result.User.ID)
+		s.respondWithError(msg, responseConfig, "internal error")
 		return
 	}
 

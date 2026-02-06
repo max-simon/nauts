@@ -62,15 +62,24 @@ func NewAuthControllerWithConfig(config *Config, opts ...ControllerOption) (*Aut
 | Method | Signature | Purpose |
 |--------|-----------|---------|
 | `Authenticate` | `(ctx, connectOptions, userPublicKey, ttl) → (*AuthResult, error)` | Full flow: verify → compile → sign |
-| `ResolveUser` | `(ctx, token string) → (*identity.User, error)` | Parse JSON token, verify identity, filter roles by account |
-| `ResolveNatsPermissions` | `(ctx, user) → (*policy.NatsPermissions, error)` | Compile permissions for all user roles |
-| `CreateUserJWT` | `(ctx, user, pubKey, perms, ttl) → (string, error)` | Sign a NATS user JWT |
+| `ResolveUser` | `(ctx, token string) → (*AccountScopedUser, error)` | Parse JSON token, verify identity, filter roles by account, attach account scope |
+| `ResolveNatsPermissions` | `(ctx, user) → (*policy.NatsPermissions, error)` | Compile permissions for all user roles (scoped account provided by user) |
+| `CreateUserJWT` | `(ctx, user, pubKey, perms, ttl) → (string, error)` | Sign a NATS user JWT (scoped account provided by user) |
 | `AccountProvider` | `() → provider.AccountProvider` | Accessor for the account provider |
+
+#### `AccountScopedUser`
+```go
+type AccountScopedUser struct {
+    identity.User
+    Account string
+}
+```
+Returned by `ResolveUser`. Roles are filtered to only those matching `Account`.
 
 #### `AuthResult`
 ```go
 type AuthResult struct {
-    User          *identity.User
+    User          *AccountScopedUser
     UserPublicKey string
     Permissions   *policy.NatsPermissions
     JWT           string
@@ -93,8 +102,10 @@ Token (JSON string)
   ├─► authProviders.Verify(ctx, authReq) → *User (all roles)
   │     - Routes to correct provider (by ap or account pattern)
   │
-  ├─► Filter user.Roles to requested account only
+    ├─► Filter user.Roles to requested account only
   │     - Validate: no wildcards in role names
+    │
+    ├─► Return AccountScopedUser{Account: authReq.Account, User: user}
   │
   ├─► ResolveNatsPermissions(ctx, user)
   │     ├─► collectRoleNames(user) → ["default", role1, role2, ...]
