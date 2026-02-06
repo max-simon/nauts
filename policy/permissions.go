@@ -5,6 +5,8 @@ package policy
 import (
 	"sort"
 	"strings"
+
+	natsjwt "github.com/nats-io/jwt/v2"
 )
 
 // PermissionType represents the type of NATS permission.
@@ -22,36 +24,49 @@ type Permission struct {
 	Queue   string         `json:"queue,omitempty"` // Only for SUB permissions
 }
 
+func (p Permission) String() string {
+	if p.Queue != "" {
+		return p.Subject + " " + p.Queue
+	}
+	return p.Subject
+}
+
 // PermissionSet holds a set of allowed subjects with wildcard-aware deduplication.
 type PermissionSet struct {
-	allow map[string]struct{}
+	allow map[Permission]struct{}
 }
 
 // NewPermissionSet creates a new empty PermissionSet.
 func NewPermissionSet() *PermissionSet {
 	return &PermissionSet{
-		allow: make(map[string]struct{}),
+		allow: make(map[Permission]struct{}),
 	}
 }
 
 // Add adds a subject to the allow set.
-func (ps *PermissionSet) Add(subject string) {
+func (ps *PermissionSet) Add(p Permission) {
 	if ps.allow == nil {
-		ps.allow = make(map[string]struct{})
+		ps.allow = make(map[Permission]struct{})
 	}
-	ps.allow[subject] = struct{}{}
+	ps.allow[p] = struct{}{}
 }
 
 // AllowList returns the allow set as a sorted slice.
-func (ps *PermissionSet) AllowList() []string {
+func (ps *PermissionSet) AllowList() []Permission {
 	if ps.allow == nil {
-		return []string{}
+		return []Permission{}
 	}
-	result := make([]string, 0, len(ps.allow))
+	result := make([]Permission, 0, len(ps.allow))
 	for s := range ps.allow {
 		result = append(result, s)
 	}
-	sort.Strings(result)
+	// Sort by Subject, then Queue
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].Subject != result[j].Subject {
+			return result[i].Subject < result[j].Subject
+		}
+		return result[i].Queue < result[j].Queue
+	})
 	return result
 }
 
@@ -65,25 +80,17 @@ func (ps *PermissionSet) IsEmpty() bool {
 	return ps.allow == nil || len(ps.allow) == 0
 }
 
-// SubQueuePerm represents a subscription permission with a queue group.
-type SubQueuePerm struct {
-	Subject string `json:"subject"`
-	Queue   string `json:"queue"`
-}
-
 // NatsPermissions holds compiled NATS permissions.
 type NatsPermissions struct {
-	pub          *PermissionSet
-	sub          *PermissionSet
-	subWithQueue map[string]map[string]struct{} // subject -> set of queues
+	pub *PermissionSet
+	sub *PermissionSet
 }
 
 // NewNatsPermissions creates an empty NatsPermissions struct.
 func NewNatsPermissions() *NatsPermissions {
 	return &NatsPermissions{
-		pub:          NewPermissionSet(),
-		sub:          NewPermissionSet(),
-		subWithQueue: make(map[string]map[string]struct{}),
+		pub: NewPermissionSet(),
+		sub: NewPermissionSet(),
 	}
 }
 
@@ -91,25 +98,10 @@ func NewNatsPermissions() *NatsPermissions {
 func (p *NatsPermissions) Allow(perm Permission) {
 	switch perm.Type {
 	case PermPub:
-		p.pub.Add(perm.Subject)
+		p.pub.Add(perm)
 	case PermSub:
-		if perm.Queue != "" {
-			p.addSubWithQueue(perm.Subject, perm.Queue)
-		} else {
-			p.sub.Add(perm.Subject)
-		}
+		p.sub.Add(perm)
 	}
-}
-
-// addSubWithQueue adds a subscribe permission with queue to the internal set.
-func (p *NatsPermissions) addSubWithQueue(subject, queue string) {
-	if p.subWithQueue == nil {
-		p.subWithQueue = make(map[string]map[string]struct{})
-	}
-	if p.subWithQueue[subject] == nil {
-		p.subWithQueue[subject] = make(map[string]struct{})
-	}
-	p.subWithQueue[subject][queue] = struct{}{}
 }
 
 // Merge combines another NatsPermissions into this one.
@@ -128,11 +120,6 @@ func (p *NatsPermissions) Merge(other *NatsPermissions) {
 			p.sub.Add(s)
 		}
 	}
-	for subject, queues := range other.subWithQueue {
-		for queue := range queues {
-			p.addSubWithQueue(subject, queue)
-		}
-	}
 }
 
 // Deduplicate removes duplicate permissions using wildcard-aware deduplication.
@@ -143,91 +130,89 @@ func (p *NatsPermissions) Deduplicate() {
 
 // IsEmpty returns true if there are no permissions.
 func (p *NatsPermissions) IsEmpty() bool {
-	return p.pub.IsEmpty() && p.sub.IsEmpty() && len(p.subWithQueue) == 0
+	return p.pub.IsEmpty() && p.sub.IsEmpty()
 }
 
 // PubList returns the list of publish subjects.
-func (p *NatsPermissions) PubList() []string {
+func (p *NatsPermissions) PubList() []Permission {
 	return p.pub.AllowList()
 }
 
 // SubList returns the list of subscribe subjects (without queue).
-func (p *NatsPermissions) SubList() []string {
+func (p *NatsPermissions) SubList() []Permission {
 	return p.sub.AllowList()
 }
 
-// SubWithQueueList returns the list of subscribe permissions with queue groups.
-func (p *NatsPermissions) SubWithQueueList() []SubQueuePerm {
-	result := make([]SubQueuePerm, 0)
-	for subject, queues := range p.subWithQueue {
-		for queue := range queues {
-			result = append(result, SubQueuePerm{Subject: subject, Queue: queue})
-		}
-	}
-	sort.Slice(result, func(i, j int) bool {
-		if result[i].Subject != result[j].Subject {
-			return result[i].Subject < result[j].Subject
-		}
-		return result[i].Queue < result[j].Queue
-	})
-	return result
-}
-
-// GetPermissions returns permissions in NATS-compatible format.
-func (p *NatsPermissions) GetPermissions() map[string]interface{} {
-	result := make(map[string]interface{})
+// ToNatsJWT converts policy.NatsPermissions to natsjwt.Permissions.
+// When no permissions are granted, we explicitly deny all to prevent
+// NATS default behavior of allowing everything when permissions are unset.
+// Note: NATS JWTs do not support queue group restrictions.
+// Subscriptions allowed with a queue group will be allowed as regular subscriptions.
+func (p *NatsPermissions) ToNatsJWT() natsjwt.Permissions {
+	var natsPerms natsjwt.Permissions
 
 	pubList := p.PubList()
 	if len(pubList) > 0 {
-		result["publish"] = map[string]interface{}{
-			"allow": pubList,
+		strList := make([]string, 0, len(pubList))
+		for _, perm := range pubList {
+			strList = append(strList, perm.String())
 		}
+		sort.Strings(strList)
+		natsPerms.Pub.Allow = strList
+	} else {
+		// No publish permissions means deny all
+		natsPerms.Pub.Deny = []string{">"}
 	}
 
 	subList := p.SubList()
-	subQueueList := p.SubWithQueueList()
-	if len(subList) > 0 || len(subQueueList) > 0 {
-		subPerms := make(map[string]interface{})
-		if len(subList) > 0 {
-			subPerms["allow"] = subList
+	if len(subList) > 0 {
+		// Collect unique subjects, ignoring queue groups
+		strList := make([]string, 0, len(subList))
+		for _, perm := range subList {
+			strList = append(strList, perm.String())
 		}
-		result["subscribe"] = subPerms
+
+		sort.Strings(strList)
+		natsPerms.Sub.Allow = strList
+	} else {
+		// No subscribe permissions means deny all
+		natsPerms.Sub.Deny = []string{">"}
 	}
 
-	return result
+	return natsPerms
 }
 
 // deduplicateWithWildcards removes subjects that are covered by wildcard patterns.
 // NATS wildcard rules:
 //   - `*` matches a single token
 //   - `>` matches one or more tokens (must be terminal)
-func deduplicateWithWildcards(subjects map[string]struct{}) map[string]struct{} {
-	if len(subjects) == 0 {
-		return subjects
+func deduplicateWithWildcards(permissions map[Permission]struct{}) map[Permission]struct{} {
+	if len(permissions) == 0 {
+		return permissions
 	}
 
 	// Convert to slice for processing
-	list := make([]string, 0, len(subjects))
-	for s := range subjects {
-		list = append(list, s)
+	list := make([]Permission, 0, len(permissions))
+	for p := range permissions {
+		list = append(list, p)
 	}
 
-	// For each subject, check if it's covered by any other subject
-	// Keep only subjects that are not covered by anything else
-	result := make(map[string]struct{})
-	for _, subject := range list {
+	// For each permission, check if it's covered by any other permission
+	// Keep only permissions that are not covered by anything else
+	result := make(map[Permission]struct{})
+	for _, perm := range list {
 		covered := false
 		for _, other := range list {
-			if subject == other {
+			if perm == other {
 				continue
 			}
-			if isCoveredBy(subject, other) {
+			if isCoveredBy(perm, other) {
 				covered = true
 				break
 			}
 		}
 		if !covered {
-			result[subject] = struct{}{}
+			result[perm] = struct{}{}
 		}
 	}
 
@@ -235,21 +220,30 @@ func deduplicateWithWildcards(subjects map[string]struct{}) map[string]struct{} 
 }
 
 // isCoveredBy returns true if subject is covered by pattern.
-// This handles both concrete subjects and wildcard patterns.
-// Examples:
-//   - "foo.bar" is covered by "foo.*"
-//   - "foo.bar" is covered by "foo.>"
-//   - "foo.bar.baz" is covered by "foo.>"
-//   - "foo.bar" is NOT covered by "foo.*.baz"
-//   - "foo.*" is covered by "foo.>"
-//   - "foo.>" is NOT covered by "foo.*"
-func isCoveredBy(subject, pattern string) bool {
-	if subject == pattern {
+// This handles both concrete subjects and wildcard patterns, considering queues.
+// TODO: this does not handle wildcards in queue names
+func isCoveredBy(subject, pattern Permission) bool {
+	// If only subject has queue but not pattern, return match result ignoring queue.
+	// This covers the case where a general subscription (no queue) covers a queue subscription.
+	if subject.Queue != "" && pattern.Queue == "" {
+		// Proceed to check subject match
+	} else if subject.Queue != "" && pattern.Queue != "" {
+		// If both have queues, they must match
+		if subject.Queue != pattern.Queue {
+			return false
+		}
+	} else if subject.Queue == "" && pattern.Queue != "" {
+		// If only pattern has a queue, it cannot cover a regular subscription
+		return false
+	}
+
+	// Standard subject check
+	if subject.Subject == pattern.Subject {
 		return true
 	}
 
-	subjectTokens := strings.Split(subject, ".")
-	patternTokens := strings.Split(pattern, ".")
+	subjectTokens := strings.Split(subject.Subject, ".")
+	patternTokens := strings.Split(pattern.Subject, ".")
 
 	// Special case: if subject ends with ">" (multi-token wildcard),
 	// it can only be covered by a pattern that also ends with ">"
