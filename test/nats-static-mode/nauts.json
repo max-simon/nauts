@@ -1,0 +1,42 @@
+{
+  "account": {
+    "type": "static",
+    "static": {
+      "publicKey": "ACQN3WJOQZ7SQ3PAFKWMPSNMMDWZR7ZN4GILQDRGAT6QDVOZKS2P2OYK",
+      "privateKeyPath": "./account-AUTH.nk",
+      "accounts": [
+        "AUTH", "APP", "APP2"
+      ]
+    }
+  },
+  "policy": {
+    "type": "file",
+    "file": {
+      "policiesPath": "./policies.json",
+      "bindingsPath": "./bindings.json"
+    }
+  },
+  "auth": {
+    "file": [
+      {
+        "id": "intro-file",
+        "accounts": ["APP"],
+        "userPath": "./users.json"
+      }
+    ],
+    "jwt": [
+      {
+        "id": "intro-jwt",
+        "accounts": ["APP", "APP2"],
+        "issuer": "e2e",
+        "rolesClaimPath": "nauts.roles",
+        "publicKey": "LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KTUlJQklqQU5CZ2txaGtpRzl3MEJBUUVGQUFPQ0FROEFNSUlCQ2dLQ0FRRUFtTUozdGRsT0Z6Y0tTMlJsZGwydwpiSVpCT2U3SjR0UmpsTHREcmlrSVB1Z24zeFNCRnlLQVU4RHZOWnVVMVFvdThCQU9DVUdITk5zWGNLLzNQR3R6Ckd2M1c5dUI2VjNsbHc3K2VtYmFKbFBHblViZnpaYVhRbTFQR2phNnRQUXpMZFQzVEsyU0IrbjEvajM0NitBMTgKRXpZMFVxQmJ5YWRFb3B1TVZUbXJDa2UwYlNVcUVITUNEWjhqZkZxaUVTOVB0V2xuZUhRZ09Ud2syVGZjZUk4TQpJY2ZwbzVaNWduMC9yY1JkQktndUtjTHRWNEU5c0NxRjRtYnIzcFdDVEM5aU9TZnd2UUZkU3czN1BkcXR1eWl0Cm5KbmUwc1lNc1l5S0R1NW4yV05hVldDU0dyOTV5Zk40Nkc5Q0xXTjR4aDliRWRyZG1Oc0I3aTR1blB2eW9lOE0KaFFJREFRQUIKLS0tLS1FTkQgUFVCTElDIEtFWS0tLS0tCg=="
+      }
+    ]
+  },
+  "server": {
+    "natsUrl": "nats://localhost:4222",
+    "natsNkey": "./user-auth.nk",
+    "xkeySeedFile": "./server-xkey.nk"
+  }
+}

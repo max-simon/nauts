@@ -156,21 +156,14 @@ Use this when a component needs more structure (method tables, error catalogs, f
 ### Types
 
 #### `TypeName`
-``go
-// Key type signatures
-type TypeName struct { ... }
-func (t *TypeName) Method() ReturnType
-``
+<markdown Go script>
 [Brief description of what this type represents]
 
 ### Interfaces
 
 #### `InterfaceName`
-``go
-type InterfaceName interface {
-    Method(args) (returns, error)
-}
-``
+
+<markdown Go script>
 
 | Method | Purpose |
 |--------|---------|
