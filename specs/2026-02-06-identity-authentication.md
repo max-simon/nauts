@@ -146,7 +146,7 @@ func (p *JwtAuthenticationProvider) ManageableAccounts() []string
 3. Extract roles from claim at `rolesClaimPath` (e.g., `resource_access.nauts.roles`)
 4. Parse roles as `<account>.<role>` → skip invalid formats
 5. Return `ErrNoRolesFound` if no valid roles
-6. Extract standard claims as attributes: `email`, `name`, `preferred_username`
+6. Extract standard claims as attributes (currently only `sub` → `attributes["sub"]`)
 7. Return `User`
 
 ### Manager
