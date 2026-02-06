@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/msimon/nauts/provider"
 )
 
 func TestLoadConfig(t *testing.T) {
@@ -146,8 +148,8 @@ func TestConfig_Validate(t *testing.T) {
 			config: Config{
 				Account: AccountConfig{
 					Type: "operator",
-					Operator: &OperatorAccountConfig{
-						Accounts: map[string]AccountSigningConfig{
+					Operator: &provider.OperatorAccountProviderConfig{
+						Accounts: map[string]provider.AccountSigningConfig{
 							"AUTH": {
 								PublicKey:      "AAUTH1234567890123456789012345678901234567890123456789012345",
 								SigningKeyPath: "/path/to/auth-signing.nk",
@@ -156,7 +158,7 @@ func TestConfig_Validate(t *testing.T) {
 					},
 				},
 				Policy: PolicyConfig{
-					File: &FilePolicyConfig{
+					File: &provider.FilePolicyProviderConfig{
 						PoliciesPath: "/path/to/policies.json",
 						BindingsPath: "/path/to/bindings.json",
 					},
@@ -176,8 +178,8 @@ func TestConfig_Validate(t *testing.T) {
 			config: Config{
 				Account: AccountConfig{
 					Type: "operator",
-					Operator: &OperatorAccountConfig{
-						Accounts: map[string]AccountSigningConfig{
+					Operator: &provider.OperatorAccountProviderConfig{
+						Accounts: map[string]provider.AccountSigningConfig{
 							"AUTH": {
 								PublicKey:      "AAUTH1234567890123456789012345678901234567890123456789012345",
 								SigningKeyPath: "/path/to/auth-signing.nk",
@@ -186,7 +188,7 @@ func TestConfig_Validate(t *testing.T) {
 					},
 				},
 				Policy: PolicyConfig{
-					File: &FilePolicyConfig{
+					File: &provider.FilePolicyProviderConfig{
 						PoliciesPath: "/path/to/policies.json",
 						BindingsPath: "/path/to/bindings.json",
 					},
@@ -207,14 +209,14 @@ func TestConfig_Validate(t *testing.T) {
 			config: Config{
 				Account: AccountConfig{
 					Type: "static",
-					Static: &StaticAccountConfig{
+					Static: &provider.StaticAccountProviderConfig{
 						PublicKey:      "AAUTH1234567890123456789012345678901234567890123456789012345",
 						PrivateKeyPath: "/path/to/account.nk",
 						Accounts:       []string{"AUTH"},
 					},
 				},
 				Policy: PolicyConfig{
-					File: &FilePolicyConfig{
+					File: &provider.FilePolicyProviderConfig{
 						PoliciesPath: "/path/to/policies.json",
 						BindingsPath: "/path/to/bindings.json",
 					},
@@ -234,8 +236,8 @@ func TestConfig_Validate(t *testing.T) {
 			config: Config{
 				Account: AccountConfig{
 					Type: "operator",
-					Operator: &OperatorAccountConfig{
-						Accounts: map[string]AccountSigningConfig{},
+					Operator: &provider.OperatorAccountProviderConfig{
+						Accounts: map[string]provider.AccountSigningConfig{},
 					},
 				},
 			},
@@ -246,8 +248,8 @@ func TestConfig_Validate(t *testing.T) {
 			config: Config{
 				Account: AccountConfig{
 					Type: "operator",
-					Operator: &OperatorAccountConfig{
-						Accounts: map[string]AccountSigningConfig{
+					Operator: &provider.OperatorAccountProviderConfig{
+						Accounts: map[string]provider.AccountSigningConfig{
 							"AUTH": {
 								SigningKeyPath: "/path/to/auth-signing.nk",
 							},
@@ -262,8 +264,8 @@ func TestConfig_Validate(t *testing.T) {
 			config: Config{
 				Account: AccountConfig{
 					Type: "operator",
-					Operator: &OperatorAccountConfig{
-						Accounts: map[string]AccountSigningConfig{
+					Operator: &provider.OperatorAccountProviderConfig{
+						Accounts: map[string]provider.AccountSigningConfig{
 							"AUTH": {
 								PublicKey: "AAUTH1234567890123456789012345678901234567890123456789012345",
 							},
@@ -296,8 +298,8 @@ func TestConfig_Validate(t *testing.T) {
 			config: Config{
 				Account: AccountConfig{
 					Type: "operator",
-					Operator: &OperatorAccountConfig{
-						Accounts: map[string]AccountSigningConfig{
+					Operator: &provider.OperatorAccountProviderConfig{
+						Accounts: map[string]provider.AccountSigningConfig{
 							"AUTH": {
 								PublicKey:      "AAUTH1234567890123456789012345678901234567890123456789012345",
 								SigningKeyPath: "/path/to/auth-signing.nk",
@@ -305,7 +307,7 @@ func TestConfig_Validate(t *testing.T) {
 						},
 					},
 				},
-				Policy: PolicyConfig{File: &FilePolicyConfig{PoliciesPath: "/path/to/policies.json"}},
+				Policy: PolicyConfig{File: &provider.FilePolicyProviderConfig{PoliciesPath: "/path/to/policies.json"}},
 				Auth:   AuthConfig{File: []FileAuthProviderConfig{{ID: "local", UsersPath: "/path/to/users.json", Accounts: []string{"*"}}}},
 			},
 			wantErr: "policy.file.bindingsPath is required",
@@ -315,8 +317,8 @@ func TestConfig_Validate(t *testing.T) {
 			config: Config{
 				Account: AccountConfig{
 					Type: "operator",
-					Operator: &OperatorAccountConfig{
-						Accounts: map[string]AccountSigningConfig{
+					Operator: &provider.OperatorAccountProviderConfig{
+						Accounts: map[string]provider.AccountSigningConfig{
 							"AUTH": {
 								PublicKey:      "AAUTH1234567890123456789012345678901234567890123456789012345",
 								SigningKeyPath: "/path/to/auth-signing.nk",
@@ -326,7 +328,7 @@ func TestConfig_Validate(t *testing.T) {
 				},
 				Policy: PolicyConfig{
 					Type: "file",
-					File: &FilePolicyConfig{},
+					File: &provider.FilePolicyProviderConfig{},
 				},
 				Auth: AuthConfig{File: []FileAuthProviderConfig{{ID: "local", UsersPath: "/path/to/users.json", Accounts: []string{"*"}}}},
 			},
@@ -337,8 +339,8 @@ func TestConfig_Validate(t *testing.T) {
 			config: Config{
 				Account: AccountConfig{
 					Type: "operator",
-					Operator: &OperatorAccountConfig{
-						Accounts: map[string]AccountSigningConfig{
+					Operator: &provider.OperatorAccountProviderConfig{
+						Accounts: map[string]provider.AccountSigningConfig{
 							"AUTH": {
 								PublicKey:      "AAUTH1234567890123456789012345678901234567890123456789012345",
 								SigningKeyPath: "/path/to/auth-signing.nk",
@@ -347,7 +349,7 @@ func TestConfig_Validate(t *testing.T) {
 					},
 				},
 				Policy: PolicyConfig{
-					File: &FilePolicyConfig{
+					File: &provider.FilePolicyProviderConfig{
 						PoliciesPath: "/path/to/policies.json",
 						BindingsPath: "/path/to/bindings.json",
 					},
@@ -360,8 +362,8 @@ func TestConfig_Validate(t *testing.T) {
 			config: Config{
 				Account: AccountConfig{
 					Type: "operator",
-					Operator: &OperatorAccountConfig{
-						Accounts: map[string]AccountSigningConfig{
+					Operator: &provider.OperatorAccountProviderConfig{
+						Accounts: map[string]provider.AccountSigningConfig{
 							"AUTH": {
 								PublicKey:      "AAUTH1234567890123456789012345678901234567890123456789012345",
 								SigningKeyPath: "/path/to/auth-signing.nk",
@@ -370,7 +372,7 @@ func TestConfig_Validate(t *testing.T) {
 					},
 				},
 				Policy: PolicyConfig{
-					File: &FilePolicyConfig{
+					File: &provider.FilePolicyProviderConfig{
 						PoliciesPath: "/path/to/policies.json",
 						BindingsPath: "/path/to/bindings.json",
 					},
@@ -390,8 +392,8 @@ func TestConfig_Validate(t *testing.T) {
 			config: Config{
 				Account: AccountConfig{
 					Type: "operator",
-					Operator: &OperatorAccountConfig{
-						Accounts: map[string]AccountSigningConfig{
+					Operator: &provider.OperatorAccountProviderConfig{
+						Accounts: map[string]provider.AccountSigningConfig{
 							"AUTH": {
 								PublicKey:      "AAUTH1234567890123456789012345678901234567890123456789012345",
 								SigningKeyPath: "/path/to/auth-signing.nk",
@@ -400,7 +402,7 @@ func TestConfig_Validate(t *testing.T) {
 					},
 				},
 				Policy: PolicyConfig{
-					File: &FilePolicyConfig{
+					File: &provider.FilePolicyProviderConfig{
 						PoliciesPath: "/path/to/policies.json",
 						BindingsPath: "/path/to/bindings.json",
 					},
@@ -421,8 +423,8 @@ func TestConfig_Validate(t *testing.T) {
 			config: Config{
 				Account: AccountConfig{
 					Type: "operator",
-					Operator: &OperatorAccountConfig{
-						Accounts: map[string]AccountSigningConfig{
+					Operator: &provider.OperatorAccountProviderConfig{
+						Accounts: map[string]provider.AccountSigningConfig{
 							"AUTH": {
 								PublicKey:      "AAUTH1234567890123456789012345678901234567890123456789012345",
 								SigningKeyPath: "/path/to/auth-signing.nk",
@@ -431,7 +433,7 @@ func TestConfig_Validate(t *testing.T) {
 					},
 				},
 				Policy: PolicyConfig{
-					File: &FilePolicyConfig{
+					File: &provider.FilePolicyProviderConfig{
 						PoliciesPath: "/path/to/policies.json",
 						BindingsPath: "/path/to/bindings.json",
 					},
@@ -452,8 +454,8 @@ func TestConfig_Validate(t *testing.T) {
 			config: Config{
 				Account: AccountConfig{
 					Type: "operator",
-					Operator: &OperatorAccountConfig{
-						Accounts: map[string]AccountSigningConfig{
+					Operator: &provider.OperatorAccountProviderConfig{
+						Accounts: map[string]provider.AccountSigningConfig{
 							"AUTH": {
 								PublicKey:      "AAUTH1234567890123456789012345678901234567890123456789012345",
 								SigningKeyPath: "/path/to/auth-signing.nk",
@@ -462,7 +464,7 @@ func TestConfig_Validate(t *testing.T) {
 					},
 				},
 				Policy: PolicyConfig{
-					File: &FilePolicyConfig{
+					File: &provider.FilePolicyProviderConfig{
 						PoliciesPath: "/path/to/policies.json",
 						BindingsPath: "/path/to/bindings.json",
 					},

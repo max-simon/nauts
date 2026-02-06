@@ -32,39 +32,10 @@ type AccountConfig struct {
 	Type string `json:"type"`
 
 	// Operator contains operator mode configuration.
-	Operator *OperatorAccountConfig `json:"operator,omitempty"`
+	Operator *provider.OperatorAccountProviderConfig `json:"operator,omitempty"`
 
 	// Static contains static account provider configuration.
-	Static *StaticAccountConfig `json:"static,omitempty"`
-}
-
-// OperatorAccountConfig configures the operator account provider.
-// In operator mode, the auth service runs in the AUTH account but authenticates
-// users across all accounts using account signing keys.
-type OperatorAccountConfig struct {
-	// Accounts maps account names to their signing configuration.
-	Accounts map[string]AccountSigningConfig `json:"accounts"`
-}
-
-// AccountSigningConfig holds the signing configuration for an account.
-type AccountSigningConfig struct {
-	// PublicKey is the account's public key (starts with 'A').
-	PublicKey string `json:"publicKey"`
-
-	// SigningKeyPath is the path to the account signing key file (.nk file).
-	SigningKeyPath string `json:"signingKeyPath"`
-}
-
-// StaticAccountConfig configures the static account provider.
-type StaticAccountConfig struct {
-	// PublicKey is the public key used for all accounts.
-	PublicKey string `json:"publicKey"`
-
-	// PrivateKeyPath is the path to the nkey seed file used for all accounts.
-	PrivateKeyPath string `json:"privateKeyPath"`
-
-	// Accounts is the list of account names.
-	Accounts []string `json:"accounts"`
+	Static *provider.StaticAccountProviderConfig `json:"static,omitempty"`
 }
 
 // PolicyConfig configures the policy provider.
@@ -73,13 +44,7 @@ type PolicyConfig struct {
 	Type string `json:"type"`
 
 	// File contains file-based provider configuration.
-	File *FilePolicyConfig `json:"file,omitempty"`
-}
-
-// FilePolicyConfig configures the file-based policy provider.
-type FilePolicyConfig struct {
-	PoliciesPath string `json:"policiesPath"`
-	BindingsPath string `json:"bindingsPath"`
+	File *provider.FilePolicyProviderConfig `json:"file,omitempty"`
 }
 
 // AuthConfig configures the authentication providers.
@@ -290,25 +255,12 @@ func NewAuthControllerWithConfig(config *Config, opts ...ControllerOption) (*Aut
 
 	switch config.Account.Type {
 	case "operator":
-		accounts := make(map[string]provider.AccountSigningConfig)
-		for name, accCfg := range config.Account.Operator.Accounts {
-			accounts[name] = provider.AccountSigningConfig{
-				PublicKey:      accCfg.PublicKey,
-				SigningKeyPath: accCfg.SigningKeyPath,
-			}
-		}
-		accountProvider, err = provider.NewOperatorAccountProvider(provider.OperatorAccountProviderConfig{
-			Accounts: accounts,
-		})
+		accountProvider, err = provider.NewOperatorAccountProvider(*config.Account.Operator)
 		if err != nil {
 			return nil, fmt.Errorf("initializing operator account provider: %w", err)
 		}
 	case "static":
-		accountProvider, err = provider.NewStaticAccountProvider(provider.StaticAccountProviderConfig{
-			PublicKey:      config.Account.Static.PublicKey,
-			PrivateKeyPath: config.Account.Static.PrivateKeyPath,
-			Accounts:       config.Account.Static.Accounts,
-		})
+		accountProvider, err = provider.NewStaticAccountProvider(*config.Account.Static)
 		if err != nil {
 			return nil, fmt.Errorf("initializing static account provider: %w", err)
 		}
@@ -319,10 +271,7 @@ func NewAuthControllerWithConfig(config *Config, opts ...ControllerOption) (*Aut
 
 	switch config.Policy.Type {
 	case "file":
-		policyProvider, err = provider.NewFilePolicyProvider(provider.FilePolicyProviderConfig{
-			PoliciesPath: config.Policy.File.PoliciesPath,
-			BindingsPath: config.Policy.File.BindingsPath,
-		})
+		policyProvider, err = provider.NewFilePolicyProvider(*config.Policy.File)
 		if err != nil {
 			return nil, fmt.Errorf("initializing file policy provider: %w", err)
 		}
