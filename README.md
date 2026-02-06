@@ -152,7 +152,7 @@ nauts uses a JSON configuration file. Here's a minimal example:
   "users": {
     "alice": {
       "accounts": ["APP"],
-      "roles": ["readonly"],
+      "roles": ["APP.readonly"],
       "passwordHash": "$2a$10$..."
     }
   }

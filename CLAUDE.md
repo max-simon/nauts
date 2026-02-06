@@ -443,13 +443,13 @@ type AuthRequest struct {
   "users": {
     "alice": {
       "accounts": ["APP"],
-      "roles": ["readonly"],
+      "roles": ["APP.readonly"],
       "passwordHash": "$2a$10$...",
       "attributes": { "department": "engineering" }
     },
     "bob": {
       "accounts": ["APP", "CORP"],
-      "roles": ["full"],
+      "roles": ["APP.full"],
       "passwordHash": "$2a$10$..."
     }
   }

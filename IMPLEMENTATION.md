@@ -217,7 +217,7 @@ Static user list with bcrypt password hashes.
   "users": {
     "alice": {
       "accounts": ["APP"],
-      "roles": ["readonly"],
+      "roles": ["APP.readonly"],
       "passwordHash": "$2a$10$...",
       "attributes": { "department": "engineering" }
     }
