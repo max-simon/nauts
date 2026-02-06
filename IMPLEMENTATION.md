@@ -129,14 +129,16 @@ The `policy.Compile()` function transforms policies to NATS permissions:
 - `foo.bar` covered by `foo.*` → remove `foo.bar`
 - `foo.bar` covered by `foo.>` → remove `foo.bar`
 - `foo.*` covered by `foo.>` → remove `foo.*`
+- Queue subscriptions are handled separately unless covered by a broader subscription without queue.
 
 ## JWT Permission Encoding
 
-NATS JWT defaults to allowing everything when no permissions are specified. nauts handles this by explicitly denying all when no allow permissions are granted:
+NATS JWT defaults to empowering everything when no permissions are specified. nauts handles this by explicitly denying all when no allow permissions are granted:
 
 - Empty pub permissions → `Pub.Deny: [">"]` (user cannot publish)
 - Empty sub permissions → `Sub.Deny: [">"]` (user cannot subscribe)
 - Non-empty permissions → only `Allow` list is set
+- Queue subscriptions are merged into the main `Allow` list as NATS JWTs do not support specific queue restrictions.
 
 This ensures the principle of least privilege.
 

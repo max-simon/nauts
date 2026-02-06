@@ -36,7 +36,7 @@ nauts/
 │   ├── errors.go           # Policy errors (PolicyError, ValidationError)
 │   ├── interpolate.go      # Variable interpolation ({{ user.id }}, etc.)
 │   ├── mapper.go           # Action+Resource to NATS permissions mapping
-│   ├── permissions.go      # NatsPermissions with Allow/Deny and wildcard dedup
+│   ├── permissions.go      # NatsPermissions with Allow/Deny, wildcard dedup and queue handling
 │   ├── policy.go           # Policy, Statement, Effect types
 │   └── resource.go         # Resource parsing and validation
 ├── provider/               # Account, role, and policy providers

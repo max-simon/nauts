@@ -29,6 +29,8 @@ The `policy` package defines the full lifecycle of a permission policy: types fo
 
 **Out of scope:** Policy storage, role bindings, authentication, JWT issuance.
 
+**Note**: currently, queue wildcards are not handled in deduplication. For example `foo bar` and `foo *` are both returned from `Deduplicate`.
+
 ---
 
 ## Design Decisions
@@ -113,17 +115,17 @@ A parsed NRN. Full types: `nats:subject`, `nats:subject:queue`, `js:stream`, `js
 
 #### `NatsPermissions`
 ```go
-type NatsPermissions struct { /* pub, sub, subWithQueue */ }
+type NatsPermissions struct { /* pub, sub */ }
 func NewNatsPermissions() *NatsPermissions
 func (p *NatsPermissions) Allow(perm Permission)
 func (p *NatsPermissions) Merge(other *NatsPermissions)
 func (p *NatsPermissions) Deduplicate()
-func (p *NatsPermissions) PubList() []string
-func (p *NatsPermissions) SubList() []string
-func (p *NatsPermissions) SubWithQueueList() []SubQueuePerm
+func (p *NatsPermissions) PubList() []Permission
+func (p *NatsPermissions) SubList() []Permission
 func (p *NatsPermissions) IsEmpty() bool
+func (p *NatsPermissions) ToNatsJWT() natsjwt.Permissions
 ```
-Accumulator for compiled NATS permissions. Supports pub, sub, and sub-with-queue. `Deduplicate()` removes subjects covered by wildcards.
+Accumulator for compiled NATS permissions. Supports pub and sub. Queue subscriptions are stored as Permissions in the unified sub list. `Deduplicate()` removes subjects covered by wildcards, respecting queue group logic. `ToNatsJWT()` converts to NATS JWT format, merging queue subscriptions into the general allow list as separate queue restrictions are not supported in standard NATS JWTs.
 
 #### `Permission` / `PermissionType`
 ```go
