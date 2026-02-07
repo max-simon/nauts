@@ -1,14 +1,14 @@
 #!/bin/bash
 set -e
 
-# Setup script for nauts-static-mode test environment
-# Generates all necessary keys and updates configuration files
-
-echo "Generating keys..."
+#
+# NATS Server Configuration
+#
+echo "Generating NATS Server Configuration..."
 
 # 1. Account Key (Issuer)
 # In static mode, this single key identifies the issuer for all accounts
-nk -gen user > account-AUTH.nk
+nk -gen account > account-AUTH.nk
 ISSUER_PUB=$(nk -inkey account-AUTH.nk -pubout)
 echo "Generated account-AUTH.nk (Issuer: $ISSUER_PUB)"
 
@@ -18,41 +18,17 @@ nk -gen user > user-auth.nk
 AUTH_USER_PUB=$(nk -inkey user-auth.nk -pubout)
 echo "Generated user-auth.nk (Auth User: $AUTH_USER_PUB)"
 
-# 3. System User
-# For sys account
-nk -gen user > user-sys.nk
-SYS_USER_PUB=$(nk -inkey user-sys.nk -pubout)
-echo "Generated user-sys.nk (Sys User: $SYS_USER_PUB)"
+# 3. Get public key of server xkey
+XKEY_PUB=$(nk -inkey ../common/server-xkey.nk -pubout);
 
-# 4. Server XKey
-# For encrypted auth callout
-nk -gen curve > server-xkey.nk
-XKEY_PUB=$(nk -inkey server-xkey.nk -pubout)
-echo "Generated server-xkey.nk (XKey: $XKEY_PUB)"
-
-echo "Updating configuration..."
-
-# Update nauts.json using jq
-# - Update account verification key
-# - Update RSA provider public key
-jq --arg issuer "$ISSUER_PUB" \
-   --arg rsa "$RSA_PUB_B64" \
-   '.account.static.publicKey = $issuer | .auth.jwt[0].publicKey = $rsa' \
-   nauts.json > nauts.json.tmp && mv nauts.json.tmp nauts.json
-
-# Regenerate nats-server.conf
+# 4. Write nats-server.conf
 cat > nats-server.conf <<EOF
-# NATS Server Configuration for nauts auth callout testing
-
-# Server settings
 server_name: nauts-test
-port: 4222
-http_port: 8222
-
-# Logging
-debug: false
-trace: false
-logtime: true
+jetstream {
+    store_dir: /tmp/nauts-test-jetstream
+    max_mem: 128M
+    max_file: 1G
+}
 
 # Account definitions
 accounts {
@@ -64,20 +40,15 @@ accounts {
         ]
     }
 
-    # APP account - target account for authenticated users
     APP {
         # No static users - all users are authenticated via nauts
     }
 
-    # APP2 account
     APP2 {
+        # No static users - all users are authenticated via nauts
     }
 
-    # SYS account for system events
     SYS {
-        users: [
-            { nkey: $SYS_USER_PUB }
-        ]
     }
 }
 
@@ -95,8 +66,7 @@ authorization {
         # - auth-service user to handle auth callout requests
         # - sys user for system events
         users: [ 
-            $AUTH_USER_PUB, 
-            $SYS_USER_PUB 
+            $AUTH_USER_PUB
         ]
 
         # Account where auth callout service connects
@@ -106,13 +76,57 @@ authorization {
         xkey: $XKEY_PUB
     }
 }
-
-# JetStream configuration (for testing js.* and kv.* actions)
-jetstream {
-    store_dir: /tmp/nauts-test-jetstream
-    max_mem: 128M
-    max_file: 1G
-}
 EOF
 
-echo "Done. Test environment is ready."
+
+#
+# NAUTS Configuration
+#
+echo "Generating NAUTS Configuration...";
+
+RSA_PUB_B64=$(cat ../common/rsa.pem.b64);
+
+cat > nauts.json <<EOF
+{
+  "account": {
+    "type": "static",
+    "static": {
+      "publicKey": "$ISSUER_PUB",
+      "privateKeyPath": "./account-AUTH.nk",
+      "accounts": [
+        "AUTH", "APP", "APP2"
+      ]
+    }
+  },
+  "policy": {
+    "type": "file",
+    "file": {
+      "policiesPath": "../common/policies.json",
+      "bindingsPath": "../common/bindings.json"
+    }
+  },
+  "auth": {
+    "file": [
+      {
+        "id": "intro-file",
+        "accounts": ["APP"],
+        "userPath": "../common/users.json"
+      }
+    ],
+    "jwt": [
+      {
+        "id": "intro-jwt",
+        "accounts": ["APP", "APP2"],
+        "issuer": "e2e",
+        "rolesClaimPath": "nauts.roles",
+        "publicKey": "$RSA_PUB_B64"
+      }
+    ]
+  },
+  "server": {
+    "natsUrl": "nats://localhost:4222",
+    "natsNkey": "./user-auth.nk",
+    "xkeySeedFile": "../common/server-xkey.nk"
+  }
+}
+EOF

@@ -1,12 +1,21 @@
 {
   "account": {
-    "type": "static",
-    "static": {
-      "publicKey": "AC2AV2TFM5YGR6MKO4HZ7NL5WS44OSEVDIMDXRO2X56H7OL2YPAHPESJ",
-      "privateKeyPath": "./account-AUTH.nk",
-      "accounts": [
-        "AUTH", "APP", "APP2"
-      ]
+    "type": "operator",
+    "operator": {
+      "accounts": {
+        "AUTH": {
+          "publicKey": "AAN3QCS3LR43424JT52JEE7ZQ7SUNPSYSNSDNUEILGFH674ISS6OYAPL",
+          "signingKeyPath": "./sk-AUTH.nk"
+        },
+        "APP": {
+          "publicKey": "ACJFW3JZTG37L64OH7DTCNORCBHLTEL76QHCLWWTJ7KNHUR6GKWSVC2F",
+          "signingKeyPath": "./sk-APP.nk"
+        },
+        "APP2": {
+          "publicKey": "AB264VPXDK5NBOTVY3AGXI2BGYOJ7EFAMCWI4WME4CTGTBRX452RUXET",
+          "signingKeyPath": "./sk-APP2.nk"
+        }
+      }
     }
   },
   "policy": {
@@ -20,14 +29,19 @@
     "file": [
       {
         "id": "intro-file",
-        "accounts": ["APP"],
+        "accounts": [
+          "APP"
+        ],
         "userPath": "../common/users.json"
       }
     ],
     "jwt": [
       {
         "id": "intro-jwt",
-        "accounts": ["APP", "APP2"],
+        "accounts": [
+          "APP",
+          "APP2"
+        ],
         "issuer": "e2e",
         "rolesClaimPath": "nauts.roles",
         "publicKey": "LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KTUlJQklqQU5CZ2txaGtpRzl3MEJBUUVGQUFPQ0FROEFNSUlCQ2dLQ0FRRUFrL2NEeTZ6NExCajZDcVFSckR6TgpSRDl4elBMakZmRXNyZ1A4RjhXV0pITHlLemRUcWxkOVhVcXJqbmNEamR6YzhiSzJoTzVDV25tYjJJYllqNW51CnF2VWNreldMRVJuWFhoUVFVSk1xVDg0MEJFdENuMitHVTgycE1tcnlaWjhBV1lnT1pzdHFwc2VMOUZidUd3blcKRzZOT2RYQXE1VmxLcjY3alU0bjJqSis2a0cyRXBaQnlVNHJ5TDkwaWJkUE9Gb1VSZlI0bkVvVkJjakVETU1ncQo1dTBsbEtORGlvMHdZL3NQYXhUM0tBV2ZOWklCOHYwbFo3c1pnb2FYSHl6N1ZVZ3BhUm5aSys1UnRWMHgrQ0w1CkJtNUVTbDBGMEVWSDFweHF2ZGhac005bWt0NVZDZ0ZqV1NCQXpXNTJIaW4zTFEyVkF4MUdCV2ZQZXpZQ3VYUzAKWXdJREFRQUIKLS0tLS1FTkQgUFVCTElDIEtFWS0tLS0tCg=="
@@ -36,7 +50,7 @@
   },
   "server": {
     "natsUrl": "nats://localhost:4222",
-    "natsNkey": "./user-auth.nk",
+    "natsCredentials": "./auth.creds",
     "xkeySeedFile": "../common/server-xkey.nk"
   }
 }

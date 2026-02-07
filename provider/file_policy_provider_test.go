@@ -11,9 +11,62 @@ import (
 )
 
 func TestNewFilePolicyProvider(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	policiesContent := `[
+  {
+    "id": "read-access",
+    "name": "Read-Only Access",
+    "statements": [
+      {
+        "effect": "allow",
+        "actions": ["nats.sub"],
+        "resources": ["nats:public.>"]
+      }
+    ]
+  },
+  {
+    "id": "write-access",
+    "name": "Write Access",
+    "statements": [
+      {
+        "effect": "allow",
+        "actions": ["nats.pub"],
+        "resources": ["nats:public.>"]
+      }
+    ]
+  }
+]`
+	policiesPath := filepath.Join(tmpDir, "policies.json")
+	if err := os.WriteFile(policiesPath, []byte(policiesContent), 0644); err != nil {
+		t.Fatalf("Failed to write policies file: %v", err)
+	}
+
+	bindingsContent := `[
+  {
+    "role": "default",
+    "account": "APP",
+    "policies": []
+  },
+  {
+    "role": "readonly",
+    "account": "APP",
+    "policies": ["read-access"]
+  },
+  {
+    "role": "full",
+    "account": "APP",
+    "policies": ["read-access", "write-access"]
+  }
+]`
+	bindingsPath := filepath.Join(tmpDir, "bindings.json")
+	if err := os.WriteFile(bindingsPath, []byte(bindingsContent), 0644); err != nil {
+		t.Fatalf("Failed to write bindings file: %v", err)
+	}
+
 	cfg := FilePolicyProviderConfig{
-		PoliciesPath: "../test/policies.json",
-		BindingsPath: "../test/bindings.json",
+		PoliciesPath: policiesPath,
+		BindingsPath: bindingsPath,
 	}
 
 	fp, err := NewFilePolicyProvider(cfg)

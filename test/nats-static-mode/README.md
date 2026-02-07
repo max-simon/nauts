@@ -24,9 +24,6 @@ Run the setup script to generate fresh keys and update configuration files:
 This will generate:
 - `account-AUTH.nk`: The Account Key acting as the Issuer
 - `user-auth.nk`: The User Key for the Nauts service
-- `user-sys.nk`: The User Key for the NATS System account
-- `server-xkey.nk`: The Curve Key for encrypted auth callout
-- `rsa.key` / `rsa.pem`: RSA keys for testing JWT auth provider
 - `nats-server.conf`: Updated NATS server config
 - `nauts.json`: Updated Nauts config
 
@@ -49,10 +46,4 @@ This will generate:
 |------|------|---------|
 | `account-AUTH.nk` | `user` | **Issuer**. Signs the User JWTs returned by Nauts. |
 | `user-auth.nk` | `user` | **Service User**. Nauts uses this to connect to the `AUTH` account to listen for requests. |
-| `user-sys.nk` | `user` | **System User**. Used for `SYS` account operations. |
-| `server-xkey.nk` | `curve` | **XKey**. Public key is in `nats-server.conf` (`auth_callout.xkey`), private key used by Nauts to decrypt. |
 
-## Configuration
-
-- `nauts.json`: Configured to use `SimpleAccountProvider` with the key from `account-AUTH.nk`.
-- `nats-server.conf`: Configured with `auth_callout` pointing to the issuer and XKey.

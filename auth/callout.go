@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"sync"
 	"time"
 
@@ -88,6 +89,9 @@ func NewCalloutService(controller *AuthController, config CalloutConfig, opts ..
 	}
 	if config.NatsURL == "" {
 		config.NatsURL = nats.DefaultURL
+	}
+	if os.Getenv("NATS_URL") != "" {
+		config.NatsURL = os.Getenv("NATS_URL")
 	}
 
 	s := &CalloutService{
