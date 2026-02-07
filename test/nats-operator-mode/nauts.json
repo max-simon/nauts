@@ -4,15 +4,15 @@
     "operator": {
       "accounts": {
         "AUTH": {
-          "publicKey": "AAN3QCS3LR43424JT52JEE7ZQ7SUNPSYSNSDNUEILGFH674ISS6OYAPL",
+          "publicKey": "ACSIDMXWOHQ6QC3MAHKSP2OZMXVNFPMPYU4Q2MF7FB7VB3DVCSUZFGWY",
           "signingKeyPath": "./sk-AUTH.nk"
         },
         "APP": {
-          "publicKey": "ACJFW3JZTG37L64OH7DTCNORCBHLTEL76QHCLWWTJ7KNHUR6GKWSVC2F",
+          "publicKey": "ACI23PJ4SOBIGFMSIXK5DYXBAGS7GMSIERVX6GEUIEGXUMLOFRD5IOVW",
           "signingKeyPath": "./sk-APP.nk"
         },
         "APP2": {
-          "publicKey": "AB264VPXDK5NBOTVY3AGXI2BGYOJ7EFAMCWI4WME4CTGTBRX452RUXET",
+          "publicKey": "AAH5DRWFLQMVJ7EUF5N4T2V46AIU2U2JIKAKHF5LLCO3GKADRDSMSH6B",
           "signingKeyPath": "./sk-APP2.nk"
         }
       }

@@ -32,6 +32,10 @@ nsc add user --account AUTH --name auth;
 nsc generate creds --account AUTH --name auth > auth.creds;
 USER_AUTH_PUB=$(nsc describe user --account AUTH --name auth --json | jq -r .sub);
 
+# Create dummy user for all clients
+nsc add user --account AUTH --name dummy --deny-pubsub ">";
+nsc generate creds --account AUTH --name dummy > dummy.creds;
+
 # Enable auth callout in AUTH account
 XKEY_PUB=$(nk -pubout -inkey ../common/server-xkey.nk);
 nsc edit authcallout --account AUTH --curve $XKEY_PUB --auth-user $USER_AUTH_PUB --allowed-account '*';

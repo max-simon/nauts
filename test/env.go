@@ -40,7 +40,7 @@ func newTestEnv(t *testing.T, dir string, mode string, port int) *TestEnv {
 	}
 
 	if mode == "operator" {
-		env.credsFile = filepath.Join(baseDir, "sentinel.creds")
+		env.credsFile = filepath.Join(baseDir, "dummy.creds")
 	}
 
 	return env
@@ -114,6 +114,11 @@ func (e *TestEnv) ConnectWithUsernameAndPassword(username string, password strin
 		nats.Token(tokenJson),
 		nats.Timeout(2 * time.Second),
 	}
+
+	if e.credsFile != "" {
+		opts = append(opts, nats.UserCredentials(e.credsFile))
+	}
+
 	return nats.Connect(fmt.Sprintf("nats://localhost:%d", e.port), opts...)
 }
 
@@ -129,6 +134,11 @@ func (e *TestEnv) ConnectWithJwt(token string, account string, providerID string
 		nats.Token(tokenJson),
 		nats.Timeout(2 * time.Second),
 	}
+
+	if e.credsFile != "" {
+		opts = append(opts, nats.UserCredentials(e.credsFile))
+	}
+
 	return nats.Connect(fmt.Sprintf("nats://localhost:%d", e.port), opts...)
 }
 
