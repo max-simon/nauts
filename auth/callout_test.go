@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -76,6 +77,26 @@ func TestNewCalloutService_Defaults(t *testing.T) {
 	}
 	if svc.config.DefaultTTL != time.Hour {
 		t.Errorf("DefaultTTL = %v, want 1h", svc.config.DefaultTTL)
+	}
+}
+
+func TestNewCalloutService_EnvForNATSURL(t *testing.T) {
+	ctrl := &AuthController{}
+
+	// mock environment variable NATS_URL
+	os.Setenv("NATS_URL", "nats://localhost:4000")
+	defer os.Unsetenv("NATS_URL")
+
+	svc, err := NewCalloutService(ctrl, CalloutConfig{
+		NatsCredentials: "/path/to/creds",
+	})
+	if err != nil {
+		t.Fatalf("NewCalloutService() error = %v", err)
+	}
+
+	// Check defaults
+	if svc.config.NatsURL != "nats://localhost:4000" {
+		t.Errorf("NatsURL = %q, want %q", svc.config.NatsURL, "nats://localhost:4000")
 	}
 }
 
