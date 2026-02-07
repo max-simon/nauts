@@ -62,19 +62,19 @@ nats --creds sentinel.creds --token '{"account":"APP","token":"alice:secret"}' s
 User Request                nauts                           NATS Server
      │                        │                                  │
      │  Connect with token    │                                  │
-     ├────────────────────────┼──────────────────────────────────►
+     ├────────────────────────┼─────────────────────────────────►|
      │                        │   Auth callout request           │
      │                        │◄─────────────────────────────────┤
      │                        │                                  │
-     │                        │  1. Verify token (identity provider)
+     │                        │  1. Verify token (auth provider) |
      │                        │  2. Resolve user roles           │
      │                        │  3. Compile policies → NATS perms│
      │                        │  4. Sign user JWT                │
      │                        │                                  │
      │                        │   Auth callout response (JWT)    │
-     │                        ├──────────────────────────────────►
+     │                        ├─────────────────────────────────►|
      │                        │                                  │
-     │  Connection established │                                  │
+     │ Connection established │                                  │
      │◄───────────────────────┼──────────────────────────────────┤
 ```
 
@@ -240,9 +240,8 @@ kv:<bucket>:<key>        # KV key
 go test ./...
 
 # E2E tests
-cd test
-go test -v -static .    # Static mode
-go test -v -operator .  # Operator mode
+go test -static ./test    # Static mode
+go test -operator ./test  # Operator mode
 ```
 
 ## License

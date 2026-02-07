@@ -60,22 +60,33 @@ nauts/
 │   ├── callout.go          # CalloutService (NATS auth callout handler)
 │   ├── config.go           # Config types and NewAuthControllerWithConfig
 │   └── errors.go           # Auth errors (AuthError)
-├── test/                   # Test fixtures and e2e tests
-│   ├── e2e_test.go         # Go e2e test suite for both modes
-│   ├── operator/           # Operator mode test environment
-│   │   ├── nauts.json      # nauts configuration
-│   │   ├── nats-server.conf# NATS server config with operator JWTs
-│   │   ├── auth.creds      # Auth service credentials
-│   │   ├── sentinel.creds  # Sentinel user credentials for client auth
-│   │   └── *.nk            # Signing keys and xkey
-│   ├── static/             # Static mode test environment
-│   │   ├── nauts.json      # nauts configuration
-│   │   ├── nats-server.conf# NATS server config with accounts
-│   │   └── *.nk            # Account key and xkey
-│   ├── users.json          # Test users (alice, bob)
-│   ├── bindings.json       # Test role bindings (readonly, full)
-│   └── policies.json       # Test policies (read-access, write-access)
+├── test/                   # End-to-End tests
+│   ├── connection_test.go  # Test entry points
+│   ├── connection_test_procedure.go # Shared test logic
+│   ├── env.go              # Test environment harness
+│   ├── README.md           # Testing documentation
+│   ├── common/             # Shared setup (users, policies, keys)
+│   ├── connection-operator/# Operator Mode config & setup
+│   └── connection-static/  # Static Mode config & setup
 └── docs/                   # Additional documentation
+```
+
+## Development Commands
+
+### Build
+
+```bash
+go build -o bin/nauts ./cmd/nauts
+```
+
+### Test
+
+```bash
+# Run unit tests
+go test -v ./...
+
+# Run E2E tests (requires setup)
+go test -v ./test/ -static -operator
 ```
 
 ## Go Conventions
