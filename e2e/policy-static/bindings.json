@@ -1,0 +1,27 @@
+[
+  {
+    "role": "admin",
+    "account": "POLICY",
+    "policies": ["admin"]
+  },
+  {
+    "role": "writer",
+    "account": "POLICY",
+    "policies": ["writer"]
+  },
+  {
+    "role": "reader",
+    "account": "POLICY",
+    "policies": ["reader"]
+  },
+  {
+    "role": "service",
+    "account": "POLICY",
+    "policies": ["service"]
+  },
+  {
+    "role": "user",
+    "account": "POLICY",
+    "policies": ["user-vars"]
+  }
+]

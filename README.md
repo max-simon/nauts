@@ -1,0 +1,157 @@
+<div style="display: flex; align-items: center;">
+  <div style="flex-shrink: 0;">
+    <img src="./docs/logo.png" alt="Logo" style="height: 100px; display: block; width: 100px">
+  </div>
+  <div style="margin-left: 20px">
+    <h1>NAUTS</h1>
+    <b>N</b>ATS <b>Aut</b>hentication <b>S</b>ervice
+  </div>
+</div>
+
+## Overview
+
+nauts is a framework for scalable, human-friendly permission management for [NATS](https://nats.io). It bridges external identity providers with NATS authentication using high-level policies that compile to low-level NATS permissions.
+
+### Key Features
+
+- **Policy-Based Access Control**: Define permissions using intuitive policies with actions like `nats.pub`, `js.consume`, `kv.read` instead of raw NATS subjects.
+- **Role-Based Authorization**: Assign policies to roles, and roles to users via account-scoped role bindings.
+- **Variable Interpolation**: Scope resources dynamically with `{{ user.id }}`, `{{ user.account }}`, `{{ role.name }}`.
+- **Multiple Identity Providers**: Authenticate users via file-based credentials, external JWTs (Keycloak, Auth0, etc.), or custom providers.
+- **NATS Auth Callout**: Built-in service implementing [NATS auth callout protocol](https://docs.nats.io/running-a-nats-service/configuration/securing_nats/auth_callout).
+- **Operator & Static Modes**: Works with NATS operator/account hierarchies or simple single-key deployments.
+
+## Quick Start
+
+### Installation
+
+```bash
+go build -o bin/nauts ./cmd/nauts
+```
+
+### Server Setup
+
+Run the NATS server and the nauts auth service:
+
+```bash
+# 1. Start NATS server (configured for auth callout)
+nats-server -c nats-server.conf
+
+# 2. Start nauts auth service
+./bin/nauts serve -c nauts.json
+```
+
+### Authenticate
+
+Connect using NATS tooling with a token formatted for nauts:
+
+```bash
+# Format: {"account":"APP","token":"username:password"}
+nats --token '{"account":"APP","token":"alice:secret"}' pub "my.subject" "hello"
+```
+
+## Concepts
+
+### Architecture
+
+nauts sits between your users and the NATS server. When a client connects, NATS delegates authentication to nauts via the **Auth Callout** protocol. nauts verifies the credentials, resolves the user's roles, compiles applicable policies into NATS permissions, and returns a signed short-lived User JWT.
+
+```
+Client                      NATS Server                     nauts
+  │                              │                            │
+  │ CONNECT (Token)              │                            │
+  │─────────────────────────────►│    Auth Callout            │
+  │                              │───────────────────────────►│
+  │                              │                            │ 1. Verify Identity
+  │                              │                            │ 2. Resolve Roles
+  │                              │                            │ 3. Compile Permissions
+  │                              │    User JWT                │
+  │                              │◄───────────────────────────│
+  │ OK                           │                            │
+  │◄─────────────────────────────│                            │
+```
+
+### Policies & Actions
+
+Permissions are defined in `policies.json`. Instead of writing complex NATS subject rules, you use high-level **Actions**.
+
+| Action Group | Actions | Description |
+|---|---|---|
+| **Core NATS** | `nats.pub`, `nats.sub` | Publish and subscribe to subjects. |
+| | `nats.service` | Subscribe and respond (Req/Reply service). |
+| **JetStream** | `js.view` | View stream and consumer details (read-only info). |
+| | `js.consume` | Consume messages from streams. |
+| | `js.manage` | Create, update, delete streams and consumers. |
+| **Key-Value** | `kv.read` | Get values from buckets. |
+| | `kv.edit` | Put and delete values in buckets. |
+| | `kv.view` | detailed bucket info (read-only). |
+
+See [POLICY.md](./POLICY.md) for the full specification.
+
+### Variable Interpolation
+
+Policies can use variables to create dynamic, user-scoped permissions:
+
+*   `nats:user.{{ user.id }}.>` - Private subject for the user.
+*   `kv:private_{{ user.account }}` - Private bucket for the account.
+
+## Configuration
+
+nauts is configured via a JSON file defining the account mode, policy storage, and auth providers.
+
+### Example: Static Mode
+
+```json
+{
+  "account": {
+    "type": "static",
+    "static": {
+      "publicKey": "ACONFIG...", 
+      "privateKeyPath": "issuer.nk",
+      "accounts": ["APP", "SYS"]
+    }
+  },
+  "policy": {
+    "type": "file",
+    "file": {
+      "policiesPath": "policies.json",
+      "bindingsPath": "bindings.json"
+    }
+  },
+  "auth": {
+    "file": [{ "id": "local", "accounts": ["APP"], "userPath": "users.json" }]
+  }
+}
+```
+
+## Identity Providers
+
+nauts supports plugging in different identity providers.
+
+### File Provider
+Simple `users.json` file with bcrypt-hashed passwords. Good for service accounts or small setups.
+
+### JWT Provider
+Validates OIDC/JWT tokens from external Identity Providers (Keycloak, Auth0, Okta). Application authentication is handled by your IdP; nauts just enforces the permissions based on the token's claims.
+
+```json
+"auth": {
+  "jwt": [{
+    "id": "keycloak",
+    "accounts": ["tenant-*"],
+    "issuer": "https://idp.example.com",
+    "publicKey": "...",
+    "rolesClaimPath": "realm_access.roles"
+  }]
+}
+```
+
+## Documentation
+
+- [POLICY.md](./POLICY.md) - Detailed Policy and Action reference.
+- [IMPLEMENTATION.md](./IMPLEMENTATION.md) - Internal architecture and package details.
+- [e2e/](./e2e/README.md) - End-to-End tests and setups.
+
+## License
+
+MIT

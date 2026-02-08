@@ -1,0 +1,36 @@
+{
+  "users": {
+    "admin": {
+      "accounts": ["POLICY"],
+      "roles": ["POLICY.admin"],
+      "passwordHash": "$2a$10$yRjAZrdk2RhF0LB/Hf2b5./.06Alk8Zy1Pis8acjM298NPSTB/iwi"
+    },
+    "writer": {
+      "accounts": ["POLICY"],
+      "roles": ["POLICY.writer"],
+      "passwordHash": "$2a$10$yRjAZrdk2RhF0LB/Hf2b5./.06Alk8Zy1Pis8acjM298NPSTB/iwi"
+    },
+    "reader": {
+      "accounts": ["POLICY"],
+      "roles": ["POLICY.reader"],
+      "passwordHash": "$2a$10$yRjAZrdk2RhF0LB/Hf2b5./.06Alk8Zy1Pis8acjM298NPSTB/iwi"
+    },
+    "service": {
+      "accounts": ["POLICY"],
+      "roles": ["POLICY.service"],
+      "passwordHash": "$2a$10$yRjAZrdk2RhF0LB/Hf2b5./.06Alk8Zy1Pis8acjM298NPSTB/iwi"
+    },
+    "alice": {
+      "id": "alice",
+      "accounts": ["POLICY"],
+      "roles": ["POLICY.user"],
+      "passwordHash": "$2a$10$yRjAZrdk2RhF0LB/Hf2b5./.06Alk8Zy1Pis8acjM298NPSTB/iwi"
+    },
+    "bob": {
+      "id": "bob",
+      "accounts": ["POLICY"],
+      "roles": ["POLICY.user"],
+      "passwordHash": "$2a$10$yRjAZrdk2RhF0LB/Hf2b5./.06Alk8Zy1Pis8acjM298NPSTB/iwi"
+    }
+  }
+}
