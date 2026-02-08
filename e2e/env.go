@@ -191,6 +191,67 @@ func (e *TestEnv) GenerateJWT(t *testing.T, roles []string, sub string) string {
 	return signed
 }
 
+// GenerateAwsSigV4Token generates an AWS SigV4 token by calling the helper script
+// that uses AWS CLI to create a signed GetCallerIdentity request.
+// Returns a JSON token with {authorization, date, securityToken}.
+func (e *TestEnv) GenerateAwsSigV4Token(t *testing.T, profile string) string {
+	t.Helper()
+
+	// baseDir is like "./connection-static", so go up to e2e dir, then to common
+	scriptPath := filepath.Join("..", "common", "generate-aws-token.sh")
+	cmd := exec.Command(scriptPath, profile)
+	cmd.Dir = e.baseDir
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("failed to generate AWS SigV4 token: %v\nOutput: %s", err, string(output))
+	}
+
+	// Output should be JSON token
+	token := string(output)
+	// Trim whitespace
+	for len(token) > 0 && (token[0] == ' ' || token[0] == '\n' || token[0] == '\r' || token[0] == '\t') {
+		token = token[1:]
+	}
+	for len(token) > 0 && (token[len(token)-1] == ' ' || token[len(token)-1] == '\n' || token[len(token)-1] == '\r' || token[len(token)-1] == '\t') {
+		token = token[:len(token)-1]
+	}
+
+	if token == "" || token[0] != '{' {
+		t.Fatalf("invalid AWS SigV4 token output: %s", string(output))
+	}
+
+	return token
+}
+
+// ConnectWithAwsSigV4 connects to NATS using AWS SigV4 authentication.
+// The token parameter is expected to be a JSON string like:
+// {"authorization":"...","date":"...","securityToken":"..."}
+func (e *TestEnv) ConnectWithAwsSigV4(token string, account string, providerID string) (*nats.Conn, error) {
+	// Escape the token JSON for embedding in outer JSON
+	// token is already a JSON string, so we need to escape it as a string value
+	apOpt := ""
+	if providerID != "" {
+		apOpt = fmt.Sprintf(`,"ap":%q`, providerID)
+	}
+
+	// Embed the token JSON string as a string (not parse it)
+	tokenJson := fmt.Sprintf(`{"account":%q,"token":%q%s}`, account, token, apOpt)
+
+	opts := []nats.Option{
+		nats.Name(fmt.Sprintf("nauts-e2e-test-aws-%s", account)),
+		nats.Token(tokenJson),
+		nats.Timeout(2 * time.Second),
+		nats.CustomInboxPrefix(fmt.Sprintf("_INBOX_%s", account)),
+	}
+
+	if e.credsFile != "" {
+		opts = append(opts, nats.UserCredentials(e.credsFile))
+	}
+
+	return nats.Connect(fmt.Sprintf("nats://localhost:%d", e.port), opts...)
+}
+
 func SubscribeSyncWithCheck(nc *nats.Conn, subject string) (*nats.Subscription, error) {
 	errCh := make(chan error, 1)
 	nc.SetErrorHandler(func(_ *nats.Conn, _ *nats.Subscription, err error) {

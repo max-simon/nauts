@@ -17,7 +17,7 @@ nauts is a framework for scalable, human-friendly permission management for [NAT
 - **Policy-Based Access Control**: Define permissions using intuitive policies with actions like `nats.pub`, `js.consume`, `kv.read` instead of raw NATS subjects.
 - **Role-Based Authorization**: Assign policies to roles, and roles to users via account-scoped role bindings.
 - **Variable Interpolation**: Scope resources dynamically with `{{ user.id }}`, `{{ user.account }}`, `{{ role.name }}`.
-- **Multiple Identity Providers**: Authenticate users via file-based credentials, external JWTs (Keycloak, Auth0, etc.), or custom providers.
+- **Multiple Identity Providers**: Authenticate users via file-based credentials, external JWTs (Keycloak, Auth0, Okta), AWS SigV4 (IAM roles), or custom providers.
 - **NATS Auth Callout**: Built-in service implementing [NATS auth callout protocol](https://docs.nats.io/running-a-nats-service/configuration/securing_nats/auth_callout).
 - **Operator & Static Modes**: Works with NATS operator/account hierarchies or simple single-key deployments.
 
@@ -75,16 +75,18 @@ Client                      NATS Server                     nauts
 
 Permissions are defined in `policies.json`. Instead of writing complex NATS subject rules, you use high-level **Actions**.
 
-| Action Group | Actions | Description |
+| Category | Actions | Description |
 |---|---|---|
-| **Core NATS** | `nats.pub`, `nats.sub` | Publish and subscribe to subjects. |
+| **Core NATS** | `nats.pub` | Publish messages to subjects. |
+| | `nats.sub` | Subscribe to subjects (including queues). |
 | | `nats.service` | Subscribe and respond (Req/Reply service). |
 | **JetStream** | `js.view` | View stream and consumer details (read-only info). |
 | | `js.consume` | Consume messages from streams. |
 | | `js.manage` | Create, update, delete streams and consumers. |
-| **Key-Value** | `kv.read` | Get values from buckets. |
+| **Key-Value** | `kv.read` | Get values from buckets (including watches). |
 | | `kv.edit` | Put and delete values in buckets. |
-| | `kv.view` | detailed bucket info (read-only). |
+| | `kv.view` | View bucket details (read-only info). |
+| | `kv.manage` | Create, update, delete buckets. |
 
 See [POLICY.md](./POLICY.md) for the full specification.
 
@@ -126,7 +128,7 @@ nauts is configured via a JSON file defining the account mode, policy storage, a
 
 ## Identity Providers
 
-nauts supports plugging in different identity providers.
+nauts supports plugging in different identity providers (you can configure more than one).
 
 ### File Provider
 Simple `users.json` file with bcrypt-hashed passwords. Good for service accounts or small setups.
@@ -142,6 +144,22 @@ Validates OIDC/JWT tokens from external Identity Providers (Keycloak, Auth0, Okt
     "issuer": "https://idp.example.com",
     "publicKey": "...",
     "rolesClaimPath": "realm_access.roles"
+  }]
+}
+
+```
+
+### AWS SigV4 Provider
+Authenticates AWS workloads using IAM role identity via SigV4-signed requests to AWS STS `GetCallerIdentity`. AWS role names must follow: `nauts.<nats-account>.<nats-role>`.
+
+```json
+"auth": {
+  "aws": [{
+    "id": "aws-us-east-1",
+    "accounts": ["prod-*"],
+    "region": "us-east-1",
+    "maxClockSkew": "5m",
+    "awsAccount": "123456789012"
   }]
 }
 ```

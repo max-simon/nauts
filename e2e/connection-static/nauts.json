@@ -2,7 +2,7 @@
   "account": {
     "type": "static",
     "static": {
-      "publicKey": "ACUO5UY727C6OCANG2KYERNTJXYC6KJXBZZK5EOXSCUEVNFCJ6MEE6NH",
+      "publicKey": "ACQGA2SA5L3J2BPW3LXFTXKSJ3KHXY7IAAPELKN2OWTFOBZIEAAG7GWU",
       "privateKeyPath": "./account-AUTH.nk",
       "accounts": [
         "AUTH", "APP", "APP2"
@@ -31,6 +31,13 @@
         "issuer": "e2e",
         "rolesClaimPath": "nauts.roles",
         "publicKey": "LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KTUlJQklqQU5CZ2txaGtpRzl3MEJBUUVGQUFPQ0FROEFNSUlCQ2dLQ0FRRUFrL2NEeTZ6NExCajZDcVFSckR6TgpSRDl4elBMakZmRXNyZ1A4RjhXV0pITHlLemRUcWxkOVhVcXJqbmNEamR6YzhiSzJoTzVDV25tYjJJYllqNW51CnF2VWNreldMRVJuWFhoUVFVSk1xVDg0MEJFdENuMitHVTgycE1tcnlaWjhBV1lnT1pzdHFwc2VMOUZidUd3blcKRzZOT2RYQXE1VmxLcjY3alU0bjJqSis2a0cyRXBaQnlVNHJ5TDkwaWJkUE9Gb1VSZlI0bkVvVkJjakVETU1ncQo1dTBsbEtORGlvMHdZL3NQYXhUM0tBV2ZOWklCOHYwbFo3c1pnb2FYSHl6N1ZVZ3BhUm5aSys1UnRWMHgrQ0w1CkJtNUVTbDBGMEVWSDFweHF2ZGhac005bWt0NVZDZ0ZqV1NCQXpXNTJIaW4zTFEyVkF4MUdCV2ZQZXpZQ3VYUzAKWXdJREFRQUIKLS0tLS1FTkQgUFVCTElDIEtFWS0tLS0tCg=="
+      }
+    ],
+    "aws": [
+      {
+        "id": "intro-aws",
+        "accounts": ["APP"],
+        "awsAccount": "753923037904"
       }
     ]
   },

@@ -49,10 +49,11 @@ type PolicyConfig struct {
 
 // AuthConfig configures the authentication providers.
 //
-// Multiple providers can be configured (file and/or jwt). Each provider must have a unique id.
+// Multiple providers can be configured (file, jwt, and/or aws). Each provider must have a unique id.
 type AuthConfig struct {
 	JWT  []JwtAuthProviderConfig  `json:"jwt,omitempty"`
 	File []FileAuthProviderConfig `json:"file,omitempty"`
+	Aws  []AwsAuthProviderConfig  `json:"aws,omitempty"`
 }
 
 type JwtAuthProviderConfig struct {
@@ -71,6 +72,15 @@ type FileAuthProviderConfig struct {
 	Accounts []string `json:"accounts"`
 	// UsersPath is the path to the users JSON file.
 	UsersPath string `json:"userPath"`
+}
+
+type AwsAuthProviderConfig struct {
+	ID string `json:"id"`
+
+	Accounts     []string      `json:"accounts"`
+	Region       string        `json:"region,omitempty"`
+	MaxClockSkew time.Duration `json:"maxClockSkew,omitempty"`
+	AWSAccount   string        `json:"awsAccount"`
 }
 
 // ServerConfig configures the auth callout service.
@@ -175,7 +185,7 @@ func (c *Config) Validate() error {
 	}
 
 	// Validate identity config
-	providerCount := len(c.Auth.JWT) + len(c.Auth.File)
+	providerCount := len(c.Auth.JWT) + len(c.Auth.File) + len(c.Auth.Aws)
 	if providerCount == 0 {
 		return fmt.Errorf("auth must contain at least one authentication provider")
 	}
@@ -212,6 +222,24 @@ func (c *Config) Validate() error {
 		}
 		if len(p.Accounts) == 0 {
 			return fmt.Errorf("auth.jwt[%s].accounts must contain at least one account", p.ID)
+		}
+	}
+	for i, p := range c.Auth.Aws {
+		if strings.TrimSpace(p.ID) == "" {
+			return fmt.Errorf("auth.aws[%d].id is required", i)
+		}
+		if _, ok := ids[p.ID]; ok {
+			return fmt.Errorf("auth providers contain duplicate id: %s", p.ID)
+		}
+		ids[p.ID] = struct{}{}
+		if len(p.Accounts) == 0 {
+			return fmt.Errorf("auth.aws[%s].accounts must contain at least one account", p.ID)
+		}
+		if strings.TrimSpace(p.AWSAccount) == "" {
+			return fmt.Errorf("auth.aws[%s].awsAccount is required", p.ID)
+		}
+		if p.AWSAccount == "*" || strings.Contains(p.AWSAccount, "*") {
+			return fmt.Errorf("auth.aws[%s].awsAccount must not contain wildcards", p.ID)
 		}
 	}
 
@@ -299,6 +327,18 @@ func NewAuthControllerWithConfig(config *Config, opts ...ControllerOption) (*Aut
 			return nil, fmt.Errorf("initializing jwt authentication provider %q: %w", jc.ID, err)
 		}
 		providers[jc.ID] = p
+	}
+	for _, ac := range config.Auth.Aws {
+		p, err := identity.NewAwsSigV4AuthenticationProvider(identity.AwsSigV4AuthenticationProviderConfig{
+			Accounts:     ac.Accounts,
+			Region:       ac.Region,
+			MaxClockSkew: ac.MaxClockSkew,
+			AWSAccount:   ac.AWSAccount,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("initializing aws authentication provider %q: %w", ac.ID, err)
+		}
+		providers[ac.ID] = p
 	}
 
 	authProviders, err := identity.NewAuthenticationProviderManager(providers)

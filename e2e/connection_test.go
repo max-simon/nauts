@@ -52,6 +52,16 @@ func RunNatsConnectionTestProcedure(t *testing.T, dir string, mode string, port 
 			nc.Close()
 		})
 
+		t.Run("david can authenticate with AWS SigV4", func(t *testing.T) {
+			// Generate AWS SigV4 token using the nauts-role-APP-consumer profile
+			token := env.GenerateAwsSigV4Token(t, "nauts-role-APP-consumer")
+			nc, err := env.ConnectWithAwsSigV4(token, "APP", "intro-aws")
+			if err != nil {
+				t.Fatalf("David failed to authenticate with AWS SigV4: %v", err)
+			}
+			nc.Close()
+		})
+
 		t.Run("alice can not publish to e2e.mytest", func(t *testing.T) {
 			nc, err := env.ConnectWithUsernameAndPassword("alice", "secret", "APP", "intro-file")
 			if err != nil {

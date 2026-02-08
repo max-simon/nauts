@@ -93,6 +93,10 @@ Start with the system overview, then work through standalone components before d
 6. **[auth-controller-callout](2026-02-06-auth-controller-callout.md)** — AuthController, CalloutService (depends on all)
 7. **[cli](2026-02-08-cli.md)** — Command-line interface (depends on auth)
 
+### Additional Specifications (Draft/Proposed)
+
+- **[aws-sigv4-authentication](2026-02-08-aws-sigv4-authentication.md)** — AWS IAM role-based authentication provider (Draft)
+
 ### For code agents
 
 When working on a feature:
@@ -208,6 +212,12 @@ Use this when a component needs more structure (method tables, error catalogs, f
 - Date: When the spec was created or last major revision
 - Component name: Lowercase, hyphen-separated, descriptive
 - Examples: `2026-02-06-policy-engine.md`, `2026-02-06-system-overview.md`
+
+## Implementation plans
+
+Implementation plans for specifications should be stored in `specs/plans/` with the naming convention `<spec-name>-implementation-plan.md`. These plans break down the specification into executable tasks with estimates, dependencies, and testing requirements.
+
+Example: `specs/plans/aws-sigv4-implementation-plan.md`
 
 ## Maintaining specs
 

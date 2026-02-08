@@ -19,7 +19,7 @@ func TestPoliciesNats(t *testing.T) {
 		return
 	}
 
-	WithTestEnv(t, "policy-static", "static", 4230, func(t *testing.T, env *TestEnv) {
+	WithTestEnv(t, "policy-static", "static", 4232, func(t *testing.T, env *TestEnv) {
 
 		t.Run("admin can pub/sub to all subjects", func(t *testing.T) {
 			nc, err := env.ConnectWithUsernameAndPassword("admin", "secret", "POLICY", "policy-file")
