@@ -213,6 +213,12 @@ Use this when a component needs more structure (method tables, error catalogs, f
 - Component name: Lowercase, hyphen-separated, descriptive
 - Examples: `2026-02-06-policy-engine.md`, `2026-02-06-system-overview.md`
 
+## Implementation plans
+
+Implementation plans for specifications should be stored in `specs/plans/` with the naming convention `<spec-name>-implementation-plan.md`. These plans break down the specification into executable tasks with estimates, dependencies, and testing requirements.
+
+Example: `specs/plans/aws-sigv4-implementation-plan.md`
+
 ## Maintaining specs
 
 ### When to update a spec
