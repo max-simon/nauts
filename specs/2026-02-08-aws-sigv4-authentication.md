@@ -47,7 +47,7 @@ The `AwsSigV4AuthenticationProvider` accepts AWS SigV4 signature headers, calls 
 | **Session name in User.ID** | For assumed roles, the full ARN includes session name (e.g., EC2 instance ID). This makes each authentication unique and enables proper audit trails. Different sessions = different User.ID values. |
 | **Region extraction from signature** | SigV4 Authorization header contains region in credential scope. Extract region from signature if not configured. If region is configured, validate signature uses that region (security check against region confusion attacks). |
 | **Token format: Simplified headers** | Client sends only essential SigV4 headers (Authorization, X-Amz-Date, optional X-Amz-Security-Token) in JSON. Simpler than full HTTP request reconstruction. Nauts builds minimal GetCallerIdentity request from these headers. |
-| **AllowedAWSAccounts required** | Must be non-empty and cannot contain wildcards. Prevents unauthorized AWS accounts from creating `nauts.X.Y` roles and gaining access. Security by default. |
+| **AllowedAWSAccounts required** | Single AWS account per provider. Each provider is bound to exactly one AWS account ID. This simplifies configuration and makes security boundaries explicit. For multiple AWS accounts, create multiple provider instances. |
 | **Enforce AuthRequest.Account matching** | Validate `AuthRequest.Account` matches the NATS account extracted from role name. Prevents confused deputy attacks where client requests wrong account. |
 | **No caching** | Every authentication calls AWS STS. Future enhancement could cache valid ARNs with TTL, but initial implementation prioritizes correctness over performance. |
 
@@ -78,11 +78,11 @@ type AwsSigV4AuthenticationProviderConfig struct {
     // and current time (default: 5 minutes)
     MaxClockSkew time.Duration `json:"maxClockSkew,omitempty"`
     
-    // AllowedAWSAccounts restricts which AWS account IDs are accepted.
-    // REQUIRED: Must be non-empty. Must be exact 12-digit AWS account IDs.
+    // AWSAccount is the AWS account ID that is allowed to authenticate.
+    // REQUIRED: Must be a 12-digit AWS account ID.
     // Wildcards are NOT allowed.
-    // Example: ["123456789012", "987654321098"]
-    AllowedAWSAccounts []string `json:"allowedAwsAccounts"`
+    // Example: "123456789012"
+    AWSAccount string `json:"awsAccount"`
 }
 ```
 
@@ -117,7 +117,7 @@ The `AuthRequest.Token` field contains a JSON object with essential AWS SigV4 he
         "accounts": ["prod-*", "staging-*"],
         "region": "us-east-1",
         "maxClockSkew": "5m",
-        "allowedAwsAccounts": ["123456789012", "987654321098"]
+        "awsAccount": "123456789012"
       }
     ]
   }
@@ -138,7 +138,7 @@ The `AuthRequest.Token` field contains a JSON object with essential AWS SigV4 he
         "id": "aws-multi-region",
         "accounts": ["prod-*"],
         "maxClockSkew": "5m",
-        "allowedAwsAccounts": ["123456789012"]
+        "awsAccount": "123456789012"
       }
     ]
   }
@@ -159,13 +159,13 @@ The `AuthRequest.Token` field contains a JSON object with essential AWS SigV4 he
         "id": "aws-us-east-1",
         "accounts": ["prod-us"],
         "region": "us-east-1",
-        "allowedAwsAccounts": ["123456789012"]
+        "awsAccount": "123456789012"
       },
       {
         "id": "aws-eu-west-1",
         "accounts": ["prod-eu"],
         "region": "eu-west-1",
-        "allowedAwsAccounts": ["123456789012"]
+        "awsAccount": "123456789012"
       }
     ]
   }
@@ -173,6 +173,30 @@ The `AuthRequest.Token` field contains a JSON object with essential AWS SigV4 he
 ```
 
 **Use case:** Separate NATS accounts per region with region enforcement
+
+### Multi-Account Example
+```json
+{
+  "auth": {
+    "aws": [
+      {
+        "id": "aws-account-1",
+        "accounts": ["prod-*"],
+        "region": "us-east-1",
+        "awsAccount": "123456789012"
+      },
+      {
+        "id": "aws-account-2",
+        "accounts": ["dev-*"],
+        "region": "us-east-1",
+        "awsAccount": "987654321098"
+      }
+    ]
+  }
+}
+```
+
+**Use case:** Multiple AWS accounts mapping to different NATS accounts
 
 ---
 
@@ -310,7 +334,7 @@ User{
 | `ErrInvalidTokenType` | Token not in expected JSON format | 400 |
 | `ErrInvalidAccount` | Role name doesn't match requested NATS account | 403 |
 | `ErrInvalidRoleFormat` | AWS role name doesn't follow `nauts.<account>.<role>` pattern | 403 |
-| `ErrAWSAccountNotAllowed` | AWS account ID not in allowedAwsAccounts list | 403 |
+| `ErrAWSAccountNotAllowed` | AWS account ID does not match configured account | 403 |
 
 ### AWS API Errors
 
@@ -346,18 +370,19 @@ if now.Sub(requestTime).Abs() > maxClockSkew {
 
 **Problem:** Any AWS account can create role `nauts.prod.admin` and authenticate.
 
-**Solution:** `allowedAwsAccounts` whitelist (REQUIRED):
+**Solution:** Each provider is bound to a single AWS account (REQUIRED):
 ```json
 {
-  "allowedAwsAccounts": ["123456789012", "987654321098"]
+  "awsAccount": "123456789012"
 }
 ```
 
 **Enforcement:**
-- Provider constructor MUST validate `allowedAwsAccounts` is non-empty
+- Provider constructor MUST validate `awsAccount` is not empty
 - Provider constructor MUST reject wildcard values (\"*\")
-- Each AWS account ID must be exactly 12 digits
-- Authentication MUST verify caller's AWS account is in the list
+- AWS account ID must be exactly 12 digits
+- Authentication MUST verify caller's AWS account matches configured account
+- For multiple AWS accounts, create multiple provider instances
 Region Configuration - Required or optional?** ✅ **RESOLVED**
    - **Decision:** Region is OPTIONAL in configuration
    - If not specified: Extract region from Authorization header credential scope
@@ -396,8 +421,8 @@ Reject if validation fails.
    - Can two different AWS accounts both have `nauts.prod.admin` roles?
    - Would they get same NATS permissions? (Yes)
    - Is this a security issue? (Yes, without restrictions)
-   - ✅ **Decision:** `allowedAwsAccounts` MUST be non-empty and MUST NOT contain wildcards
-   - **Validation:** Provider constructor fails if `allowedAwsAccounts` is empty or contains "*"
+   - ✅ **Decision:** Each provider is bound to a single AWS account (one-to-one mapping)
+   - **Multi-account support:** Create multiple provider instances, one per AWS account
 
 5. **Session Name Handling**
    - Assumed roles have format: `assumed-role/nauts.X.Y/session-name`

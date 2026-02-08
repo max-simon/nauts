@@ -100,29 +100,32 @@
 **Dependencies:** Task 1.2  
 **Estimated:** 1.5 hours
 
-### Task 1.5: Integrate AWS SDK for STS
-- [ ] Add dependency: `github.com/aws/aws-sdk-go-v2/service/sts`
-- [ ] Update `go.mod` and run `go mod tidy`
-- [ ] Create AWS STS client factory
-- [ ] Configure client with region (from config or extracted)
-- [ ] Set reasonable timeout (5 seconds recommended)
-- [ ] Configure retry policy
+### Task 1.5: Integrate AWS STS via HTTP ✅ COMPLETE
+- [x] Implement direct HTTP request to STS endpoint
+- [x] Build POST request with form-encoded body
+- [x] Set SigV4 headers from token (Authorization, X-Amz-Date, X-Amz-Security-Token)
+- [x] Parse XML response from AWS STS
+- [x] Handle AWS error responses
+- [x] Map AWS error codes to nauts errors
+- [x] Set 5-second timeout for HTTP client
 
-**Files:** `go.mod`, `identity/aws_sigv4_authentication_provider.go`  
+**Decision:** Use direct HTTP requests instead of AWS SDK to avoid dependency bloat.  
+**Files:** `identity/aws_sigv4_authentication_provider.go`  
 **Dependencies:** Task 1.4  
-**Estimated:** 2 hours
+**Completed:** 2026-02-08
 
-### Task 1.6: Implement STS GetCallerIdentity Call
-- [ ] Reconstruct HTTP request from token headers
-- [ ] Build GetCallerIdentity request with SigV4 headers
-- [ ] Call AWS STS GetCallerIdentity
-- [ ] Handle AWS SDK errors (map to nauts errors)
-- [ ] Extract ARN from response
-- [ ] Log STS call duration for monitoring
+### Task 1.6: Implement STS GetCallerIdentity Call ✅ COMPLETE
+- [x] Build HTTP POST request to https://sts.{region}.amazonaws.com/
+- [x] Set request body: Action=GetCallerIdentity&Version=2011-06-15
+- [x] Inject SigV4 headers from token
+- [x] Parse XML response structure (GetCallerIdentityResponse)
+- [x] Handle AWS error responses (ErrorResponse XML)
+- [x] Extract ARN from response
+- [x] Map AWS error codes to nauts errors (InvalidClientTokenId, SignatureDoesNotMatch, etc.)
 
 **Files:** `identity/aws_sigv4_authentication_provider.go`  
 **Dependencies:** Task 1.5  
-**Estimated:** 3 hours
+**Completed:** 2026-02-08
 
 ### Task 1.7: Implement ARN Parsing
 - [ ] Implement `parseRoleARN(arn string) (*parsedARN, error)`
@@ -558,8 +561,8 @@
 - Phase 6 (docs) can be written alongside implementation
 - Phase 4 (integration tests) can be done while unit tests are written
 
-### Dependencies to Add
-- `github.com/aws/aws-sdk-go-v2/service/sts`
+
+**None** - Uses only Go standard library (encoding/json, encoding/xml, net/http, time, regexp, strings)/sts`
 - `github.com/aws/aws-sdk-go-v2/config`
 
 ### Success Criteria
