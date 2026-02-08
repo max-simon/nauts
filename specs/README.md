@@ -93,6 +93,10 @@ Start with the system overview, then work through standalone components before d
 6. **[auth-controller-callout](2026-02-06-auth-controller-callout.md)** — AuthController, CalloutService (depends on all)
 7. **[cli](2026-02-08-cli.md)** — Command-line interface (depends on auth)
 
+### Additional Specifications (Draft/Proposed)
+
+- **[aws-sigv4-authentication](2026-02-08-aws-sigv4-authentication.md)** — AWS IAM role-based authentication provider (Draft)
+
 ### For code agents
 
 When working on a feature:
