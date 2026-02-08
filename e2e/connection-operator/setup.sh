@@ -92,6 +92,13 @@ cat > nauts.json <<EOF
         "rolesClaimPath": "nauts.roles",
         "publicKey": "$RSA_PUB_B64"
       }
+    ],
+    "aws": [
+      {
+        "id": "intro-aws",
+        "accounts": ["APP"],
+        "awsAccount": "753923037904"
+      }
     ]
   },
   "server": {
