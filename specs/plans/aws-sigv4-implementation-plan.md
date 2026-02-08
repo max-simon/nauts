@@ -6,13 +6,13 @@
 
 ---
 
-## Phase 0: Pre-Implementation Decisions
+## Phase 0: Pre-Implementation Decisions ✅ COMPLETE
 
-**Must be completed before starting implementation.**
+**All critical decisions have been made and documented in the specification.**
 
-### Task 0.1: Resolve Token Format ⭐ BLOCKING
-- [ ] Review token format options in spec (Section: Ambiguities #1)
-- [ ] Decision: Use Option B (simplified headers)
+### Task 0.1: Resolve Token Format ✅ COMPLETE
+- [x] Review token format options in spec (Section: Ambiguities #1)
+- [x] **Decision: Use Option B (simplified headers)**
   ```json
   {
     "authorization": "AWS4-HMAC-SHA256 Credential=...",
@@ -20,28 +20,35 @@
     "securityToken": "IQoJb3..."  // Optional
   }
   ```
-- [ ] Document decision in spec
-- [ ] Update spec with final token schema
+- [x] Document decision in spec
+- [x] Update spec with final token schema
 
 **Owner:** @max-simon  
-**Deadline:** Before starting implementation
+**Completed:** 2026-02-08
 
-### Task 0.2: Confirm Security Model ⭐ BLOCKING
-- [ ] Review `allowedAwsAccounts` requirement (Spec: Ambiguities #4)
-- [ ] Decision: Require `allowedAwsAccounts` (non-empty)
-- [ ] OR: Make optional but document security risk
-- [ ] Update provider config validation logic in spec
-
-**Owner:** @max-simon + Security Review  
-**Deadline:** Before starting implementation
-
-### Task 0.3: Confirm Validation Behavior ⭐ BLOCKING
-- [ ] Review `AuthRequest.Account` validation (Spec: Ambiguities #3)
-- [ ] Decision: Require match between AuthRequest.Account and extracted account
-- [ ] Update spec with validation logic
+### Task 0.2: Confirm Security Model ✅ COMPLETE
+- [x] Review `allowedAwsAccounts` requirement (Spec: Ambiguities #4)
+- [x] **Decision: `allowedAwsAccounts` MUST be non-empty and MUST NOT contain wildcards**
+- [x] Update provider config validation logic in spec
+- [x] Validation requirements:
+  - Constructor fails if `allowedAwsAccounts` is empty
+  - Constructor fails if any entry is "*" or contains wildcards
+  - Each entry must be exactly 12-digit AWS account ID
 
 **Owner:** @max-simon  
-**Deadline:** Before starting implementation
+**Completed:** 2026-02-08
+
+### Task 0.3: Confirm Validation Behavior ✅ COMPLETE
+- [x] Review `AuthRequest.Account` validation (Spec: Ambiguities #3)
+- [x] **Decision: Validate match between AuthRequest.Account and extracted account**
+- [x] Update spec with validation logic
+- [x] Implementation requirement:
+  - Fail authentication if `AuthRequest.Account != extracted_account_from_role_name`
+  - Return `ErrInvalidAccount` error
+  - Prevents confused deputy attacks
+
+**Owner:** @max-simon  
+**Completed:** 2026-02-08
 
 ---
 
@@ -207,8 +214,9 @@
 - [ ] Validate required fields in `AwsAuthProviderConfig`
 - [ ] Validate region format (if provided)
 - [ ] Validate maxClockSkew is positive
+- [ ] Validate allowedAwsAccounts is non-empty (REQUIRED)
+- [ ] Validate allowedAwsAccounts contains no wildcards ("*")
 - [ ] Validate allowedAwsAccounts format (12-digit numbers)
-- [ ] Validate accounts list is not empty
 
 **Files:** `auth/config.go`  
 **Dependencies:** Task 2.1  

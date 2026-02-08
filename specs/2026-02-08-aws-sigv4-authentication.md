@@ -46,6 +46,9 @@ The `AwsSigV4AuthenticationProvider` accepts AWS SigV4 signature headers, calls 
 | **AWS account ID as attribute** | Store AWS account ID separately from role name. Useful for audit logs and multi-account scenarios. |
 | **Session name in User.ID** | For assumed roles, the full ARN includes session name (e.g., EC2 instance ID). This makes each authentication unique and enables proper audit trails. Different sessions = different User.ID values. |
 | **Region extraction from signature** | SigV4 Authorization header contains region in credential scope. Extract region from signature if not configured. If region is configured, validate signature uses that region (security check against region confusion attacks). |
+| **Token format: Simplified headers** | Client sends only essential SigV4 headers (Authorization, X-Amz-Date, optional X-Amz-Security-Token) in JSON. Simpler than full HTTP request reconstruction. Nauts builds minimal GetCallerIdentity request from these headers. |
+| **AllowedAWSAccounts required** | Must be non-empty and cannot contain wildcards. Prevents unauthorized AWS accounts from creating `nauts.X.Y` roles and gaining access. Security by default. |
+| **Enforce AuthRequest.Account matching** | Validate `AuthRequest.Account` matches the NATS account extracted from role name. Prevents confused deputy attacks where client requests wrong account. |
 | **No caching** | Every authentication calls AWS STS. Future enhancement could cache valid ARNs with TTL, but initial implementation prioritizes correctness over performance. |
 
 ---
@@ -75,9 +78,11 @@ type AwsSigV4AuthenticationProviderConfig struct {
     // and current time (default: 5 minutes)
     MaxClockSkew time.Duration `json:"maxClockSkew,omitempty"`
     
-    // AllowedAWSAccounts optionally restricts which AWS account IDs are accepted.
-    // If empty, all AWS accounts are allowed.
-    AllowedAWSAccounts []string `json:"allowedAwsAccounts,omitempty"`
+    // AllowedAWSAccounts restricts which AWS account IDs are accepted.
+    // REQUIRED: Must be non-empty. Must be exact 12-digit AWS account IDs.
+    // Wildcards are NOT allowed.
+    // Example: ["123456789012", "987654321098"]
+    AllowedAWSAccounts []string `json:"allowedAwsAccounts"`
 }
 ```
 
@@ -90,28 +95,13 @@ func (p *AwsSigV4AuthenticationProvider) ManageableAccounts() []string
 
 ### Token Format
 
-The `AuthRequest.Token` field contains a JSON object with AWS SigV4 request headers:
+The `AuthRequest.Token` field contains a JSON object with essential AWS SigV4 headers (simplified format):
 
 ```json
 {
-  "method": "POST",
-  "url": "https://sts.amazonaws.com/",
-  "headers": {
-    "Authorization": "AWS4-HMAC-SHA256 Credential=ASIA.../20260208/us-east-1/sts/aws4_request, SignedHeaders=host;x-amz-date, Signature=...",
-    "Host": "sts.us-east-1.amazonaws.com",
-    "X-Amz-Date": "20260208T153045Z",
-    "X-Amz-Security-Token": "IQoJb3JpZ2luX2..."  // Optional, for temporary credentials
-  },
-  "body": "Action=GetCallerIdentity&Version=2011-06-15"
-}
-```
-
-**Alternative simpler format (if we standardize on POST to specific endpoint):**
-```json
-{
-  "authorization": "AWS4-HMAC-SHA256 Credential=...",
+  "authorization": "AWS4-HMAC-SHA256 Credential=AKIAIOSFODNN7EXAMPLE/20260208/us-east-1/sts/aws4_request, SignedHeaders=host;x-amz-date, Signature=abc123...",
   "date": "20260208T153045Z",
-  "securityToken": "IQoJb3..."  // Optional
+  "securityToken": "IQoJb3JpZ2luX2VjE..."  // Optional, for temporary credentials
 }
 ```
 
@@ -356,14 +346,18 @@ if now.Sub(requestTime).Abs() > maxClockSkew {
 
 **Problem:** Any AWS account can create role `nauts.prod.admin` and authenticate.
 
-**Solution:** `allowedAwsAccounts` whitelist:
+**Solution:** `allowedAwsAccounts` whitelist (REQUIRED):
 ```json
 {
-  "allowedAwsAccounts": ["123456789012"]
+  "allowedAwsAccounts": ["123456789012", "987654321098"]
 }
 ```
 
-If set, only roles from these AWS accounts accepted. If empty, all AWS accounts allowed (risky).
+**Enforcement:**
+- Provider constructor MUST validate `allowedAwsAccounts` is non-empty
+- Provider constructor MUST reject wildcard values (\"*\")
+- Each AWS account ID must be exactly 12 digits
+- Authentication MUST verify caller's AWS account is in the list
 Region Configuration - Required or optional?** ✅ **RESOLVED**
    - **Decision:** Region is OPTIONAL in configuration
    - If not specified: Extract region from Authorization header credential scope
@@ -383,26 +377,27 @@ Reject if validation fails.
 
 ### 🔴 Critical Ambiguities
 
-1. **Token Format - Which headers are required?**
-   - Option A: Full HTTP request (method, URL, headers, body)
-   - Option B: Just Authorization + X-Amz-Date + optional Security Token
-   - **Recommendation:** Option B is simpler. Specify exact fields needed.
+1. **Token Format - Which headers are required?** ✅ RESOLVED
+   - ~~Option A: Full HTTP request (method, URL, headers, body)~~
+   - ✅ **Option B: Just Authorization + X-Amz-Date + optional Security Token**
+   - **Decision:** Option B (simplified). Clients send only essential SigV4 headers in JSON format.
 
 2. **STS Endpoint - Which URL to use?**
    - Global: `https://sts.amazonaws.com` (simple but slower for non-US-East-1)
    - Regional: `https://sts.{region}.amazonaws.com` (faster but requires region config)
    - **Recommendation:** Regional with explicit config (`region` field required)
 
-3. **Requested Account Redundancy**
+3. **Requested Account Redundancy** ✅ RESOLVED
    - The `AuthRequest.Account` is redundant with the role name (which contains NATS account)
-   - Should we validate they match? Or ignore AuthRequest.Account?
-   - **Recommendation:** Validate match. Fail if `AuthRequest.Account != extracted_account`
+   - ✅ **Decision:** Validate match. Fail authentication if `AuthRequest.Account != extracted_account`
+   - **Rationale:** Prevents confused deputy attacks
 
-4. **Multiple AWS Accounts → Same NATS Account**
+4. **Multiple AWS Accounts → Same NATS Account** ✅ RESOLVED
    - Can two different AWS accounts both have `nauts.prod.admin` roles?
    - Would they get same NATS permissions? (Yes)
-   - Is this a security issue? (Depends on allowedAwsAccounts usage)
-   - **Recommendation:** Require `allowedAwsAccounts` to be set (fail if empty)
+   - Is this a security issue? (Yes, without restrictions)
+   - ✅ **Decision:** `allowedAwsAccounts` MUST be non-empty and MUST NOT contain wildcards
+   - **Validation:** Provider constructor fails if `allowedAwsAccounts` is empty or contains "*"
 
 5. **Session Name Handling**
    - Assumed roles have format: `assumed-role/nauts.X.Y/session-name`
