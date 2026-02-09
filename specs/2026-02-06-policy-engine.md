@@ -139,15 +139,9 @@ type Permission struct {
 
 #### Context types
 ```go
-type Context interface {
-    HasAttribute(path string) bool
-    GetAttribute(path string) (string, bool)
-}
-type UserContext struct { ID, Account string; Attributes map[string]string }
-type RoleContext struct { Name, Account string }
-type InterpolationContext struct { /* prefix → Context map */ }
+type PolicyContext struct { /* key/value claims for interpolation */ }
 ```
-`InterpolationContext` dispatches `"user.id"` → `UserContext.GetAttribute("id")`.
+`PolicyContext` stores a flat map of keys (e.g. `"user.id"`, `"account.id"`, `"role.name"`) to values.
 
 ### Functions
 
@@ -157,10 +151,10 @@ type InterpolationContext struct { /* prefix → Context map */ }
 | `ParseAndValidateResource` | `(s string) (*Resource, error)` | Parse + validate wildcards |
 | `ValidateResource` | `(n *Resource) error` | Validate wildcard rules per resource type |
 | `ResolveActions` | `(actions []Action) []Action` | Expand groups to flat list of atomic actions |
-| `InterpolateWithContext` | `(template string, ctx *InterpolationContext) InterpolationResult` | Replace `{{ var }}` placeholders |
+| `InterpolateWithContext` | `(template string, ctx *PolicyContext) InterpolationResult` | Replace `{{ var }}` placeholders |
 | `ContainsVariables` | `(s string) bool` | Quick check for template variables |
 | `MapActionToPermissions` | `(action Action, n *Resource) []Permission` | Convert (action, resource) → NATS permissions |
-| `Compile` | `(policies []*Policy, user *UserContext, role *RoleContext, perms *NatsPermissions) CompileResult` | Full compilation: expand → interpolate → parse → map → merge |
+| `Compile` | `(policies []*Policy, ctx *PolicyContext, perms *NatsPermissions) CompileResult` | Full compilation: expand → interpolate → parse → map → merge |
 
 ### Error Types
 

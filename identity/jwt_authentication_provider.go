@@ -195,10 +195,10 @@ func extractRoles(claims jwt.MapClaims, rolesClaimPath []string) ([]string, erro
 	return roles, nil
 }
 
-// parseJWTAccountRoles parses roles in format "<account>.<role>" to AccountRole objects.
+// parseJWTAccountRoles parses roles in format "<account>.<role>" to Role objects.
 // Invalid formats are skipped.
-func parseJWTAccountRoles(roles []string) []AccountRole {
-	var parsed []AccountRole
+func parseJWTAccountRoles(roles []string) []Role {
+	var parsed []Role
 	for _, roleID := range roles {
 		role, err := ParseRoleID(roleID)
 		if err != nil {

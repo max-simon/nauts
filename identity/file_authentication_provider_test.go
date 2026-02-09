@@ -21,7 +21,7 @@ func TestVerify_ValidCredentials(t *testing.T) {
 	if user.ID != "alice" {
 		t.Errorf("user.ID = %q, want %q", user.ID, "alice")
 	}
-	if len(user.Roles) != 1 || user.Roles[0].Account != "ACME" || user.Roles[0].Role != "workers" {
+	if len(user.Roles) != 1 || user.Roles[0].Account != "ACME" || user.Roles[0].Name != "workers" {
 		t.Errorf("user.Roles = %v, want [{ACME workers}]", user.Roles)
 	}
 }
@@ -99,7 +99,7 @@ func TestVerify_MultipleAccounts_WithAccountSpecified(t *testing.T) {
 	// Verify both accounts are present
 	accounts := make(map[string]string)
 	for _, role := range user.Roles {
-		accounts[role.Account] = role.Role
+		accounts[role.Account] = role.Name
 	}
 	if accounts["ACME"] != "admin" || accounts["CORP"] != "admin" {
 		t.Errorf("user.Roles = %v, want ACME.admin and CORP.admin", user.Roles)

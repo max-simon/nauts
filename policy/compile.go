@@ -20,18 +20,18 @@ type CompileResult struct {
 //
 // After calling Compile, the caller should call perms.Deduplicate()
 // when all policies are compiled.
-func Compile(policies []*Policy, user *UserContext, role *RoleContext, perms *NatsPermissions) CompileResult {
+func Compile(policies []*Policy, ctx *PolicyContext, perms *NatsPermissions) CompileResult {
 	result := CompileResult{}
 
 	// Always grant permission to subscribe to user's personalized inbox
-	if user != nil && user.ID != "" {
+	if userID, ok := ctx.Get("user.id"); ok {
 		// INBOX prefix is _INBOX_{{user.id}}
 		// We allow subscription to _INBOX_{{user.id}}.>
-		perms.Allow(Permission{Type: PermSub, Subject: "_INBOX_" + user.ID + ".>"})
+		perms.Allow(Permission{Type: PermSub, Subject: "_INBOX_" + userID + ".>"})
 	}
 
 	for _, pol := range policies {
-		policyResult := compilePolicy(pol, user, role, perms)
+		policyResult := compilePolicy(pol, ctx, perms)
 		result.Warnings = append(result.Warnings, policyResult.Warnings...)
 	}
 
@@ -39,7 +39,7 @@ func Compile(policies []*Policy, user *UserContext, role *RoleContext, perms *Na
 }
 
 // compilePolicy compiles a single policy with user and role context.
-func compilePolicy(pol *Policy, user *UserContext, role *RoleContext, perms *NatsPermissions) CompileResult {
+func compilePolicy(pol *Policy, ctx *PolicyContext, perms *NatsPermissions) CompileResult {
 	result := CompileResult{}
 
 	for _, stmt := range pol.Statements {
@@ -52,7 +52,7 @@ func compilePolicy(pol *Policy, user *UserContext, role *RoleContext, perms *Nat
 
 		// Process each resource
 		for _, resource := range stmt.Resources {
-			resourceResult := compileResource(resource, actions, user, role, perms)
+			resourceResult := compileResource(resource, actions, ctx, perms)
 			result.Warnings = append(result.Warnings, resourceResult.Warnings...)
 		}
 	}
@@ -61,15 +61,12 @@ func compilePolicy(pol *Policy, user *UserContext, role *RoleContext, perms *Nat
 }
 
 // compileResource compiles permissions for a single resource with the given actions.
-func compileResource(resource string, actions []Action, user *UserContext, role *RoleContext, perms *NatsPermissions) CompileResult {
+func compileResource(resource string, actions []Action, ctx *PolicyContext, perms *NatsPermissions) CompileResult {
 	result := CompileResult{}
 
 	// Interpolate variables if present
 	var resolvedResource string
 	if ContainsVariables(resource) {
-		ctx := &InterpolationContext{}
-		ctx.Add("user", user)
-		ctx.Add("role", role)
 		interpResult := InterpolateWithContext(resource, ctx)
 		if interpResult.Excluded {
 			result.Warnings = append(result.Warnings, "resource excluded: "+resource+" ("+interpResult.Warning+")")

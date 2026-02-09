@@ -19,7 +19,7 @@ The `identity` package defines the `AuthenticationProvider` interface, the `User
 
 ## Scope
 
-- `User` type and `AccountRole` type  
+- `User` type and `Role` type  
 - `AuthRequest` — the parsed authentication token  
 - `AuthenticationProvider` interface  
 - `FileAuthenticationProvider` — file-based username/password  
@@ -51,17 +51,17 @@ The `identity` package defines the `AuthenticationProvider` interface, the `User
 ```go
 type User struct {
     ID         string            `json:"id,omitempty"`
-    Roles      []AccountRole     `json:"roles"`
+  Roles      []Role            `json:"roles"`
     Attributes map[string]string `json:"attributes,omitempty"`
 }
 ```
 Normalized user identity. `Roles` are account-scoped. `Attributes` carry provider-specific data (e.g., email, department) used in variable interpolation.
 
-#### `AccountRole`
+#### `Role`
 ```go
-type AccountRole struct {
+type Role struct {
     Account string `json:"account"`
-    Role    string `json:"role"`
+  Name    string `json:"role"`
 }
 ```
 A role scoped to a NATS account.
@@ -121,7 +121,7 @@ func (fp *FileAuthenticationProvider) ManageableAccounts() []string
 2. Look up user by username → `ErrUserNotFound`
 3. bcrypt verify password → `ErrInvalidCredentials`
 4. Check requested account is in user's `accounts` list → `ErrInvalidAccount`
-5. Parse role strings into `[]AccountRole`, skip invalid formats
+5. Parse role strings into `[]Role`, skip invalid formats
 6. Return `User` with all roles (not filtered by account)
 
 #### `JwtAuthenticationProvider`
@@ -172,9 +172,9 @@ func (m *AuthenticationProviderManager) Verify(ctx context.Context, req AuthRequ
 ### Utility
 
 ```go
-func ParseRoleID(roleID string) (AccountRole, error)
+func ParseRoleID(roleID string) (Role, error)
 ```
-Parses `"APP.admin"` → `AccountRole{Account: "APP", Role: "admin"}`. Returns error if format is invalid.
+Parses `"APP.admin"` → `Role{Account: "APP", Name: "admin"}`. Returns error if format is invalid.
 
 ### Sentinel Errors
 

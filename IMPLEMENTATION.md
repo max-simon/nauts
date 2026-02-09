@@ -12,7 +12,7 @@ nauts/
 ├── policy/                 # Policy types, compilation, interpolation
 │   ├── action.go           # Action types and group expansion
 │   ├── compile.go          # Compile() function
-│   ├── context.go          # UserContext, RoleContext
+│   ├── context.go          # PolicyContext
 │   ├── mapper.go           # Action+Resource to permissions
 │   ├── permissions.go      # NatsPermissions with wildcard dedup
 │   └── resource.go         # Resource parsing

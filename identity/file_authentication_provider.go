@@ -117,9 +117,9 @@ func (fp *FileAuthenticationProvider) Verify(_ context.Context, req AuthRequest)
 		return nil, ErrInvalidAccount
 	}
 
-	// Parse all roles as AccountRole objects (no filtering by account)
+	// Parse all roles as Role objects (no filtering by account)
 	// Account filtering will be done by the AuthController
-	var roles []AccountRole
+	var roles []Role
 	for _, roleID := range fu.Roles {
 		role, err := ParseRoleID(roleID)
 		if err != nil {

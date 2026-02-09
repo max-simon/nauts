@@ -103,8 +103,8 @@ func TestResolveNatsPermissions_Basic(t *testing.T) {
 	user := &AccountScopedUser{
 		User: identity.User{
 			ID: "alice",
-			Roles: []identity.AccountRole{
-				{Account: "test-account", Role: "workers"},
+			Roles: []identity.Role{
+				{Account: "test-account", Name: "workers"},
 			},
 			Attributes: map[string]string{
 				"department": "engineering",
@@ -138,8 +138,8 @@ func TestResolveNatsPermissions_DefaultRole(t *testing.T) {
 	user := &AccountScopedUser{
 		User: identity.User{
 			ID: "test",
-			Roles: []identity.AccountRole{
-				{Account: "test-account", Role: "default"},
+			Roles: []identity.Role{
+				{Account: "test-account", Name: "default"},
 			},
 		},
 		Account: "test-account",
@@ -160,8 +160,8 @@ func TestCreateUserJWT(t *testing.T) {
 	user := &AccountScopedUser{
 		User: identity.User{
 			ID: "alice",
-			Roles: []identity.AccountRole{
-				{Account: "test-account", Role: "workers"},
+			Roles: []identity.Role{
+				{Account: "test-account", Name: "workers"},
 			},
 		},
 		Account: "test-account",
@@ -207,8 +207,8 @@ func TestCreateUserJWT_AccountNotFound(t *testing.T) {
 	user := &AccountScopedUser{
 		User: identity.User{
 			ID: "alice",
-			Roles: []identity.AccountRole{
-				{Account: "nonexistent-account", Role: "default"},
+			Roles: []identity.Role{
+				{Account: "nonexistent-account", Name: "default"},
 			},
 		},
 		Account: "nonexistent-account",
@@ -457,8 +457,8 @@ func (m *mockAuthProviderWithWildcard) ManageableAccounts() []string {
 func (m *mockAuthProviderWithWildcard) Verify(_ context.Context, req identity.AuthRequest) (*identity.User, error) {
 	return &identity.User{
 		ID: "test-user",
-		Roles: []identity.AccountRole{
-			{Account: req.Account, Role: "admin*"}, // wildcard in role
+		Roles: []identity.Role{
+			{Account: req.Account, Name: "admin*"}, // wildcard in role
 		},
 	}, nil
 }

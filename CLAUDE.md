@@ -50,7 +50,7 @@ nauts/
 ├── policy/                 # Policy types, compilation, interpolation, action mapping
 │   ├── action.go           # Action types and action group expansion
 │   ├── compile.go          # Policy compilation (Compile function)
-│   ├── context.go          # Interpolation context types (UserContext, RoleContext)
+│   ├── context.go          # Interpolation context types (PolicyContext)
 │   ├── errors.go           # Policy errors (PolicyError, ValidationError)
 │   ├── interpolate.go      # Variable interpolation ({{ user.id }}, etc.)
 │   ├── mapper.go           # Action+Resource to NATS permissions mapping
@@ -309,7 +309,7 @@ Resource types include subidentifier variants:
 ### Variable Interpolation
 
 - Custom template engine with `{{ var.path }}` syntax
-- Supported variables: `user.id`, `user.account`, `user.attr.<key>`, `role.name`, `role.account`
+- Supported variables: `user.id`, `account.id`, `role.name`
 - Sanitize interpolated values: reject `*`, `>`, empty strings
 - Allow only: `[a-zA-Z0-9_\-\.]+`
 - Return excluded result (skip resource) on validation failure

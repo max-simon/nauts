@@ -1,42 +1,17 @@
 package policy
 
-import (
-	"testing"
-)
-
-// newTestContext creates an InterpolationContext with user and role for testing.
-func newTestContext(user *UserContext, role *RoleContext) *InterpolationContext {
-	ctx := &InterpolationContext{}
-	if user != nil {
-		ctx.Add("user", user)
-	}
-	if role != nil {
-		ctx.Add("role", role)
-	}
-	return ctx
-}
+import "testing"
 
 func TestInterpolateWithContext(t *testing.T) {
-	user := &UserContext{
-		ID:      "alice",
-		Account: "ACME",
-		Attributes: map[string]string{
-			"department": "engineering",
-			"team":       "platform",
-		},
-	}
-
-	role := &RoleContext{
-		Name:    "workers",
-		Account: "*",
-	}
-
-	ctx := newTestContext(user, role)
+	ctx := &PolicyContext{}
+	ctx.Set("user.id", "alice")
+	ctx.Set("account.id", "ACME")
+	ctx.Set("role.name", "workers")
 
 	tests := []struct {
 		name       string
 		template   string
-		ctx        *InterpolationContext
+		ctx        *PolicyContext
 		wantValue  string
 		wantExcl   bool
 		wantReason string
@@ -63,22 +38,10 @@ func TestInterpolateWithContext(t *testing.T) {
 			wantValue: "nats:user.alice",
 		},
 		{
-			name:      "user.account",
-			template:  "nats:account.{{ user.account }}.orders",
+			name:      "account.id",
+			template:  "nats:account.{{ account.id }}.orders",
 			ctx:       ctx,
 			wantValue: "nats:account.ACME.orders",
-		},
-		{
-			name:      "user.attr.department",
-			template:  "nats:dept.{{ user.attr.department }}",
-			ctx:       ctx,
-			wantValue: "nats:dept.engineering",
-		},
-		{
-			name:      "user.attr.team",
-			template:  "nats:team.{{ user.attr.team }}.>",
-			ctx:       ctx,
-			wantValue: "nats:team.platform.>",
 		},
 
 		// Role variables
@@ -88,24 +51,11 @@ func TestInterpolateWithContext(t *testing.T) {
 			ctx:       ctx,
 			wantValue: "nats:role.workers.>",
 		},
-		{
-			name:      "role.account with local account",
-			template:  "nats:role.{{ role.account }}.>",
-			ctx:       newTestContext(user, &RoleContext{Name: "workers", Account: "ACME"}),
-			wantValue: "nats:role.ACME.>",
-		},
-		{
-			name:       "role.account with global account (excluded)",
-			template:   "nats:role.{{ role.account }}.>",
-			ctx:        ctx,
-			wantExcl:   true,
-			wantReason: "invalid value for role.account: *",
-		},
 
 		// Multiple variables
 		{
 			name:      "multiple variables",
-			template:  "nats:{{ user.account }}.{{ user.id }}.orders",
+			template:  "nats:{{ account.id }}.{{ user.id }}.orders",
 			ctx:       ctx,
 			wantValue: "nats:ACME.alice.orders",
 		},
@@ -139,25 +89,25 @@ func TestInterpolateWithContext(t *testing.T) {
 			wantReason: "nil context",
 		},
 		{
-			name:       "nil user",
+			name:       "missing user.id claim",
 			template:   "nats:{{ user.id }}",
-			ctx:        newTestContext(nil, role),
+			ctx:        &PolicyContext{},
 			wantExcl:   true,
 			wantReason: "unresolved variable: user.id",
 		},
 		{
-			name:       "nil role",
+			name:       "missing role.name claim",
 			template:   "nats:{{ role.name }}",
-			ctx:        newTestContext(user, nil),
+			ctx:        &PolicyContext{},
 			wantExcl:   true,
 			wantReason: "unresolved variable: role.name",
 		},
 		{
-			name:       "missing attribute",
-			template:   "nats:{{ user.attr.missing }}",
-			ctx:        ctx,
+			name:       "missing account.id claim",
+			template:   "nats:{{ account.id }}",
+			ctx:        &PolicyContext{},
 			wantExcl:   true,
-			wantReason: "unresolved variable: user.attr.missing",
+			wantReason: "unresolved variable: account.id",
 		},
 		{
 			name:       "unknown root",
@@ -185,21 +135,28 @@ func TestInterpolateWithContext(t *testing.T) {
 		{
 			name:       "user.id with wildcard",
 			template:   "nats:{{ user.id }}",
-			ctx:        newTestContext(&UserContext{ID: "alice*"}, nil),
+			ctx:        func() *PolicyContext { c := &PolicyContext{}; c.Set("user.id", "alice*"); return c }(),
 			wantExcl:   true,
 			wantReason: "invalid value for user.id: alice*",
 		},
 		{
+			name:       "account.id with wildcard",
+			template:   "nats:{{ account.id }}",
+			ctx:        func() *PolicyContext { c := &PolicyContext{}; c.Set("account.id", "ACME*"); return c }(),
+			wantExcl:   true,
+			wantReason: "invalid value for account.id: ACME*",
+		},
+		{
 			name:       "user.id with gt",
 			template:   "nats:{{ user.id }}",
-			ctx:        newTestContext(&UserContext{ID: "alice>"}, nil),
+			ctx:        func() *PolicyContext { c := &PolicyContext{}; c.Set("user.id", "alice>"); return c }(),
 			wantExcl:   true,
 			wantReason: "invalid value for user.id: alice>",
 		},
 		{
 			name:       "user.id empty",
 			template:   "nats:{{ user.id }}",
-			ctx:        newTestContext(&UserContext{ID: ""}, nil),
+			ctx:        &PolicyContext{},
 			wantExcl:   true,
 			wantReason: "unresolved variable: user.id",
 		},
@@ -248,230 +205,5 @@ func TestContainsVariables(t *testing.T) {
 				t.Errorf("ContainsVariables(%q) = %v, want %v", tt.input, got, tt.want)
 			}
 		})
-	}
-}
-
-func TestUserContext_GetAttribute(t *testing.T) {
-	tests := []struct {
-		name  string
-		path  string
-		user  *UserContext
-		want  string
-		found bool
-	}{
-		{
-			name:  "nil user",
-			path:  "id",
-			user:  nil,
-			found: false,
-		},
-		{
-			name:  "empty id",
-			path:  "id",
-			user:  &UserContext{},
-			found: false,
-		},
-		{
-			name:  "valid id",
-			path:  "id",
-			user:  &UserContext{ID: "alice"},
-			want:  "alice",
-			found: true,
-		},
-		{
-			name:  "empty account",
-			path:  "account",
-			user:  &UserContext{},
-			found: false,
-		},
-		{
-			name:  "valid account",
-			path:  "account",
-			user:  &UserContext{Account: "ACME"},
-			want:  "ACME",
-			found: true,
-		},
-		{
-			name:  "nil attributes map",
-			path:  "attr.key",
-			user:  &UserContext{},
-			found: false,
-		},
-		{
-			name:  "empty attribute value",
-			path:  "attr.key",
-			user:  &UserContext{Attributes: map[string]string{"key": ""}},
-			found: false,
-		},
-		{
-			name:  "valid attribute",
-			path:  "attr.dept",
-			user:  &UserContext{Attributes: map[string]string{"dept": "engineering"}},
-			want:  "engineering",
-			found: true,
-		},
-		{
-			name:  "unknown path",
-			path:  "unknown",
-			user:  &UserContext{ID: "alice"},
-			found: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, found := tt.user.GetAttribute(tt.path)
-			if found != tt.found {
-				t.Errorf("UserContext.GetAttribute(%q) found = %v, want %v", tt.path, found, tt.found)
-			}
-			if got != tt.want {
-				t.Errorf("UserContext.GetAttribute(%q) = %q, want %q", tt.path, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestRoleContext_GetAttribute(t *testing.T) {
-	tests := []struct {
-		name  string
-		path  string
-		role  *RoleContext
-		want  string
-		found bool
-	}{
-		{
-			name:  "nil role",
-			path:  "name",
-			role:  nil,
-			found: false,
-		},
-		{
-			name:  "empty name",
-			path:  "name",
-			role:  &RoleContext{},
-			found: false,
-		},
-		{
-			name:  "valid name",
-			path:  "name",
-			role:  &RoleContext{Name: "workers"},
-			want:  "workers",
-			found: true,
-		},
-		{
-			name:  "empty account",
-			path:  "account",
-			role:  &RoleContext{},
-			found: false,
-		},
-		{
-			name:  "valid account",
-			path:  "account",
-			role:  &RoleContext{Account: "*"},
-			want:  "*",
-			found: true,
-		},
-		{
-			name:  "unknown path",
-			path:  "policies",
-			role:  &RoleContext{Name: "test"},
-			found: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, found := tt.role.GetAttribute(tt.path)
-			if found != tt.found {
-				t.Errorf("RoleContext.GetAttribute(%q) found = %v, want %v", tt.path, found, tt.found)
-			}
-			if got != tt.want {
-				t.Errorf("RoleContext.GetAttribute(%q) = %q, want %q", tt.path, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestInterpolationContext_GetAttribute(t *testing.T) {
-	user := &UserContext{ID: "alice", Account: "ACME"}
-	role := &RoleContext{Name: "workers", Account: "*"}
-
-	ctx := &InterpolationContext{}
-	ctx.Add("user", user)
-	ctx.Add("role", role)
-
-	tests := []struct {
-		name  string
-		path  string
-		want  string
-		found bool
-	}{
-		{
-			name:  "user.id",
-			path:  "user.id",
-			want:  "alice",
-			found: true,
-		},
-		{
-			name:  "user.account",
-			path:  "user.account",
-			want:  "ACME",
-			found: true,
-		},
-		{
-			name:  "role.name",
-			path:  "role.name",
-			want:  "workers",
-			found: true,
-		},
-		{
-			name:  "role.account",
-			path:  "role.account",
-			want:  "*",
-			found: true,
-		},
-		{
-			name:  "unknown prefix",
-			path:  "unknown.id",
-			found: false,
-		},
-		{
-			name:  "no dot in path",
-			path:  "userid",
-			found: false,
-		},
-		{
-			name:  "unknown user attribute",
-			path:  "user.unknown",
-			found: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, found := ctx.GetAttribute(tt.path)
-			if found != tt.found {
-				t.Errorf("InterpolationContext.GetAttribute(%q) found = %v, want %v", tt.path, found, tt.found)
-			}
-			if got != tt.want {
-				t.Errorf("InterpolationContext.GetAttribute(%q) = %q, want %q", tt.path, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestInterpolationContext_NilContext(t *testing.T) {
-	var ctx *InterpolationContext
-	_, found := ctx.GetAttribute("user.id")
-	if found {
-		t.Error("nil InterpolationContext should return found=false")
-	}
-}
-
-func TestInterpolationContext_EmptyContexts(t *testing.T) {
-	ctx := &InterpolationContext{}
-	_, found := ctx.GetAttribute("user.id")
-	if found {
-		t.Error("empty InterpolationContext should return found=false")
 	}
 }
