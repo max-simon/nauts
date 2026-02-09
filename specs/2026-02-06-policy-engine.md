@@ -54,6 +54,7 @@ The `policy` package defines the full lifecycle of a permission policy: types fo
 ```go
 type Policy struct {
     ID         string      `json:"id"`
+    Account    string      `json:"account"`
     Name       string      `json:"name"`
     Statements []Statement `json:"statements"`
 }

@@ -1,5 +1,7 @@
 package policy
 
+import "strings"
+
 // Effect represents the effect of a policy statement.
 type Effect string
 
@@ -20,6 +22,7 @@ type Statement struct {
 // Policy represents a collection of permission statements.
 type Policy struct {
 	ID         string      `json:"id"`         // unique identifier
+	Account    string      `json:"account"`    // NATS account ID this policy applies to (or "*" for global)
 	Name       string      `json:"name"`       // human-readable name
 	Statements []Statement `json:"statements"` // list of permission statements
 }
@@ -33,6 +36,9 @@ func (e Effect) IsValid() bool {
 func (p *Policy) Validate() error {
 	if p.ID == "" {
 		return &ValidationError{Field: "id", Message: "policy ID is required"}
+	}
+	if strings.TrimSpace(p.Account) == "" {
+		return &ValidationError{Field: "account", Message: "policy account is required"}
 	}
 	if len(p.Statements) == 0 {
 		return &ValidationError{Field: "statements", Message: "policy must have at least one statement"}

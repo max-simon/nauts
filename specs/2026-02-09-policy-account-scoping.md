@@ -55,10 +55,10 @@ Expected behavior:
 
 ### `policy.Compile`
 
-When a `user` context is provided, compilation is scoped to the user's account:
+When a `PolicyContext` is provided, compilation is scoped to the requested account (`account.id`):
 
-- If `user.Account` is empty, **no** account-scoped policies are compiled.
-- If `policy.Account == user.Account`, the policy is compiled.
+- If `account.id` is missing, **no** account-scoped policies are compiled.
+- If `policy.Account == account.id`, the policy is compiled.
 - If `policy.Account == "*"`, the policy is compiled (global policy).
 - Otherwise, the policy is skipped.
 

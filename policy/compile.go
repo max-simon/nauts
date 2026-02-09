@@ -30,7 +30,28 @@ func Compile(policies []*Policy, ctx *PolicyContext, perms *NatsPermissions) Com
 		perms.Allow(Permission{Type: PermSub, Subject: "_INBOX_" + userID + ".>"})
 	}
 
+	requestedAccount, hasAccount := ctx.Get("account.id")
+
 	for _, pol := range policies {
+		if pol == nil {
+			continue
+		}
+
+		// Defense-in-depth: only compile policies applicable to the requested account.
+		// Global policies (Account="*") always apply.
+		switch {
+		case pol.Account == "*":
+			// ok
+		case hasAccount && pol.Account == requestedAccount:
+			// ok
+		case !hasAccount:
+			result.Warnings = append(result.Warnings, "policy skipped (missing account.id): "+pol.ID)
+			continue
+		default:
+			result.Warnings = append(result.Warnings, "policy skipped (account mismatch): "+pol.ID)
+			continue
+		}
+
 		policyResult := compilePolicy(pol, ctx, perms)
 		result.Warnings = append(result.Warnings, policyResult.Warnings...)
 	}

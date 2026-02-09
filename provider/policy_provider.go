@@ -17,6 +17,8 @@ type PolicyProvider interface {
 	// Returns ErrRoleNotFound if no role definition exists for the role.
 	GetPoliciesForRole(ctx context.Context, account string, role string) ([]*policy.Policy, error)
 
-	// ListPolicies returns all policies.
-	ListPolicies(ctx context.Context) ([]*policy.Policy, error)
+	// ListPolicies returns policies for the given account.
+	// Implementations should include global policies (policy.Account == "*")
+	// in addition to account-local policies (policy.Account == account).
+	ListPolicies(ctx context.Context, account string) ([]*policy.Policy, error)
 }

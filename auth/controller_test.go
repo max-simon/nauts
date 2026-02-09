@@ -374,6 +374,7 @@ func createTestPolicyProvider(t *testing.T, tmpDir string) provider.PolicyProvid
 	policiesContent := `[
   {
     "id": "allow-basic",
+		"account": "test-account",
     "name": "Basic Access",
     "statements": [
       {

@@ -16,6 +16,7 @@ func TestNewFilePolicyProvider(t *testing.T) {
 	policiesContent := `[
   {
     "id": "read-access",
+		"account": "APP",
     "name": "Read-Only Access",
     "statements": [
       {
@@ -27,6 +28,7 @@ func TestNewFilePolicyProvider(t *testing.T) {
   },
   {
     "id": "write-access",
+		"account": "APP",
     "name": "Write Access",
     "statements": [
       {
@@ -86,7 +88,7 @@ func TestNewFilePolicyProvider(t *testing.T) {
 	}
 
 	// Test ListPolicies
-	policies, err := fp.ListPolicies(ctx)
+	policies, err := fp.ListPolicies(ctx, "APP")
 	if err != nil {
 		t.Fatalf("ListPolicies() error = %v", err)
 	}
@@ -126,7 +128,7 @@ func TestNewFilePolicyProvider_EmptyConfig(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	policies, err := fp.ListPolicies(ctx)
+	policies, err := fp.ListPolicies(ctx, "APP")
 	if err != nil {
 		t.Fatalf("ListPolicies() error = %v", err)
 	}
@@ -176,7 +178,7 @@ func TestNewFilePolicyProvider_InvalidPolicy(t *testing.T) {
 	tmpDir := t.TempDir()
 	invalidPath := filepath.Join(tmpDir, "invalid.json")
 	// Policy with empty ID
-	if err := os.WriteFile(invalidPath, []byte(`[{"id": "", "statements": []}]`), 0644); err != nil {
+	if err := os.WriteFile(invalidPath, []byte(`[{"id": "", "account": "APP", "statements": []}]`), 0644); err != nil {
 		t.Fatalf("failed to write test file: %v", err)
 	}
 

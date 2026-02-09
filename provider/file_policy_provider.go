@@ -187,11 +187,23 @@ func (fp *FilePolicyProvider) GetPoliciesForRole(ctx context.Context, account st
 	return result, nil
 }
 
-// ListPolicies returns all policies.
-func (fp *FilePolicyProvider) ListPolicies(_ context.Context) ([]*policy.Policy, error) {
+// ListPolicies returns policies for the given account.
+// Global policies (Account="*") are always included.
+func (fp *FilePolicyProvider) ListPolicies(_ context.Context, account string) ([]*policy.Policy, error) {
+	account = strings.TrimSpace(account)
+
 	result := make([]*policy.Policy, 0, len(fp.policies))
 	for _, p := range fp.policies {
-		result = append(result, p)
+		if p == nil {
+			continue
+		}
+		if p.Account == "*" || (account != "" && p.Account == account) {
+			result = append(result, p)
+		}
 	}
+
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].ID < result[j].ID
+	})
 	return result, nil
 }

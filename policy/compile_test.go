@@ -7,8 +7,9 @@ import (
 func TestCompile_BasicPolicy(t *testing.T) {
 	policies := []*Policy{
 		{
-			ID:   "test-policy",
-			Name: "Test Policy",
+			ID:      "test-policy",
+			Account: "ACME",
+			Name:    "Test Policy",
 			Statements: []Statement{
 				{
 					Effect:    EffectAllow,
@@ -47,7 +48,8 @@ func TestCompile_BasicPolicy(t *testing.T) {
 func TestCompile_WithInterpolation(t *testing.T) {
 	policies := []*Policy{
 		{
-			ID: "user-policy",
+			ID:      "user-policy",
+			Account: "ACME",
 			Statements: []Statement{
 				{
 					Effect:    EffectAllow,
@@ -80,7 +82,8 @@ func TestCompile_WithInterpolation(t *testing.T) {
 func TestCompile_WithRoleInterpolation(t *testing.T) {
 	policies := []*Policy{
 		{
-			ID: "role-policy",
+			ID:      "role-policy",
+			Account: "ACME",
 			Statements: []Statement{
 				{
 					Effect:    EffectAllow,
@@ -120,7 +123,8 @@ func TestCompile_WithRoleInterpolation(t *testing.T) {
 func TestCompile_AddsInboxForJSAction(t *testing.T) {
 	policies := []*Policy{
 		{
-			ID: "js-policy",
+			ID:      "js-policy",
+			Account: "ACME",
 			Statements: []Statement{
 				{
 					Effect:    EffectAllow,
@@ -186,7 +190,8 @@ func TestCompile_AddsInboxForJSAction(t *testing.T) {
 func TestCompile_UnresolvedVariable(t *testing.T) {
 	policies := []*Policy{
 		{
-			ID: "bad-policy",
+			ID:      "bad-policy",
+			Account: "ACME",
 			Statements: []Statement{
 				{
 					Effect:    EffectAllow,
@@ -223,7 +228,8 @@ func TestCompile_UnresolvedVariable(t *testing.T) {
 func TestCompile_InvalidResource(t *testing.T) {
 	policies := []*Policy{
 		{
-			ID: "bad-policy",
+			ID:      "bad-policy",
+			Account: "ACME",
 			Statements: []Statement{
 				{
 					Effect:    EffectAllow,
@@ -260,7 +266,8 @@ func TestCompile_InvalidResource(t *testing.T) {
 func TestCompile_MultiplePolicies(t *testing.T) {
 	policies := []*Policy{
 		{
-			ID: "policy-1",
+			ID:      "policy-1",
+			Account: "ACME",
 			Statements: []Statement{
 				{
 					Effect:    EffectAllow,
@@ -270,7 +277,8 @@ func TestCompile_MultiplePolicies(t *testing.T) {
 			},
 		},
 		{
-			ID: "policy-2",
+			ID:      "policy-2",
+			Account: "ACME",
 			Statements: []Statement{
 				{
 					Effect:    EffectAllow,
@@ -316,7 +324,8 @@ func TestCompile_MultiplePolicies(t *testing.T) {
 func TestCompile_ActionGroup(t *testing.T) {
 	policies := []*Policy{
 		{
-			ID: "nats-policy",
+			ID:      "nats-policy",
+			Account: "ACME",
 			Statements: []Statement{
 				{
 					Effect:    EffectAllow,
@@ -379,7 +388,8 @@ func TestCompile_ActionGroup(t *testing.T) {
 func TestCompile_DenyEffect(t *testing.T) {
 	policies := []*Policy{
 		{
-			ID: "deny-policy",
+			ID:      "deny-policy",
+			Account: "ACME",
 			Statements: []Statement{
 				{
 					Effect:    Effect("deny"), // Deny is not supported, should be skipped
@@ -420,7 +430,8 @@ func TestCompile_MergeIntoExisting(t *testing.T) {
 
 	policies := []*Policy{
 		{
-			ID: "new-policy",
+			ID:      "new-policy",
+			Account: "ACME",
 			Statements: []Statement{
 				{
 					Effect:    EffectAllow,
@@ -448,7 +459,8 @@ func TestCompile_MergeIntoExisting(t *testing.T) {
 func TestCompile_NilContexts(t *testing.T) {
 	policies := []*Policy{
 		{
-			ID: "simple-policy",
+			ID:      "simple-policy",
+			Account: "*",
 			Statements: []Statement{
 				{
 					Effect:    EffectAllow,
@@ -485,5 +497,48 @@ func TestCompile_EmptyPolicies(t *testing.T) {
 	}
 	if !perms.IsEmpty() {
 		t.Error("expected empty permissions")
+	}
+}
+
+func TestCompile_SkipsMismatchedAccount(t *testing.T) {
+	policies := []*Policy{
+		{
+			ID:      "match",
+			Account: "ACME",
+			Statements: []Statement{
+				{Effect: EffectAllow, Actions: []Action{ActionNATSPub}, Resources: []string{"nats:orders"}},
+			},
+		},
+		{
+			ID:      "mismatch",
+			Account: "OTHER",
+			Statements: []Statement{
+				{Effect: EffectAllow, Actions: []Action{ActionNATSPub}, Resources: []string{"nats:events"}},
+			},
+		},
+		{
+			ID:      "global",
+			Account: "*",
+			Statements: []Statement{
+				{Effect: EffectAllow, Actions: []Action{ActionNATSPub}, Resources: []string{"nats:shared"}},
+			},
+		},
+	}
+
+	ctx := &PolicyContext{}
+	ctx.Set("user.id", "alice")
+	ctx.Set("account.id", "ACME")
+	ctx.Set("role.name", "workers")
+
+	perms := NewNatsPermissions()
+	result := Compile(policies, ctx, perms)
+	if len(result.Warnings) != 1 {
+		t.Fatalf("expected 1 warning, got %v", result.Warnings)
+	}
+
+	perms.Deduplicate()
+	pubs := perms.PubList()
+	if len(pubs) != 2 {
+		t.Fatalf("expected 2 pub permissions, got %v", pubs)
 	}
 }
