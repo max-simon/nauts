@@ -98,7 +98,6 @@ type FileAuthenticationProviderConfig struct {
 func NewFileAuthenticationProvider(cfg FileAuthenticationProviderConfig) (*FileAuthenticationProvider, error)
 func (fp *FileAuthenticationProvider) Verify(ctx context.Context, req AuthRequest) (*User, error)
 func (fp *FileAuthenticationProvider) ManageableAccounts() []string
-func (fp *FileAuthenticationProvider) GetUser(ctx context.Context, id string) (*User, error)
 ```
 
 **Token format:** `"username:password"` (colon-separated inside `AuthRequest.Token`).

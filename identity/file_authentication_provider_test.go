@@ -54,40 +54,6 @@ func TestVerify_InvalidTokenType(t *testing.T) {
 	}
 }
 
-func TestGetUser_Found(t *testing.T) {
-	fp := createTestProvider(t)
-
-	user, err := fp.GetUser(context.Background(), "bob")
-	if err != nil {
-		t.Fatalf("GetUser() error = %v", err)
-	}
-
-	if user.ID != "bob" {
-		t.Errorf("user.ID = %q, want %q", user.ID, "bob")
-	}
-}
-
-func TestGetUser_NotFound(t *testing.T) {
-	fp := createTestProvider(t)
-
-	_, err := fp.GetUser(context.Background(), "nonexistent")
-	if !errors.Is(err, ErrUserNotFound) {
-		t.Errorf("GetUser() error = %v, want %v", err, ErrUserNotFound)
-	}
-}
-
-func TestNewFileAuthenticationProvider_EmptyConfig(t *testing.T) {
-	fp, err := NewFileAuthenticationProvider(FileAuthenticationProviderConfig{})
-	if err != nil {
-		t.Fatalf("NewFileAuthenticationProvider() error = %v", err)
-	}
-
-	_, err = fp.GetUser(context.Background(), "any")
-	if !errors.Is(err, ErrUserNotFound) {
-		t.Errorf("GetUser() error = %v, want %v", err, ErrUserNotFound)
-	}
-}
-
 func TestNewFileAuthenticationProvider_InvalidPath(t *testing.T) {
 	_, err := NewFileAuthenticationProvider(FileAuthenticationProviderConfig{
 		UsersPath: "/nonexistent/path/users.json",

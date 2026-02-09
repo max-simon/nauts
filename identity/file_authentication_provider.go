@@ -145,30 +145,3 @@ func contains(slice []string, value string) bool {
 	}
 	return false
 }
-
-// GetUser retrieves a user by ID without verifying credentials.
-// Returns ErrUserNotFound if the user does not exist.
-// Note: This returns all roles for all accounts the user has access to.
-func (fp *FileAuthenticationProvider) GetUser(_ context.Context, id string) (*User, error) {
-	fu, ok := fp.users[id]
-	if !ok {
-		return nil, ErrUserNotFound
-	}
-
-	// Parse all roles as AccountRole objects
-	var roles []AccountRole
-	for _, roleID := range fu.Roles {
-		role, err := ParseRoleID(roleID)
-		if err != nil {
-			// Skip invalid role IDs
-			continue
-		}
-		roles = append(roles, role)
-	}
-
-	return &User{
-		ID:         id,
-		Roles:      roles,
-		Attributes: fu.Attributes,
-	}, nil
-}
