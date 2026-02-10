@@ -41,10 +41,9 @@ Validation updates:
 
 ### `provider.PolicyProvider`
 
-`ListPolicies` is now account-scoped:
+`GetPolicies` is account-scoped:
 
-- Before: `ListPolicies(ctx) ([]*policy.Policy, error)`
-- After:  `ListPolicies(ctx, account string) ([]*policy.Policy, error)`
+- Signature: `GetPolicies(ctx, account string) ([]*policy.Policy, error)`
 
 Expected behavior:
 

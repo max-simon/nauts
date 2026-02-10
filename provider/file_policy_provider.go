@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/msimon/nauts/identity"
 	"github.com/msimon/nauts/policy"
 )
 
@@ -135,17 +136,17 @@ func (fp *FilePolicyProvider) GetPolicy(_ context.Context, id string) (*policy.P
 	return p, nil
 }
 
-func (fp *FilePolicyProvider) GetPoliciesForRole(ctx context.Context, account string, role string) ([]*policy.Policy, error) {
-	role = strings.TrimSpace(role)
-	if role == "" {
+func (fp *FilePolicyProvider) GetPoliciesForRole(ctx context.Context, role identity.Role) ([]*policy.Policy, error) {
+	role.Name = strings.TrimSpace(role.Name)
+	if role.Name == "" {
 		return nil, ErrRoleNotFound
 	}
-	account = strings.TrimSpace(account)
-	if account == "" {
+	role.Account = strings.TrimSpace(role.Account)
+	if role.Account == "" {
 		return nil, ErrRoleNotFound
 	}
 
-	b := fp.bindings[bindingKey(account, role)]
+	b := fp.bindings[bindingKey(role.Account, role.Name)]
 	if b == nil {
 		return nil, ErrRoleNotFound
 	}
@@ -187,9 +188,9 @@ func (fp *FilePolicyProvider) GetPoliciesForRole(ctx context.Context, account st
 	return result, nil
 }
 
-// ListPolicies returns policies for the given account.
+// GetPolicies returns policies for the given account.
 // Global policies (Account="*") are always included.
-func (fp *FilePolicyProvider) ListPolicies(_ context.Context, account string) ([]*policy.Policy, error) {
+func (fp *FilePolicyProvider) GetPolicies(_ context.Context, account string) ([]*policy.Policy, error) {
 	account = strings.TrimSpace(account)
 
 	result := make([]*policy.Policy, 0, len(fp.policies))

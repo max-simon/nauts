@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 
+	"github.com/msimon/nauts/identity"
 	"github.com/msimon/nauts/policy"
 )
 
@@ -13,12 +14,12 @@ type PolicyProvider interface {
 	GetPolicy(ctx context.Context, id string) (*policy.Policy, error)
 
 	// GetPoliciesForRole returns all policies attached to a role for the given account.
-	// Implementations may support both global roles (account="*") and account-local roles.
+	// Implementations may support both global roles (role.Account="*") and account-local roles.
 	// Returns ErrRoleNotFound if no role definition exists for the role.
-	GetPoliciesForRole(ctx context.Context, account string, role string) ([]*policy.Policy, error)
+	GetPoliciesForRole(ctx context.Context, role identity.Role) ([]*policy.Policy, error)
 
-	// ListPolicies returns policies for the given account.
+	// GetPolicies returns policies for the given account.
 	// Implementations should include global policies (policy.Account == "*")
 	// in addition to account-local policies (policy.Account == account).
-	ListPolicies(ctx context.Context, account string) ([]*policy.Policy, error)
+	GetPolicies(ctx context.Context, account string) ([]*policy.Policy, error)
 }

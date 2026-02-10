@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/msimon/nauts/identity"
 	"github.com/msimon/nauts/policy"
 )
 
@@ -87,17 +88,17 @@ func TestNewFilePolicyProvider(t *testing.T) {
 		t.Errorf("GetPolicy() ID = %v, want read-access", pol.ID)
 	}
 
-	// Test ListPolicies
-	policies, err := fp.ListPolicies(ctx, "APP")
+	// Test GetPolicies
+	policies, err := fp.GetPolicies(ctx, "APP")
 	if err != nil {
-		t.Fatalf("ListPolicies() error = %v", err)
+		t.Fatalf("GetPolicies() error = %v", err)
 	}
 	if len(policies) < 1 {
-		t.Errorf("ListPolicies() returned %d policies, want at least 1", len(policies))
+		t.Errorf("GetPolicies() returned %d policies, want at least 1", len(policies))
 	}
 
 	// Test GetPoliciesForRole
-	rolePolicies, err := fp.GetPoliciesForRole(ctx, "APP", "readonly")
+	rolePolicies, err := fp.GetPoliciesForRole(ctx, identity.Role{Account: "APP", Name: "readonly"})
 	if err != nil {
 		t.Fatalf("GetPoliciesForRole() error = %v", err)
 	}
@@ -128,12 +129,12 @@ func TestNewFilePolicyProvider_EmptyConfig(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	policies, err := fp.ListPolicies(ctx, "APP")
+	policies, err := fp.GetPolicies(ctx, "APP")
 	if err != nil {
-		t.Fatalf("ListPolicies() error = %v", err)
+		t.Fatalf("GetPolicies() error = %v", err)
 	}
 	if len(policies) != 0 {
-		t.Errorf("ListPolicies() = %d, want 0 for empty config", len(policies))
+		t.Errorf("GetPolicies() = %d, want 0 for empty config", len(policies))
 	}
 }
 
@@ -144,7 +145,7 @@ func TestFilePolicyProvider_GetPoliciesForRole_NotFound(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	_, err := fp.GetPoliciesForRole(ctx, "APP", "nonexistent")
+	_, err := fp.GetPoliciesForRole(ctx, identity.Role{Account: "APP", Name: "nonexistent"})
 	if err != ErrRoleNotFound {
 		t.Errorf("GetPoliciesForRole() error = %v, want ErrRoleNotFound", err)
 	}

@@ -9,7 +9,7 @@ import (
 // Role represents a role scoped to a specific account.
 type Role struct {
 	Account string `json:"account"` // NATS account ID
-	Name    string `json:"role"`    // Role name within the account
+	Name    string `json:"name"`    // Role name within the account
 }
 
 // User represents a user identity that can be authenticated.
