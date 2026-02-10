@@ -51,6 +51,7 @@ NRNs support variable interpolation using `{{ }}` to scope resources to given co
 
 Refers to the user identity and contains:
 - `user.id`: user identifier
+- `user.attr.<key>`: additional user claim (provider-specific)
 
 #### Account
 
@@ -60,11 +61,11 @@ Refers to the requested NATS account and contains:
 #### Role
 
 Refers to the role this policy is attached to and contains:
-- `role.name`: role name (e.g., "admin", "readonly")
+- `role.id`: role identifier (e.g., "admin", "readonly")
 
 #### Example
 
-- role-wide subject for all members of a role: `nats:role.{{ role.name }}.>`
+- role-wide subject for all members of a role: `nats:role.{{ role.id }}.>`
 - user-specific subject: `nats:user.{{ user.id }}`
 - account-scoped subject: `nats:{{ account.id }}.data.>`
 

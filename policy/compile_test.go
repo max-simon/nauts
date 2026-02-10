@@ -20,10 +20,7 @@ func TestCompile_BasicPolicy(t *testing.T) {
 		},
 	}
 
-	ctx := &PolicyContext{}
-	ctx.Set("user.id", "alice")
-	ctx.Set("account.id", "ACME")
-	ctx.Set("role.name", "workers")
+	ctx := &PolicyContext{User: "alice", Account: "ACME", Role: "workers"}
 	perms := NewNatsPermissions()
 
 	result := Compile(policies, ctx, perms)
@@ -60,10 +57,7 @@ func TestCompile_WithInterpolation(t *testing.T) {
 		},
 	}
 
-	ctx := &PolicyContext{}
-	ctx.Set("user.id", "alice")
-	ctx.Set("account.id", "ACME")
-	ctx.Set("role.name", "workers")
+	ctx := &PolicyContext{User: "alice", Account: "ACME", Role: "workers"}
 	perms := NewNatsPermissions()
 
 	result := Compile(policies, ctx, perms)
@@ -88,16 +82,13 @@ func TestCompile_WithRoleInterpolation(t *testing.T) {
 				{
 					Effect:    EffectAllow,
 					Actions:   []Action{ActionNATSSub},
-					Resources: []string{"nats:role.{{ role.name }}.>"},
+					Resources: []string{"nats:role.{{ role.id }}.>"},
 				},
 			},
 		},
 	}
 
-	ctx := &PolicyContext{}
-	ctx.Set("user.id", "alice")
-	ctx.Set("account.id", "ACME")
-	ctx.Set("role.name", "workers")
+	ctx := &PolicyContext{User: "alice", Account: "ACME", Role: "workers"}
 	perms := NewNatsPermissions()
 
 	result := Compile(policies, ctx, perms)
@@ -135,10 +126,7 @@ func TestCompile_AddsInboxForJSAction(t *testing.T) {
 		},
 	}
 
-	ctx := &PolicyContext{}
-	ctx.Set("user.id", "alice")
-	ctx.Set("account.id", "ACME")
-	ctx.Set("role.name", "workers")
+	ctx := &PolicyContext{User: "alice", Account: "ACME", Role: "workers"}
 	perms := NewNatsPermissions()
 
 	result := Compile(policies, ctx, perms)
@@ -202,10 +190,7 @@ func TestCompile_UnresolvedVariable(t *testing.T) {
 		},
 	}
 
-	ctx := &PolicyContext{}
-	ctx.Set("user.id", "alice")
-	ctx.Set("account.id", "ACME")
-	ctx.Set("role.name", "workers")
+	ctx := &PolicyContext{User: "alice", Account: "ACME", Role: "workers"}
 	perms := NewNatsPermissions()
 
 	result := Compile(policies, ctx, perms)
@@ -240,10 +225,7 @@ func TestCompile_InvalidResource(t *testing.T) {
 		},
 	}
 
-	ctx := &PolicyContext{}
-	ctx.Set("user.id", "alice")
-	ctx.Set("account.id", "ACME")
-	ctx.Set("role.name", "workers")
+	ctx := &PolicyContext{User: "alice", Account: "ACME", Role: "workers"}
 	perms := NewNatsPermissions()
 
 	result := Compile(policies, ctx, perms)
@@ -289,10 +271,7 @@ func TestCompile_MultiplePolicies(t *testing.T) {
 		},
 	}
 
-	ctx := &PolicyContext{}
-	ctx.Set("user.id", "alice")
-	ctx.Set("account.id", "ACME")
-	ctx.Set("role.name", "workers")
+	ctx := &PolicyContext{User: "alice", Account: "ACME", Role: "workers"}
 	perms := NewNatsPermissions()
 
 	result := Compile(policies, ctx, perms)
@@ -336,10 +315,7 @@ func TestCompile_ActionGroup(t *testing.T) {
 		},
 	}
 
-	ctx := &PolicyContext{}
-	ctx.Set("user.id", "alice")
-	ctx.Set("account.id", "ACME")
-	ctx.Set("role.name", "workers")
+	ctx := &PolicyContext{User: "alice", Account: "ACME", Role: "workers"}
 	perms := NewNatsPermissions()
 
 	result := Compile(policies, ctx, perms)
@@ -400,10 +376,7 @@ func TestCompile_DenyEffect(t *testing.T) {
 		},
 	}
 
-	ctx := &PolicyContext{}
-	ctx.Set("user.id", "alice")
-	ctx.Set("account.id", "ACME")
-	ctx.Set("role.name", "workers")
+	ctx := &PolicyContext{User: "alice", Account: "ACME", Role: "workers"}
 	perms := NewNatsPermissions()
 
 	result := Compile(policies, ctx, perms)
@@ -442,10 +415,7 @@ func TestCompile_MergeIntoExisting(t *testing.T) {
 		},
 	}
 
-	ctx := &PolicyContext{}
-	ctx.Set("user.id", "alice")
-	ctx.Set("account.id", "ACME")
-	ctx.Set("role.name", "workers")
+	ctx := &PolicyContext{User: "alice", Account: "ACME", Role: "workers"}
 
 	Compile(policies, ctx, perms)
 	perms.Deduplicate()
@@ -525,10 +495,7 @@ func TestCompile_SkipsMismatchedAccount(t *testing.T) {
 		},
 	}
 
-	ctx := &PolicyContext{}
-	ctx.Set("user.id", "alice")
-	ctx.Set("account.id", "ACME")
-	ctx.Set("role.name", "workers")
+	ctx := &PolicyContext{User: "alice", Account: "ACME", Role: "workers"}
 
 	perms := NewNatsPermissions()
 	result := Compile(policies, ctx, perms)

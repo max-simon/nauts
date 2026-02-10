@@ -309,7 +309,7 @@ Resource types include subidentifier variants:
 ### Variable Interpolation
 
 - Custom template engine with `{{ var.path }}` syntax
-- Supported variables: `user.id`, `account.id`, `role.name`
+- Supported variables: `user.id`, `account.id`, `role.id`, `user.attr.<key>`
 - Sanitize interpolated values: reject `*`, `>`, empty strings
 - Allow only: `[a-zA-Z0-9_\-\.]+`
 - Return excluded result (skip resource) on validation failure

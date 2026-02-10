@@ -188,7 +188,7 @@ func (c *AuthController) compilePoliciesForRole(baseCtx *policy.PolicyContext, r
 	if ctx == nil {
 		ctx = &policy.PolicyContext{}
 	}
-	ctx.Set("role.name", roleName)
+	ctx.Role = roleName
 	compileResult := policy.Compile(policies, ctx, result)
 	for _, warning := range compileResult.Warnings {
 		c.logger.Warn("%s", warning)
@@ -344,8 +344,13 @@ func userToPolicyContext(user *AccountScopedUser) *policy.PolicyContext {
 	if user == nil {
 		return nil
 	}
-	ctx := &policy.PolicyContext{}
-	ctx.Set("user.id", user.ID)
-	ctx.Set("account.id", user.Account)
+	ctx := &policy.PolicyContext{User: user.ID, Account: user.Account}
+	if len(user.Attributes) == 0 {
+		return ctx
+	}
+	ctx.UserClaims = make(map[string]string, len(user.Attributes))
+	for k, v := range user.Attributes {
+		ctx.UserClaims[k] = v
+	}
 	return ctx
 }

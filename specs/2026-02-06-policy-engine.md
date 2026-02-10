@@ -22,7 +22,7 @@ The `policy` package defines the full lifecycle of a permission policy: types fo
 - Policy, Statement, and Effect types  
 - Resource (NRN) parsing and validation  
 - Action registry and group expansion  
-- Variable interpolation (`{{ user.id }}`, `{{ role.name }}`, …)  
+- Variable interpolation (`{{ user.id }}`, `{{ role.id }}`, `{{ user.attr.<key> }}`, …)  
 - Action + Resource → NATS permission mapping  
 - Permission aggregation with wildcard-aware deduplication  
 - Compilation orchestration (`Compile`)
@@ -140,9 +140,14 @@ type Permission struct {
 
 #### Context types
 ```go
-type PolicyContext struct { /* key/value claims for interpolation */ }
+type PolicyContext struct {
+    User       string            // exposed as "user.id"
+    Account    string            // exposed as "account.id"
+    Role       string            // exposed as "role.id"
+    UserClaims map[string]string // exposed as "user.attr.<key>"
+}
 ```
-`PolicyContext` stores a flat map of keys (e.g. `"user.id"`, `"account.id"`, `"role.name"`) to values.
+`PolicyContext.Get` resolves the keys `"user.id"`, `"account.id"`, `"role.id"`, and `"user.attr.<key>"`.
 
 ### Functions
 

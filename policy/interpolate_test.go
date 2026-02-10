@@ -3,10 +3,14 @@ package policy
 import "testing"
 
 func TestInterpolateWithContext(t *testing.T) {
-	ctx := &PolicyContext{}
-	ctx.Set("user.id", "alice")
-	ctx.Set("account.id", "ACME")
-	ctx.Set("role.name", "workers")
+	ctx := &PolicyContext{
+		User:    "alice",
+		Account: "ACME",
+		Role:    "workers",
+		UserClaims: map[string]string{
+			"department": "engineering",
+		},
+	}
 
 	tests := []struct {
 		name       string
@@ -46,10 +50,18 @@ func TestInterpolateWithContext(t *testing.T) {
 
 		// Role variables
 		{
-			name:      "role.name",
-			template:  "nats:role.{{ role.name }}.>",
+			name:      "role.id",
+			template:  "nats:role.{{ role.id }}.>",
 			ctx:       ctx,
 			wantValue: "nats:role.workers.>",
+		},
+
+		// User attribute variables
+		{
+			name:      "user.attr.department",
+			template:  "nats:dept.{{ user.attr.department }}",
+			ctx:       ctx,
+			wantValue: "nats:dept.engineering",
 		},
 
 		// Multiple variables
@@ -96,11 +108,11 @@ func TestInterpolateWithContext(t *testing.T) {
 			wantReason: "unresolved variable: user.id",
 		},
 		{
-			name:       "missing role.name claim",
-			template:   "nats:{{ role.name }}",
+			name:       "missing role.id claim",
+			template:   "nats:{{ role.id }}",
 			ctx:        &PolicyContext{},
 			wantExcl:   true,
-			wantReason: "unresolved variable: role.name",
+			wantReason: "unresolved variable: role.id",
 		},
 		{
 			name:       "missing account.id claim",
@@ -130,28 +142,42 @@ func TestInterpolateWithContext(t *testing.T) {
 			wantExcl:   true,
 			wantReason: "unresolved variable: role.unknown",
 		},
+		{
+			name:       "missing user.attr claim",
+			template:   "nats:{{ user.attr.team }}",
+			ctx:        ctx,
+			wantExcl:   true,
+			wantReason: "unresolved variable: user.attr.team",
+		},
 
 		// Excluded resources (invalid values)
 		{
 			name:       "user.id with wildcard",
 			template:   "nats:{{ user.id }}",
-			ctx:        func() *PolicyContext { c := &PolicyContext{}; c.Set("user.id", "alice*"); return c }(),
+			ctx:        &PolicyContext{User: "alice*"},
 			wantExcl:   true,
 			wantReason: "invalid value for user.id: alice*",
 		},
 		{
 			name:       "account.id with wildcard",
 			template:   "nats:{{ account.id }}",
-			ctx:        func() *PolicyContext { c := &PolicyContext{}; c.Set("account.id", "ACME*"); return c }(),
+			ctx:        &PolicyContext{Account: "ACME*"},
 			wantExcl:   true,
 			wantReason: "invalid value for account.id: ACME*",
 		},
 		{
 			name:       "user.id with gt",
 			template:   "nats:{{ user.id }}",
-			ctx:        func() *PolicyContext { c := &PolicyContext{}; c.Set("user.id", "alice>"); return c }(),
+			ctx:        &PolicyContext{User: "alice>"},
 			wantExcl:   true,
 			wantReason: "invalid value for user.id: alice>",
+		},
+		{
+			name:       "user.attr with wildcard",
+			template:   "nats:{{ user.attr.department }}",
+			ctx:        &PolicyContext{UserClaims: map[string]string{"department": "eng*"}},
+			wantExcl:   true,
+			wantReason: "invalid value for user.attr.department: eng*",
 		},
 		{
 			name:       "user.id empty",
