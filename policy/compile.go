@@ -23,14 +23,17 @@ type CompileResult struct {
 func Compile(policies []*Policy, ctx *PolicyContext, perms *NatsPermissions) CompileResult {
 	result := CompileResult{}
 
+	if ctx == nil {
+		result.Warnings = append(result.Warnings, "policy skipped (nil context)")
+		return result
+	}
+
 	// Always grant permission to subscribe to user's personalized inbox
-	if userID, ok := ctx.Get("user.id"); ok {
+	if userID := ctx.User; userID != "" {
 		// INBOX prefix is _INBOX_{{user.id}}
 		// We allow subscription to _INBOX_{{user.id}}.>
 		perms.Allow(Permission{Type: PermSub, Subject: "_INBOX_" + userID + ".>"})
 	}
-
-	requestedAccount, hasAccount := ctx.Get("account.id")
 
 	for _, pol := range policies {
 		if pol == nil {
@@ -40,13 +43,13 @@ func Compile(policies []*Policy, ctx *PolicyContext, perms *NatsPermissions) Com
 		// Defense-in-depth: only compile policies applicable to the requested account.
 		// Global policies (Account="*") always apply.
 		switch {
-		case pol.Account == "*":
-			// ok
-		case hasAccount && pol.Account == requestedAccount:
-			// ok
-		case !hasAccount:
+		case ctx.Account == "":
 			result.Warnings = append(result.Warnings, "policy skipped (missing account.id): "+pol.ID)
 			continue
+		case pol.Account == "*":
+			// ok
+		case pol.Account == ctx.Account:
+			// ok
 		default:
 			result.Warnings = append(result.Warnings, "policy skipped (account mismatch): "+pol.ID)
 			continue

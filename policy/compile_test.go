@@ -443,24 +443,23 @@ func TestCompile_NilContexts(t *testing.T) {
 
 	perms := NewNatsPermissions()
 
-	// Nil context should still work for non-interpolated resources
+	// Nil context should return empty permissions and a warning
 	result := Compile(policies, nil, perms)
 
-	if len(result.Warnings) != 0 {
-		t.Errorf("unexpected warnings: %v", result.Warnings)
+	if len(result.Warnings) != 1 {
+		t.Errorf("expected 1 warning, got %v", result.Warnings)
 	}
 
-	perms.Deduplicate()
 	pubList := perms.PubList()
-	if len(pubList) != 1 || pubList[0].Subject != "orders" {
-		t.Errorf("expected [orders], got %v", pubList)
+	if len(pubList) != 0 {
+		t.Errorf("expected empty pub permissions, got %v", pubList)
 	}
 }
 
 func TestCompile_EmptyPolicies(t *testing.T) {
 	perms := NewNatsPermissions()
 
-	result := Compile(nil, nil, perms)
+	result := Compile(nil, &PolicyContext{}, perms)
 
 	if len(result.Warnings) != 0 {
 		t.Errorf("unexpected warnings: %v", result.Warnings)
