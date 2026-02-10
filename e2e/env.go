@@ -3,12 +3,11 @@ package e2e
 import (
 	"crypto/x509"
 	"encoding/pem"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sync"
+	"strings"
 	"testing"
 	"time"
 
@@ -25,35 +24,6 @@ type TestEnv struct {
 	nautsCmd  *exec.Cmd
 	port      int
 	credsFile string // sentinel creds for operator mode
-}
-
-var buildNautsOnce sync.Once
-var buildNautsErr error
-
-func ensureNautsBuilt(t *testing.T, baseDir string) string {
-	t.Helper()
-
-	repoRoot := filepath.Clean(filepath.Join(baseDir, "..", ".."))
-	nautsPath := filepath.Join(repoRoot, "bin", "nauts")
-
-	buildNautsOnce.Do(func() {
-		cmd := exec.Command("go", "build", "-o", nautsPath, "./cmd/nauts")
-		cmd.Dir = repoRoot
-		output, err := cmd.CombinedOutput()
-		if err != nil {
-			buildNautsErr = fmt.Errorf("failed to build nauts binary: %w\nOutput: %s", err, string(output))
-		}
-	})
-
-	if buildNautsErr != nil {
-		t.Fatalf("%v", buildNautsErr)
-	}
-
-	if _, err := os.Stat(nautsPath); err != nil {
-		t.Fatalf("nauts binary not found at %s after build: %v", nautsPath, err)
-	}
-
-	return nautsPath
 }
 
 func newTestEnv(t *testing.T, dir string, mode string, port int) *TestEnv {
@@ -109,7 +79,7 @@ func (e *TestEnv) start() {
 	// Start nauts auth service
 	e.t.Log("Starting nauts auth service...")
 	// environment variable NATS_URL
-	nautsPath := ensureNautsBuilt(e.t, e.baseDir)
+	nautsPath := "../../bin/nauts"
 	e.nautsCmd = exec.Command(nautsPath, "serve", "-c", "nauts.json")
 	e.nautsCmd.Env = []string{fmt.Sprintf("NATS_URL=nats://localhost:%d", e.port)}
 	e.nautsCmd.Dir = e.baseDir
@@ -233,7 +203,7 @@ func (e *TestEnv) GenerateJWT(t *testing.T, roles []string, sub string) string {
 // that uses AWS CLI to create a signed GetCallerIdentity request.
 // Returns a JSON token with {authorization, date, securityToken}.
 func (e *TestEnv) GenerateAwsSigV4Token(profile string) (string, error) {
-	scriptPath := filepath.Join(e.baseDir, "generate-aws-token.sh")
+	scriptPath := filepath.Join(e.baseDir, "get_aws_headers.sh")
 	if _, err := os.Stat(scriptPath); err != nil {
 		return "", fmt.Errorf("AWS SigV4 helper script not found: %w", err)
 	}
@@ -246,19 +216,7 @@ func (e *TestEnv) GenerateAwsSigV4Token(profile string) (string, error) {
 	}
 
 	// Output should be JSON token
-	token := string(output)
-	// Trim whitespace
-	for len(token) > 0 && (token[0] == ' ' || token[0] == '\n' || token[0] == '\r' || token[0] == '\t') {
-		token = token[1:]
-	}
-	for len(token) > 0 && (token[len(token)-1] == ' ' || token[len(token)-1] == '\n' || token[len(token)-1] == '\r' || token[len(token)-1] == '\t') {
-		token = token[:len(token)-1]
-	}
-
-	if token == "" || token[0] != '{' {
-		return "", errors.New("invalid AWS SigV4 token output")
-	}
-
+	token := strings.TrimSpace(string(output))
 	return token, nil
 }
 

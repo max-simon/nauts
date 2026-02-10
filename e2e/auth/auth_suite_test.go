@@ -1,6 +1,7 @@
 package auth_test
 
 import (
+	"os"
 	"testing"
 
 	"github.com/msimon/nauts/e2e"
@@ -50,23 +51,23 @@ func TestAuthSuite(t *testing.T) {
 			nc.Close()
 		})
 
-		// t.Run("aws sigv4: can authenticate (optional)", func(t *testing.T) {
-		// 	profile := os.Getenv("NAUTS_E2E_AWS_PROFILE")
-		// 	if profile == "" {
-		// 		profile = "nauts-role-APP-consumer"
-		// 	}
+		t.Run("aws sigv4: can authenticate (optional)", func(t *testing.T) {
+			profile := os.Getenv("NAUTS_E2E_AWS_PROFILE")
+			if profile == "" {
+				profile = "nauts-role-APP-consumer"
+			}
 
-		// 	token, err := env.GenerateAwsSigV4Token(profile)
-		// 	if err != nil {
-		// 		t.Skipf("AWS SigV4 not configured/available: %v", err)
-		// 	}
+			token, err := env.GenerateAwsSigV4Token(profile)
+			if err != nil {
+				t.Skipf("AWS SigV4 not configured/available: %v", err)
+			}
 
-		// 	nc, err := env.ConnectWithAwsSigV4(token, "APP", "intro-aws")
-		// 	if err != nil {
-		// 		t.Fatalf("AWS SigV4 authentication failed: %v", err)
-		// 	}
-		// 	nc.Close()
-		// })
+			nc, err := env.ConnectWithAwsSigV4(token, "APP", "intro-aws")
+			if err != nil {
+				t.Fatalf("AWS SigV4 authentication failed: %v", err)
+			}
+			nc.Close()
+		})
 
 		t.Run("auth accounts: APP2 role cannot publish in APP", func(t *testing.T) {
 			token := env.GenerateJWT(t, []string{"APP2.producer"}, "chris")
