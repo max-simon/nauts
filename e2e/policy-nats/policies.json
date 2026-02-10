@@ -1,0 +1,50 @@
+[
+  {
+    "id": "admin",
+    "account": "POLICY",
+    "name": "Admin Policy",
+    "statements": [
+      {
+        "effect": "allow",
+        "actions": ["nats.*"],
+        "resources": ["nats:>"]
+      }
+    ]
+  },
+  {
+    "id": "pub",
+    "account": "POLICY",
+    "name": "Publish Policy",
+    "statements": [
+      {
+        "effect": "allow",
+        "actions": ["nats.pub"],
+        "resources": ["nats:pub.{{ user.id }}.{{ role.name }}"]
+      }
+    ]
+  },
+  {
+    "id": "sub",
+    "account": "POLICY",
+    "name": "Subscribe Policy",
+    "statements": [
+      {
+        "effect": "allow",
+        "actions": ["nats.sub"],
+        "resources": ["nats:sub.{{ user.id }}.{{ role.name }}"]
+      }
+    ]
+  },
+  {
+    "id": "svc",
+    "account": "POLICY",
+    "name": "Service Policy",
+    "statements": [
+      {
+        "effect": "allow",
+        "actions": ["nats.service"],
+        "resources": ["nats:svc.{{ user.id }}.{{ role.name }}"]
+      }
+    ]
+  }
+]
