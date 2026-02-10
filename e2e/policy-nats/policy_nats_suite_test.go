@@ -56,8 +56,8 @@ func TestPoliciesNats(t *testing.T) {
 				t.Fatalf("subber failed to subscribe to sub.e2e: %v", err)
 			}
 			defer sub.Unsubscribe()
-			if _, err := e2e.SubscribeSyncWithCheck(nc, "sub.nope"); err == nil {
-				t.Fatalf("subber succeeded to subscribe to sub.nope (expected error)")
+			if _, err := e2e.SubscribeSyncWithCheck(nc, "nope.e2e"); err == nil {
+				t.Fatalf("subber succeeded to subscribe to nope.e2e (expected error)")
 			}
 
 			adminNc, err := env.ConnectWithUsernameAndPassword("admin", "secret", "POLICY", "policy-file")

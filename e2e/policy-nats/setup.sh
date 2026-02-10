@@ -124,7 +124,7 @@ cat > policies.json <<EOF
       {
         "effect": "allow",
         "actions": ["nats.sub"],
-        "resources": ["nats:sub.e2e"]
+        "resources": ["nats:sub.*"]
       }
     ]
   },
