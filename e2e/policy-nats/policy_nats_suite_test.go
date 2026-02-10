@@ -43,21 +43,21 @@ func TestPoliciesNats(t *testing.T) {
 			}
 		})
 
-		t.Run("sub action: allowed to subscribe (uses user.id + role.id)", func(t *testing.T) {
+		t.Run("sub action: allowed to subscribe", func(t *testing.T) {
 			nc, err := env.ConnectWithUsernameAndPassword("subber", "secret", "POLICY", "policy-file")
 			if err != nil {
 				t.Fatalf("subber failed to authenticate: %v", err)
 			}
 			defer nc.Close()
 
-			// Policy resource is: nats:sub.{{ user.id }}.{{ role.id }}
-			sub, err := e2e.SubscribeSyncWithCheck(nc, "sub.subber.sub")
+			// Policy resource is: nats:sub.e2e
+			sub, err := e2e.SubscribeSyncWithCheck(nc, "sub.e2e")
 			if err != nil {
-				t.Fatalf("subber failed to subscribe to sub.subber.sub: %v", err)
+				t.Fatalf("subber failed to subscribe to sub.e2e: %v", err)
 			}
 			defer sub.Unsubscribe()
-			if _, err := e2e.SubscribeSyncWithCheck(nc, "sub.other.sub"); err == nil {
-				t.Fatalf("subber succeeded to subscribe to sub.other.sub (expected error)")
+			if _, err := e2e.SubscribeSyncWithCheck(nc, "sub.nope"); err == nil {
+				t.Fatalf("subber succeeded to subscribe to sub.nope (expected error)")
 			}
 
 			adminNc, err := env.ConnectWithUsernameAndPassword("admin", "secret", "POLICY", "policy-file")
@@ -65,25 +65,25 @@ func TestPoliciesNats(t *testing.T) {
 				t.Fatalf("admin connect failed: %v", err)
 			}
 			defer adminNc.Close()
-			_ = e2e.PublishSync(adminNc, "sub.subber.sub", []byte("hello"))
+			_ = e2e.PublishSync(adminNc, "sub.e2e", []byte("hello"))
 			if _, err := sub.NextMsg(time.Second); err != nil {
 				t.Fatalf("subber failed to receive message: %v", err)
 			}
 
-			if err := e2e.PublishSync(nc, "sub.subber.sub", []byte("data")); err == nil {
+			if err := e2e.PublishSync(nc, "sub.e2e", []byte("data")); err == nil {
 				t.Fatalf("subber succeeded to publish (expected error)")
 			}
 		})
 
-		t.Run("service action: allowed to listen and respond (uses user.id + role.id)", func(t *testing.T) {
+		t.Run("service action: allowed to listen and respond (uses role.id)", func(t *testing.T) {
 			nc, err := env.ConnectWithUsernameAndPassword("service", "secret", "POLICY", "policy-file")
 			if err != nil {
 				t.Fatalf("service failed to authenticate: %v", err)
 			}
 			defer nc.Close()
 
-			// Policy resource is: nats:svc.{{ user.id }}.{{ role.id }}
-			sub, err := nc.Subscribe("svc.service.service", func(m *nats.Msg) {
+			// Policy resource is: nats:svc.{{ role.id }}
+			sub, err := nc.Subscribe("svc.service", func(m *nats.Msg) {
 				_ = m.Respond([]byte("ok"))
 			})
 			if err != nil {
@@ -97,7 +97,7 @@ func TestPoliciesNats(t *testing.T) {
 			}
 			defer adminNc.Close()
 
-			msg, err := adminNc.Request("svc.service.service", []byte("?"), time.Second)
+			msg, err := adminNc.Request("svc.service", []byte("?"), time.Second)
 			if err != nil {
 				t.Fatalf("request failed: %v", err)
 			}
