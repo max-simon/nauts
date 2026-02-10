@@ -16,12 +16,20 @@ func TestAccountOperatorSuite(t *testing.T) {
 			nc.Close()
 		})
 
+		t.Run("file auth: alice can not authenticate with wrong password", func(t *testing.T) {
+			nc, err := env.ConnectWithUsernameAndPassword("alice", "secret2", "APP", "intro-file")
+			if err == nil {
+				t.Fatalf("unexpectedly authenticated with wrong password: %v", err)
+			}
+			nc.Close()
+		})
+
 		t.Run("unknown account is rejected", func(t *testing.T) {
 			nc, err := env.ConnectWithUsernameAndPassword("alice", "secret", "NOPE", "intro-file")
 			if err == nil {
-				nc.Close()
 				t.Fatalf("unexpectedly authenticated to unknown account")
 			}
+			nc.Close()
 		})
 	})
 }

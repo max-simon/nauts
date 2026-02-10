@@ -4,11 +4,11 @@
     "operator": {
       "accounts": {
         "AUTH": {
-          "publicKey": "ADEOE3SBZ52BNFW2TEJYIOV2JKADR3XQUQHFCGG5MYLKMCKKQSU6CHHJ",
+          "publicKey": "ADRAHCSTWOPA6DRAIXP4BPBJC2BBXFA7MUQYWMJE43U3Z2NCLFAVPENF",
           "signingKeyPath": "./sk-AUTH.nk"
         },
         "APP": {
-          "publicKey": "ADOBMBWZS2P342YOIGA3PWSER4E2ZBK4J52JKATIVV6COR3HWGOR22XD",
+          "publicKey": "ACQ5BCOXYKRHDBW3DJJN7RMCTTMWZOM43CA44WHIPKZRTBXBEV4BIK72",
           "signingKeyPath": "./sk-APP.nk"
         }
       }
@@ -34,7 +34,7 @@
   },
   "server": {
     "natsUrl": "nats://localhost:4222",
-    "natsNkey": "./user-auth.nk",
+    "natsCredentials": "./auth.creds",
     "xkeySeedFile": "./server-xkey.nk"
   }
 }

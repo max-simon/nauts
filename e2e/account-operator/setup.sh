@@ -34,6 +34,7 @@ if [ $? -ne 0 ]; then
   # Create dummy user for all clients
   nsc add user --account AUTH --name dummy --deny-pubsub ">";
   # Enable auth callout in AUTH account
+  USER_AUTH_PUB=$(nsc describe user --account AUTH --name auth --json | jq -r .sub);
   nsc edit authcallout --account AUTH --curve $XKEY_PUB --auth-user $USER_AUTH_PUB --allowed-account '*';
 fi
 
@@ -107,16 +108,7 @@ EOF
 
 cat > nauts.json <<EOF
 {
-  "account": {
-    "type": "static",
-    "static": {
-      "publicKey": "$ISSUER_PUB",
-      "privateKeyPath": "./account-AUTH.nk",
-      "accounts": [
-        "AUTH", "APP"
-      ]
-    }
-  },
+  "account": {},
   "policy": {
     "type": "file",
     "file": {
@@ -135,7 +127,7 @@ cat > nauts.json <<EOF
   },
   "server": {
     "natsUrl": "nats://localhost:4222",
-    "natsNkey": "./user-auth.nk",
+    "natsCredentials": "./auth.creds",
     "xkeySeedFile": "./server-xkey.nk"
   }
 }
