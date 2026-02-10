@@ -1,0 +1,5 @@
+[
+  { "role": "worker", "account": "APP", "policies": ["app-worker"] },
+  { "role": "consumer", "account": "APP", "policies": ["app-consumer"] },
+  { "role": "producer", "account": "APP2", "policies": ["app2-producer"] }
+]

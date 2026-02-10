@@ -1,0 +1,38 @@
+[
+  {
+    "id": "app-worker",
+    "account": "APP",
+    "name": "APP worker",
+    "statements": [
+      {
+        "effect": "allow",
+        "actions": ["nats.pub"],
+        "resources": ["nats:e2e.mytest"]
+      }
+    ]
+  },
+  {
+    "id": "app-consumer",
+    "account": "APP",
+    "name": "APP consumer",
+    "statements": [
+      {
+        "effect": "allow",
+        "actions": ["nats.sub"],
+        "resources": ["nats:e2e.mytest"]
+      }
+    ]
+  },
+  {
+    "id": "app2-producer",
+    "account": "APP2",
+    "name": "APP2 producer",
+    "statements": [
+      {
+        "effect": "allow",
+        "actions": ["nats.pub"],
+        "resources": ["nats:e2e.mytest"]
+      }
+    ]
+  }
+]
