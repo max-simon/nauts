@@ -16,7 +16,7 @@ nauts is a framework for scalable, human-friendly permission management for [NAT
 
 - **Policy-Based Access Control**: Define permissions using intuitive policies with actions like `nats.pub`, `js.consume`, `kv.read` instead of raw NATS subjects.
 - **Role-Based Authorization**: Assign policies to roles, and roles to users via account-scoped role bindings.
-- **Variable Interpolation**: Scope resources dynamically with `{{ user.id }}`, `{{ account.id }}`, `{{ role.id }}`, and `{{ user.attr.<key> }}`.
+- **Variable Interpolation**: Scope resources dynamically with `{{ user.id }}`, `{{ account.id }}`, `{{ role.id }}` (alias: `{{ role.name }}`), and `{{ user.attr.<key> }}`.
 - **Multiple Identity Providers**: Authenticate users via file-based credentials, external JWTs (Keycloak, Auth0, Okta), AWS SigV4 (IAM roles), or custom providers.
 - **NATS Auth Callout**: Built-in service implementing [NATS auth callout protocol](https://docs.nats.io/running-a-nats-service/configuration/securing_nats/auth_callout).
 - **Operator & Static Modes**: Works with NATS operator/account hierarchies or simple single-key deployments.

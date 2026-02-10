@@ -62,6 +62,7 @@ Refers to the requested NATS account and contains:
 
 Refers to the role this policy is attached to and contains:
 - `role.id`: role identifier (e.g., "admin", "readonly")
+- `role.name`: alias of `role.id` (provided for readability)
 
 #### Example
 

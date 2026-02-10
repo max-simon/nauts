@@ -20,6 +20,11 @@
       "roles": ["POLICY.reader"],
       "passwordHash": "$2a$10$yRjAZrdk2RhF0LB/Hf2b5./.06Alk8Zy1Pis8acjM298NPSTB/iwi"
     },
+    "scoper": {
+      "accounts": ["POLICY"],
+      "roles": ["POLICY.scoped-reader"],
+      "passwordHash": "$2a$10$yRjAZrdk2RhF0LB/Hf2b5./.06Alk8Zy1Pis8acjM298NPSTB/iwi"
+    },
     "editor": {
       "accounts": ["POLICY"],
       "roles": ["POLICY.editor"],

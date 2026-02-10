@@ -20,6 +20,11 @@
     "policies": ["kv-read-any"]
   },
   {
+    "role": "scoped-reader",
+    "account": "POLICY",
+    "policies": ["kv-read-user-prefix"]
+  },
+  {
     "role": "editor",
     "account": "POLICY",
     "policies": ["kv-edit-any"]

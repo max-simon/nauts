@@ -48,6 +48,18 @@
     ]
   },
   {
+    "id": "kv-read-user-prefix",
+    "account": "POLICY",
+    "name": "KV Read User Prefix",
+    "statements": [
+      {
+        "effect": "allow",
+        "actions": ["kv.read"],
+        "resources": ["kv:BUCKET_SCOPED:{{ user.id }}.>"]
+      }
+    ]
+  },
+  {
     "id": "kv-edit-any",
     "account": "POLICY",
     "name": "KV Edit Any Key",

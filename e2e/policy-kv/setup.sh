@@ -141,6 +141,18 @@ cat > policies.json <<EOF
     ]
   },
   {
+    "id": "kv-read-user-prefix",
+    "account": "POLICY",
+    "name": "KV Read User Prefix",
+    "statements": [
+      {
+        "effect": "allow",
+        "actions": ["kv.read"],
+        "resources": ["kv:BUCKET_SCOPED:{{ user.id }}.>"]
+      }
+    ]
+  },
+  {
     "id": "kv-edit-any",
     "account": "POLICY",
     "name": "KV Edit Any Key",
@@ -179,6 +191,11 @@ cat > bindings.json <<EOF
     "policies": ["kv-read-any"]
   },
   {
+    "role": "scoped-reader",
+    "account": "POLICY",
+    "policies": ["kv-read-user-prefix"]
+  },
+  {
     "role": "editor",
     "account": "POLICY",
     "policies": ["kv-edit-any"]
@@ -209,6 +226,11 @@ cat > users.json <<EOF
     "reader": {
       "accounts": ["POLICY"],
       "roles": ["POLICY.reader"],
+      "passwordHash": "\$2a\$10\$yRjAZrdk2RhF0LB/Hf2b5./.06Alk8Zy1Pis8acjM298NPSTB/iwi"
+    },
+    "scoper": {
+      "accounts": ["POLICY"],
+      "roles": ["POLICY.scoped-reader"],
       "passwordHash": "\$2a\$10\$yRjAZrdk2RhF0LB/Hf2b5./.06Alk8Zy1Pis8acjM298NPSTB/iwi"
     },
     "editor": {

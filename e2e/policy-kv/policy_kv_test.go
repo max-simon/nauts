@@ -38,6 +38,13 @@ func TestPoliciesKV(t *testing.T) {
 		}
 		_, _ = kvEdit.PutString("seed", "seed")
 
+		kvScoped, err := adminJs.CreateKeyValue(&nats.KeyValueConfig{Bucket: "BUCKET_SCOPED"})
+		if err != nil {
+			t.Fatalf("setup failed to create BUCKET_SCOPED: %v", err)
+		}
+		_, _ = kvScoped.PutString("scoper.ok", "yes")
+		_, _ = kvScoped.PutString("nope.ok", "no")
+
 		t.Run("kv.manage: manager can create and delete BUCKET_MGR (but cannot delete BUCKET_VIEW)", func(t *testing.T) {
 			nc, err := env.ConnectWithUsernameAndPassword("manager", "secret", "POLICY", "policy-file")
 			if err != nil {
@@ -161,6 +168,39 @@ func TestPoliciesKV(t *testing.T) {
 			}
 			if err := kv.Delete("key"); err != nil {
 				t.Fatalf("editor failed to delete key: %v", err)
+			}
+		})
+
+		t.Run("kv.read with key '{{ user.id }}.>' scope: scoper can read own prefix but not nope", func(t *testing.T) {
+			nc, err := env.ConnectWithUsernameAndPassword("scoper", "secret", "POLICY", "policy-file")
+			if err != nil {
+				t.Fatalf("scoper failed to authenticate: %v", err)
+			}
+			defer nc.Close()
+
+			js, err := nc.JetStream()
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			kv, err := js.KeyValue("BUCKET_SCOPED")
+			if err != nil {
+				t.Fatalf("scoper failed to bind to BUCKET_SCOPED: %v", err)
+			}
+
+			entry, err := kv.Get("scoper.ok")
+			if err != nil {
+				t.Fatalf("scoper failed to get scoper.ok: %v", err)
+			}
+			if got, want := string(entry.Value()), "yes"; got != want {
+				t.Fatalf("scoper got %q, want %q", got, want)
+			}
+
+			if _, err := kv.Get("nope.ok"); err == nil {
+				t.Fatalf("scoper succeeded to get nope.ok (expected error)")
+			}
+			if _, err := kv.PutString("scoper.write", "nope"); err == nil {
+				t.Fatalf("scoper succeeded to write (expected error)")
 			}
 		})
 	})
