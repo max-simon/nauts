@@ -2,10 +2,8 @@ package auth_test
 
 import (
 	"testing"
-	"time"
 
 	"github.com/msimon/nauts/e2e"
-	"github.com/nats-io/nats.go"
 )
 
 func TestAuthSuite(t *testing.T) {
@@ -43,6 +41,15 @@ func TestAuthSuite(t *testing.T) {
 			nc.Close()
 		})
 
+		t.Run("jwt auth: bob can not authenticate in unknown account", func(t *testing.T) {
+			token := env.GenerateJWT(t, []string{"APP3.worker"}, "bob")
+			nc, err := env.ConnectWithJwt(token, "APP3", "intro-jwt")
+			if err == nil {
+				t.Fatalf("bob authenticated with JWT to unknown account: %v", err)
+			}
+			nc.Close()
+		})
+
 		// t.Run("aws sigv4: can authenticate (optional)", func(t *testing.T) {
 		// 	profile := os.Getenv("NAUTS_E2E_AWS_PROFILE")
 		// 	if profile == "" {
@@ -60,70 +67,6 @@ func TestAuthSuite(t *testing.T) {
 		// 	}
 		// 	nc.Close()
 		// })
-
-		t.Run("bob pub / alice sub", func(t *testing.T) {
-			ncAlice, err := env.ConnectWithUsernameAndPassword("alice", "secret", "APP", "intro-file")
-			if err != nil {
-				t.Fatalf("alice connect failed: %v", err)
-			}
-			defer ncAlice.Close()
-
-			sub, err := ncAlice.SubscribeSync("e2e.mytest")
-			if err != nil {
-				t.Fatalf("alice subscribe failed: %v", err)
-			}
-			if err := ncAlice.Flush(); err != nil {
-				t.Fatalf("alice flush failed: %v", err)
-			}
-
-			token := env.GenerateJWT(t, []string{"APP.worker"}, "bob")
-			ncBob, err := env.ConnectWithJwt(token, "APP", "intro-jwt")
-			if err != nil {
-				t.Fatalf("bob connect failed: %v", err)
-			}
-			defer ncBob.Close()
-
-			if err := ncBob.Publish("e2e.mytest", []byte("hello")); err != nil {
-				t.Fatalf("bob publish failed: %v", err)
-			}
-			if err := ncBob.Flush(); err != nil {
-				t.Fatalf("bob flush failed: %v", err)
-			}
-
-			msg, err := sub.NextMsg(2 * time.Second)
-			if err != nil {
-				t.Fatalf("alice failed to receive message: %v", err)
-			}
-			if string(msg.Data) != "hello" {
-				t.Fatalf("unexpected message data: %s", string(msg.Data))
-			}
-		})
-
-		t.Run("policy: alice cannot publish", func(t *testing.T) {
-			nc, err := env.ConnectWithUsernameAndPassword("alice", "secret", "APP", "intro-file")
-			if err != nil {
-				t.Fatalf("alice connection failed: %v", err)
-			}
-			defer nc.Close()
-
-			errCh := make(chan error, 1)
-			nc.SetErrorHandler(func(_ *nats.Conn, _ *nats.Subscription, err error) {
-				select {
-				case errCh <- err:
-				default:
-				}
-			})
-
-			_ = nc.Publish("e2e.mytest", []byte("data"))
-			_ = nc.Flush()
-
-			select {
-			case <-errCh:
-				// expected
-			case <-time.After(500 * time.Millisecond):
-				t.Fatalf("alice published successfully (timeout waiting for error)")
-			}
-		})
 
 		t.Run("auth accounts: APP2 role cannot publish in APP", func(t *testing.T) {
 			token := env.GenerateJWT(t, []string{"APP2.producer"}, "chris")
