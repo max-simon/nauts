@@ -1,0 +1,62 @@
+[
+  {
+    "id": "admin",
+    "account": "POLICY",
+    "name": "Admin",
+    "statements": [
+      {
+        "effect": "allow",
+        "actions": ["nats.*", "js.manage", "js.view"],
+        "resources": ["nats:>", "js:*"]
+      }
+    ]
+  },
+  {
+    "id": "js-manage",
+    "account": "POLICY",
+    "name": "JetStream Manage",
+    "statements": [
+      {
+        "effect": "allow",
+        "actions": ["js.manage"],
+        "resources": ["js:STREAM_MGR"]
+      }
+    ]
+  },
+  {
+    "id": "js-view",
+    "account": "POLICY",
+    "name": "JetStream View",
+    "statements": [
+      {
+        "effect": "allow",
+        "actions": ["js.view"],
+        "resources": ["js:STREAM_CONS"]
+      }
+    ]
+  },
+  {
+    "id": "js-consume-a",
+    "account": "POLICY",
+    "name": "JetStream Consume (specific consumer)",
+    "statements": [
+      {
+        "effect": "allow",
+        "actions": ["js.consume"],
+        "resources": ["js:STREAM_CONS:CONSUMER_A"]
+      }
+    ]
+  },
+  {
+    "id": "js-consume-star",
+    "account": "POLICY",
+    "name": "JetStream Consume (consumer wildcard)",
+    "statements": [
+      {
+        "effect": "allow",
+        "actions": ["js.consume"],
+        "resources": ["js:STREAM_CONS:*"]
+      }
+    ]
+  }
+]
