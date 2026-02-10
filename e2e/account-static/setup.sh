@@ -13,13 +13,17 @@ fi
 
 # 1. Account Key (Issuer)
 # In static mode, this single key identifies the issuer for all accounts
-nk -gen account > account-AUTH.nk
+if [ ! -f account-AUTH.nk ]; then
+  nk -gen account > account-AUTH.nk
+fi
 ISSUER_PUB=$(nk -inkey account-AUTH.nk -pubout)
 echo "Generated account-AUTH.nk (Issuer: $ISSUER_PUB)"
 
 # 2. Auth Service User
 # The nauts process uses this credentials to connect to NATS
-nk -gen user > user-auth.nk
+if [ ! -f user-auth.nk ]; then
+  nk -gen user > user-auth.nk
+fi
 AUTH_USER_PUB=$(nk -inkey user-auth.nk -pubout)
 echo "Generated user-auth.nk (Auth User: $AUTH_USER_PUB)"
 

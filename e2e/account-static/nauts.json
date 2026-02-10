@@ -2,7 +2,7 @@
   "account": {
     "type": "static",
     "static": {
-      "publicKey": "ABCGZRQRGYC3X7ZBNY6O4ML3SA3JD6VM7V4JIEK226IOWT5GKUKAH4ET",
+      "publicKey": "AA6RNMO6TDBYE64HECIN33HEHGBLEWKTNM2IKZ3AFZM2FXVYFYAAM2IM",
       "privateKeyPath": "./account-AUTH.nk",
       "accounts": [
         "AUTH", "APP"
