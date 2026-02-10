@@ -112,7 +112,7 @@ cat > policies.json <<EOF
       {
         "effect": "allow",
         "actions": ["nats.pub"],
-        "resources": ["nats:pub.{{ user.id }}.{{ role.name }}"]
+        "resources": ["nats:pub.{{ user.id }}.{{ role.id }}"]
       }
     ]
   },
@@ -124,7 +124,7 @@ cat > policies.json <<EOF
       {
         "effect": "allow",
         "actions": ["nats.sub"],
-        "resources": ["nats:sub.{{ user.id }}.{{ role.name }}"]
+        "resources": ["nats:sub.{{ user.id }}.{{ role.id }}"]
       }
     ]
   },
@@ -136,7 +136,7 @@ cat > policies.json <<EOF
       {
         "effect": "allow",
         "actions": ["nats.service"],
-        "resources": ["nats:svc.{{ user.id }}.{{ role.name }}"]
+        "resources": ["nats:svc.{{ user.id }}.{{ role.id }}"]
       }
     ]
   }
