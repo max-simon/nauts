@@ -1,0 +1,14 @@
+[
+  {
+    "id": "app-consumer",
+    "account": "APP",
+    "name": "APP consumer",
+    "statements": [
+      {
+        "effect": "allow",
+        "actions": ["nats.sub"],
+        "resources": ["nats:e2e.mytest"]
+      }
+    ]
+  }
+]

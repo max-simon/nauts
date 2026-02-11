@@ -1,0 +1,27 @@
+[
+  {
+    "role": "admin",
+    "account": "POLICY",
+    "policies": ["admin"]
+  },
+  {
+    "role": "manager",
+    "account": "POLICY",
+    "policies": ["js-manage"]
+  },
+  {
+    "role": "viewer",
+    "account": "POLICY",
+    "policies": ["js-view"]
+  },
+  {
+    "role": "consumer-a",
+    "account": "POLICY",
+    "policies": ["js-consume-a"]
+  },
+  {
+    "role": "consumer-star",
+    "account": "POLICY",
+    "policies": ["js-consume-star"]
+  }
+]

@@ -40,11 +40,14 @@ type AccountConfig struct {
 
 // PolicyConfig configures the policy provider.
 type PolicyConfig struct {
-	// Type specifies the policy provider type. Currently only "file" is supported.
+	// Type specifies the policy provider type: "file" or "nats".
 	Type string `json:"type"`
 
 	// File contains file-based provider configuration.
 	File *provider.FilePolicyProviderConfig `json:"file,omitempty"`
+
+	// Nats contains NATS KV-based provider configuration.
+	Nats *provider.NatsPolicyProviderConfig `json:"nats,omitempty"`
 }
 
 // AuthConfig configures the authentication providers.
@@ -180,6 +183,19 @@ func (c *Config) Validate() error {
 		if c.Policy.File.BindingsPath == "" {
 			return fmt.Errorf("policy.file.bindingsPath is required")
 		}
+	case "nats":
+		if c.Policy.Nats == nil {
+			return fmt.Errorf("policy.nats configuration is required when type is 'nats'")
+		}
+		if c.Policy.Nats.Bucket == "" {
+			return fmt.Errorf("policy.nats.bucket is required")
+		}
+		if c.Policy.Nats.NatsURL == "" {
+			return fmt.Errorf("policy.nats.natsUrl is required")
+		}
+		if c.Policy.Nats.NatsCredentials != "" && c.Policy.Nats.NatsNkey != "" {
+			return fmt.Errorf("policy.nats.natsCredentials and policy.nats.natsNkey are mutually exclusive")
+		}
 	default:
 		return fmt.Errorf("unsupported policy provider type: %s", c.Policy.Type)
 	}
@@ -302,6 +318,11 @@ func NewAuthControllerWithConfig(config *Config, opts ...ControllerOption) (*Aut
 		policyProvider, err = provider.NewFilePolicyProvider(*config.Policy.File)
 		if err != nil {
 			return nil, fmt.Errorf("initializing file policy provider: %w", err)
+		}
+	case "nats":
+		policyProvider, err = provider.NewNatsPolicyProvider(*config.Policy.Nats)
+		if err != nil {
+			return nil, fmt.Errorf("initializing nats policy provider: %w", err)
 		}
 	}
 

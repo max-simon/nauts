@@ -295,8 +295,8 @@ The User.ID is set to the **full ARN** returned by AWS STS GetCallerIdentity, in
 // Example for assumed role: arn:aws:sts::123456789012:assumed-role/nauts.prod.admin/i-0abcd1234
 User{
     ID: "arn:aws:sts::123456789012:assumed-role/nauts.prod.admin/i-0abcd1234",
-    Roles: []AccountRole{
-        {Account: "prod", Role: "admin"},
+  Roles: []Role{
+    {Account: "prod", Name: "admin"},
     },
     Attributes: map[string]string{
         "aws_account": "123456789012",
@@ -309,8 +309,8 @@ User{
 // Example for IAM role: arn:aws:iam::123456789012:role/nauts.staging.readonly
 User{
     ID: "arn:aws:iam::123456789012:role/nauts.staging.readonly",
-    Roles: []AccountRole{
-        {Account: "staging", Role: "readonly"},
+  Roles: []Role{
+    {Account: "staging", Name: "readonly"},
     },
     Attributes: map[string]string{
         "aws_account": "123456789012",

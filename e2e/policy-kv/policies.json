@@ -1,0 +1,74 @@
+[
+  {
+    "id": "admin",
+    "account": "POLICY",
+    "name": "Admin",
+    "statements": [
+      {
+        "effect": "allow",
+        "actions": ["nats.*", "js.manage", "js.view", "kv.manage", "kv.view"],
+        "resources": ["nats:>", "js:*", "kv:*"]
+      }
+    ]
+  },
+  {
+    "id": "kv-manage",
+    "account": "POLICY",
+    "name": "KV Manage",
+    "statements": [
+      {
+        "effect": "allow",
+        "actions": ["kv.manage"],
+        "resources": ["kv:BUCKET_MGR"]
+      }
+    ]
+  },
+  {
+    "id": "kv-view",
+    "account": "POLICY",
+    "name": "KV View",
+    "statements": [
+      {
+        "effect": "allow",
+        "actions": ["kv.view"],
+        "resources": ["kv:BUCKET_VIEW"]
+      }
+    ]
+  },
+  {
+    "id": "kv-read-any",
+    "account": "POLICY",
+    "name": "KV Read Any Key",
+    "statements": [
+      {
+        "effect": "allow",
+        "actions": ["kv.read"],
+        "resources": ["kv:BUCKET_DATA:>"]
+      }
+    ]
+  },
+  {
+    "id": "kv-read-user-prefix",
+    "account": "POLICY",
+    "name": "KV Read User Prefix",
+    "statements": [
+      {
+        "effect": "allow",
+        "actions": ["kv.read"],
+        "resources": ["kv:BUCKET_SCOPED:{{ user.id }}.>"]
+      }
+    ]
+  },
+  {
+    "id": "kv-edit-any",
+    "account": "POLICY",
+    "name": "KV Edit Any Key",
+    "statements": [
+      {
+        "effect": "allow",
+        "actions": ["kv.edit"],
+        "resources": ["kv:BUCKET_EDIT:>"]
+      }
+    ]
+  }
+]

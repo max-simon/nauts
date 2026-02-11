@@ -1,0 +1,40 @@
+{
+  "account": {
+    "type": "operator",
+    "operator": {
+      "accounts": {
+        "AUTH": {
+          "publicKey": "ADRAHCSTWOPA6DRAIXP4BPBJC2BBXFA7MUQYWMJE43U3Z2NCLFAVPENF",
+          "signingKeyPath": "./sk-AUTH.nk"
+        },
+        "APP": {
+          "publicKey": "ACQ5BCOXYKRHDBW3DJJN7RMCTTMWZOM43CA44WHIPKZRTBXBEV4BIK72",
+          "signingKeyPath": "./sk-APP.nk"
+        }
+      }
+    }
+  },
+  "policy": {
+    "type": "file",
+    "file": {
+      "policiesPath": "./policies.json",
+      "bindingsPath": "./bindings.json"
+    }
+  },
+  "auth": {
+    "file": [
+      {
+        "id": "intro-file",
+        "accounts": [
+          "APP"
+        ],
+        "userPath": "./users.json"
+      }
+    ]
+  },
+  "server": {
+    "natsUrl": "nats://localhost:4222",
+    "natsCredentials": "./auth.creds",
+    "xkeySeedFile": "./server-xkey.nk"
+  }
+}

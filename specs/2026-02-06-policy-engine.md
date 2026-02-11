@@ -22,7 +22,7 @@ The `policy` package defines the full lifecycle of a permission policy: types fo
 - Policy, Statement, and Effect types  
 - Resource (NRN) parsing and validation  
 - Action registry and group expansion  
-- Variable interpolation (`{{ user.id }}`, `{{ role.name }}`, …)  
+- Variable interpolation (`{{ user.id }}`, `{{ role.id }}`, `{{ user.attr.<key> }}`, …)  
 - Action + Resource → NATS permission mapping  
 - Permission aggregation with wildcard-aware deduplication  
 - Compilation orchestration (`Compile`)
@@ -54,6 +54,7 @@ The `policy` package defines the full lifecycle of a permission policy: types fo
 ```go
 type Policy struct {
     ID         string      `json:"id"`
+    Account    string      `json:"account"`
     Name       string      `json:"name"`
     Statements []Statement `json:"statements"`
 }
@@ -139,15 +140,14 @@ type Permission struct {
 
 #### Context types
 ```go
-type Context interface {
-    HasAttribute(path string) bool
-    GetAttribute(path string) (string, bool)
+type PolicyContext struct {
+    User       string            // exposed as "user.id"
+    Account    string            // exposed as "account.id"
+    Role       string            // exposed as "role.id"
+    UserClaims map[string]string // exposed as "user.attr.<key>"
 }
-type UserContext struct { ID, Account string; Attributes map[string]string }
-type RoleContext struct { Name, Account string }
-type InterpolationContext struct { /* prefix → Context map */ }
 ```
-`InterpolationContext` dispatches `"user.id"` → `UserContext.GetAttribute("id")`.
+`PolicyContext.Get` resolves the keys `"user.id"`, `"account.id"`, `"role.id"`, and `"user.attr.<key>"`.
 
 ### Functions
 
@@ -157,10 +157,10 @@ type InterpolationContext struct { /* prefix → Context map */ }
 | `ParseAndValidateResource` | `(s string) (*Resource, error)` | Parse + validate wildcards |
 | `ValidateResource` | `(n *Resource) error` | Validate wildcard rules per resource type |
 | `ResolveActions` | `(actions []Action) []Action` | Expand groups to flat list of atomic actions |
-| `InterpolateWithContext` | `(template string, ctx *InterpolationContext) InterpolationResult` | Replace `{{ var }}` placeholders |
+| `InterpolateWithContext` | `(template string, ctx *PolicyContext) InterpolationResult` | Replace `{{ var }}` placeholders |
 | `ContainsVariables` | `(s string) bool` | Quick check for template variables |
 | `MapActionToPermissions` | `(action Action, n *Resource) []Permission` | Convert (action, resource) → NATS permissions |
-| `Compile` | `(policies []*Policy, user *UserContext, role *RoleContext, perms *NatsPermissions) CompileResult` | Full compilation: expand → interpolate → parse → map → merge |
+| `Compile` | `(policies []*Policy, ctx *PolicyContext, perms *NatsPermissions) CompileResult` | Full compilation: expand → interpolate → parse → map → merge |
 
 ### Error Types
 

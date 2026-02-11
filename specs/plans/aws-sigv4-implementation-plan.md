@@ -156,7 +156,7 @@
 ### Task 1.9: Implement User Construction
 - [ ] Build `identity.User` struct
 - [ ] Set `ID` to full ARN (including session)
-- [ ] Create `AccountRole` with extracted account and role
+- [ ] Create `Role` with extracted account and role
 - [ ] Populate attributes:
   - `aws_account`: AWS account ID
   - `aws_role`: Role name from ARN

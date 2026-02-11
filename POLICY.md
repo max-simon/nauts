@@ -51,24 +51,28 @@ NRNs support variable interpolation using `{{ }}` to scope resources to given co
 
 Refers to the user identity and contains:
 - `user.id`: user identifier
-- `user.account`: NATS account
-- `user.attr.<key>`: any additional attribute of the user identity
+- `user.attr.<key>`: additional user claim (provider-specific)
+
+#### Account
+
+Refers to the requested NATS account and contains:
+- `account.id`: NATS account
 
 #### Role
 
 Refers to the role this policy is attached to and contains:
-- `role.name`: role name (e.g., "admin", "readonly")
-- `role.account`: account this role belongs to ("*" for global roles)
+- `role.id`: role identifier (e.g., "admin", "readonly")
+- `role.name`: alias of `role.id` (provided for readability)
 
 #### Example
 
-- role-wide subject for all members of a role: `nats:role.{{ role.name }}.>`
+- role-wide subject for all members of a role: `nats:role.{{ role.id }}.>`
 - user-specific subject: `nats:user.{{ user.id }}`
-- account-scoped subject: `nats:{{ role.account }}.data.>`
+- account-scoped subject: `nats:{{ account.id }}.data.>`
 
 #### Variable Resolution
 
-If a variable cannot be resolved (e.g., `user.attr.department` when the user has no `department` attribute), the variable evaluates to `null` and the entire resource is excluded from the compiled permissions.
+If a variable cannot be resolved (e.g., `account.id` when no account is provided), the variable evaluates to `null` and the entire resource is excluded from the compiled permissions.
 
 #### Variable Sanitization
 

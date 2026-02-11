@@ -1,0 +1,34 @@
+{
+  "users": {
+    "admin": {
+      "accounts": ["POLICY"],
+      "roles": ["POLICY.admin"],
+      "passwordHash": "$2a$10$yRjAZrdk2RhF0LB/Hf2b5./.06Alk8Zy1Pis8acjM298NPSTB/iwi"
+    },
+    "manager": {
+      "accounts": ["POLICY"],
+      "roles": ["POLICY.manager"],
+      "passwordHash": "$2a$10$yRjAZrdk2RhF0LB/Hf2b5./.06Alk8Zy1Pis8acjM298NPSTB/iwi"
+    },
+    "viewer": {
+      "accounts": ["POLICY"],
+      "roles": ["POLICY.viewer"],
+      "passwordHash": "$2a$10$yRjAZrdk2RhF0LB/Hf2b5./.06Alk8Zy1Pis8acjM298NPSTB/iwi"
+    },
+    "reader": {
+      "accounts": ["POLICY"],
+      "roles": ["POLICY.reader"],
+      "passwordHash": "$2a$10$yRjAZrdk2RhF0LB/Hf2b5./.06Alk8Zy1Pis8acjM298NPSTB/iwi"
+    },
+    "scoper": {
+      "accounts": ["POLICY"],
+      "roles": ["POLICY.scoped-reader"],
+      "passwordHash": "$2a$10$yRjAZrdk2RhF0LB/Hf2b5./.06Alk8Zy1Pis8acjM298NPSTB/iwi"
+    },
+    "editor": {
+      "accounts": ["POLICY"],
+      "roles": ["POLICY.editor"],
+      "passwordHash": "$2a$10$yRjAZrdk2RhF0LB/Hf2b5./.06Alk8Zy1Pis8acjM298NPSTB/iwi"
+    }
+  }
+}

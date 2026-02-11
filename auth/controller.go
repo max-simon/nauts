@@ -105,14 +105,14 @@ func (c *AuthController) ResolveUser(ctx context.Context, token string) (*Accoun
 
 	// Validate that roles do not contain wildcards
 	for _, role := range user.Roles {
-		if strings.Contains(role.Account, "*") || strings.Contains(role.Role, "*") {
+		if strings.Contains(role.Account, "*") || strings.Contains(role.Name, "*") {
 			return nil, NewAuthError(user.ID, "resolve_user", "invalid role: wildcards not allowed", nil)
 		}
 	}
 
 	// Filter user roles to only include those for the requested account
 	// This is the authorization step - separating it from authentication
-	filteredRoles := make([]identity.AccountRole, 0, len(user.Roles))
+	filteredRoles := make([]identity.Role, 0, len(user.Roles))
 	for _, role := range user.Roles {
 		if role.Account == authReq.Account {
 			filteredRoles = append(filteredRoles, role)
@@ -153,28 +153,26 @@ func (c *AuthController) ResolveNatsPermissions(ctx context.Context, user *Accou
 		return nil, NewAuthError("", "resolve_permissions", "user is nil", nil)
 	}
 
-	account := user.Account
-
-	// Collect all role names (including default)
-	roleNames := c.collectRoleNames(user)
+	// Collect all roles (including default)
+	roles := c.collectRoles(user)
 
 	result := policy.NewNatsPermissions()
 
-	// Convert user to context once
-	userCtx := userToContext(user)
+	// Build base policy context once
+	basePolicyCtx := userToPolicyContext(user)
 
-	// Process each role name
-	for _, roleName := range roleNames {
-		policies, err := c.policyProvider.GetPoliciesForRole(ctx, account, roleName)
+	// Process each role
+	for _, role := range roles {
+		policies, err := c.policyProvider.GetPoliciesForRole(ctx, role)
 		if err != nil {
 			if errors.Is(err, provider.ErrRoleNotFound) {
-				c.logger.Warn("role not found: %s (user: %s)", roleName, user.ID)
+				c.logger.Warn("role not found: %s.%s (user: %s)", role.Account, role.Name, user.ID)
 				continue
 			}
 			return nil, NewAuthError(user.ID, "resolve_permissions", err.Error(), err)
 		}
 
-		c.compilePoliciesForRole(userCtx, account, roleName, policies, result)
+		c.compilePoliciesForRole(basePolicyCtx, role, policies, result)
 	}
 
 	// Deduplicate
@@ -183,9 +181,13 @@ func (c *AuthController) ResolveNatsPermissions(ctx context.Context, user *Accou
 	return result, nil
 }
 
-func (c *AuthController) compilePoliciesForRole(userCtx *policy.UserContext, account string, roleName string, policies []*policy.Policy, result *policy.NatsPermissions) {
-	roleCtx := &policy.RoleContext{Name: roleName, Account: account}
-	compileResult := policy.Compile(policies, userCtx, roleCtx, result)
+func (c *AuthController) compilePoliciesForRole(baseCtx *policy.PolicyContext, role identity.Role, policies []*policy.Policy, result *policy.NatsPermissions) {
+	ctx := baseCtx.Clone()
+	if ctx == nil {
+		ctx = &policy.PolicyContext{}
+	}
+	ctx.Role = role.Name
+	compileResult := policy.Compile(policies, ctx, result)
 	for _, warning := range compileResult.Warnings {
 		c.logger.Warn("%s", warning)
 	}
@@ -313,36 +315,41 @@ func (c *AuthController) CreateUserJWT(
 // DefaultRoleName is the implicit role applied to every user.
 const DefaultRoleName = "default"
 
-// collectRoleNames returns all role names for a user, always including "default".
-func (c *AuthController) collectRoleNames(user *AccountScopedUser) []string {
+// collectRoles returns all roles for a user, always including the default role.
+func (c *AuthController) collectRoles(user *AccountScopedUser) []identity.Role {
 	seen := make(map[string]bool)
-	var roles []string
+	roles := make([]identity.Role, 0, 8)
 
-	// Always include default role first
-	if !seen[DefaultRoleName] {
-		seen[DefaultRoleName] = true
-		roles = append(roles, DefaultRoleName)
-	}
+	// Always include default role first.
+	defaultRole := identity.Role{Account: user.Account, Name: DefaultRoleName}
+	seen[defaultRole.Account+"."+defaultRole.Name] = true
+	roles = append(roles, defaultRole)
 
-	// Add user's roles (extract role name from AccountRole)
+	// Add user's roles.
 	for _, r := range user.Roles {
-		if !seen[r.Role] {
-			seen[r.Role] = true
-			roles = append(roles, r.Role)
+		key := r.Account + "." + r.Name
+		if seen[key] {
+			continue
 		}
+		seen[key] = true
+		roles = append(roles, r)
 	}
 
 	return roles
 }
 
-// userToContext converts an AccountScopedUser to a policy.UserContext for interpolation.
-func userToContext(user *AccountScopedUser) *policy.UserContext {
+// userToPolicyContext converts an AccountScopedUser to a policy.PolicyContext for policy compilation.
+func userToPolicyContext(user *AccountScopedUser) *policy.PolicyContext {
 	if user == nil {
 		return nil
 	}
-	return &policy.UserContext{
-		ID:         user.ID,
-		Account:    user.Account,
-		Attributes: user.Attributes,
+	ctx := &policy.PolicyContext{User: user.ID, Account: user.Account}
+	if len(user.Attributes) == 0 {
+		return ctx
 	}
+	ctx.UserClaims = make(map[string]string, len(user.Attributes))
+	for k, v := range user.Attributes {
+		ctx.UserClaims[k] = v
+	}
+	return ctx
 }

@@ -117,9 +117,9 @@ func (fp *FileAuthenticationProvider) Verify(_ context.Context, req AuthRequest)
 		return nil, ErrInvalidAccount
 	}
 
-	// Parse all roles as AccountRole objects (no filtering by account)
+	// Parse all roles as Role objects (no filtering by account)
 	// Account filtering will be done by the AuthController
-	var roles []AccountRole
+	var roles []Role
 	for _, roleID := range fu.Roles {
 		role, err := ParseRoleID(roleID)
 		if err != nil {
@@ -144,31 +144,4 @@ func contains(slice []string, value string) bool {
 		}
 	}
 	return false
-}
-
-// GetUser retrieves a user by ID without verifying credentials.
-// Returns ErrUserNotFound if the user does not exist.
-// Note: This returns all roles for all accounts the user has access to.
-func (fp *FileAuthenticationProvider) GetUser(_ context.Context, id string) (*User, error) {
-	fu, ok := fp.users[id]
-	if !ok {
-		return nil, ErrUserNotFound
-	}
-
-	// Parse all roles as AccountRole objects
-	var roles []AccountRole
-	for _, roleID := range fu.Roles {
-		role, err := ParseRoleID(roleID)
-		if err != nil {
-			// Skip invalid role IDs
-			continue
-		}
-		roles = append(roles, role)
-	}
-
-	return &User{
-		ID:         id,
-		Roles:      roles,
-		Attributes: fu.Attributes,
-	}, nil
 }

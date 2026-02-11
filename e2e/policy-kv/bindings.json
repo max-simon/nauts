@@ -1,0 +1,32 @@
+[
+  {
+    "role": "admin",
+    "account": "POLICY",
+    "policies": ["admin"]
+  },
+  {
+    "role": "manager",
+    "account": "POLICY",
+    "policies": ["kv-manage"]
+  },
+  {
+    "role": "viewer",
+    "account": "POLICY",
+    "policies": ["kv-view"]
+  },
+  {
+    "role": "reader",
+    "account": "POLICY",
+    "policies": ["kv-read-any"]
+  },
+  {
+    "role": "scoped-reader",
+    "account": "POLICY",
+    "policies": ["kv-read-user-prefix"]
+  },
+  {
+    "role": "editor",
+    "account": "POLICY",
+    "policies": ["kv-edit-any"]
+  }
+]

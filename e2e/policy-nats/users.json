@@ -1,0 +1,24 @@
+{
+  "users": {
+    "admin": {
+      "accounts": ["POLICY"],
+      "roles": ["POLICY.admin"],
+      "passwordHash": "$2a$10$yRjAZrdk2RhF0LB/Hf2b5./.06Alk8Zy1Pis8acjM298NPSTB/iwi"
+    },
+    "pubber": {
+      "accounts": ["POLICY"],
+      "roles": ["POLICY.pub"],
+      "passwordHash": "$2a$10$yRjAZrdk2RhF0LB/Hf2b5./.06Alk8Zy1Pis8acjM298NPSTB/iwi"
+    },
+    "subber": {
+      "accounts": ["POLICY"],
+      "roles": ["POLICY.sub"],
+      "passwordHash": "$2a$10$yRjAZrdk2RhF0LB/Hf2b5./.06Alk8Zy1Pis8acjM298NPSTB/iwi"
+    },
+    "service": {
+      "accounts": ["POLICY"],
+      "roles": ["POLICY.service"],
+      "passwordHash": "$2a$10$yRjAZrdk2RhF0LB/Hf2b5./.06Alk8Zy1Pis8acjM298NPSTB/iwi"
+    }
+  }
+}

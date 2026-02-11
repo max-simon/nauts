@@ -1,9 +1,0 @@
-[profile nauts-test]
-aws_access_key_id=AKIA27CKQTLIJQWASN6U
-aws_secret_access_key=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
-region=eu-central-1
-
-[profile nauts-role-APP-consumer]
-role_arn=arn:aws:iam::753923037904:role/nauts.APP.consumer
-source_profile=nauts-test
-role_session_name=nauts-test

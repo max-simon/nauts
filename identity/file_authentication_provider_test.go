@@ -21,7 +21,7 @@ func TestVerify_ValidCredentials(t *testing.T) {
 	if user.ID != "alice" {
 		t.Errorf("user.ID = %q, want %q", user.ID, "alice")
 	}
-	if len(user.Roles) != 1 || user.Roles[0].Account != "ACME" || user.Roles[0].Role != "workers" {
+	if len(user.Roles) != 1 || user.Roles[0].Account != "ACME" || user.Roles[0].Name != "workers" {
 		t.Errorf("user.Roles = %v, want [{ACME workers}]", user.Roles)
 	}
 }
@@ -51,40 +51,6 @@ func TestVerify_InvalidTokenType(t *testing.T) {
 	_, err := fp.Verify(context.Background(), AuthRequest{Account: "ACME", Token: "invalid token"})
 	if !errors.Is(err, ErrInvalidTokenType) {
 		t.Errorf("Verify() error = %v, want %v", err, ErrInvalidTokenType)
-	}
-}
-
-func TestGetUser_Found(t *testing.T) {
-	fp := createTestProvider(t)
-
-	user, err := fp.GetUser(context.Background(), "bob")
-	if err != nil {
-		t.Fatalf("GetUser() error = %v", err)
-	}
-
-	if user.ID != "bob" {
-		t.Errorf("user.ID = %q, want %q", user.ID, "bob")
-	}
-}
-
-func TestGetUser_NotFound(t *testing.T) {
-	fp := createTestProvider(t)
-
-	_, err := fp.GetUser(context.Background(), "nonexistent")
-	if !errors.Is(err, ErrUserNotFound) {
-		t.Errorf("GetUser() error = %v, want %v", err, ErrUserNotFound)
-	}
-}
-
-func TestNewFileAuthenticationProvider_EmptyConfig(t *testing.T) {
-	fp, err := NewFileAuthenticationProvider(FileAuthenticationProviderConfig{})
-	if err != nil {
-		t.Fatalf("NewFileAuthenticationProvider() error = %v", err)
-	}
-
-	_, err = fp.GetUser(context.Background(), "any")
-	if !errors.Is(err, ErrUserNotFound) {
-		t.Errorf("GetUser() error = %v, want %v", err, ErrUserNotFound)
 	}
 }
 
@@ -133,7 +99,7 @@ func TestVerify_MultipleAccounts_WithAccountSpecified(t *testing.T) {
 	// Verify both accounts are present
 	accounts := make(map[string]string)
 	for _, role := range user.Roles {
-		accounts[role.Account] = role.Role
+		accounts[role.Account] = role.Name
 	}
 	if accounts["ACME"] != "admin" || accounts["CORP"] != "admin" {
 		t.Errorf("user.Roles = %v, want ACME.admin and CORP.admin", user.Roles)

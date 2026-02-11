@@ -1,0 +1,22 @@
+[
+  {
+    "role": "admin",
+    "account": "POLICY",
+    "policies": ["admin"]
+  },
+  {
+    "role": "pub",
+    "account": "POLICY",
+    "policies": ["pub"]
+  },
+  {
+    "role": "sub",
+    "account": "POLICY",
+    "policies": ["sub"]
+  },
+  {
+    "role": "service",
+    "account": "POLICY",
+    "policies": ["svc"]
+  }
+]

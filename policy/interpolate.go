@@ -22,15 +22,12 @@ type InterpolationResult struct {
 	Warning  string // Warning message if excluded (for logging)
 }
 
-// Interpolate processes a template string, replacing variables with their values.
+// InterpolateWithContext processes a template string, replacing variables with
+// values from the given PolicyContext.
 //
-// Supported variables:
-//   - user.id: user identifier
-//   - user.account: NATS account
-//   - user.attr.<key>: user attribute value
-//   - group.id: group identifier
-//   - group.name: group name
-func InterpolateWithContext(template string, ctx *InterpolationContext) InterpolationResult {
+// Variables are resolved by looking up the full key inside {{ ... }}.
+// Example: {{ user.id }} resolves ctx.Get("user.id").
+func InterpolateWithContext(template string, ctx *PolicyContext) InterpolationResult {
 	if ctx == nil {
 		return InterpolationResult{Excluded: true, Warning: "nil context"}
 	}
@@ -55,8 +52,7 @@ func InterpolateWithContext(template string, ctx *InterpolationContext) Interpol
 		// Add text before this variable
 		result.WriteString(template[lastEnd:fullStart])
 
-		// Resolve the variable using the Context interface
-		value, ok := ctx.GetAttribute(variable)
+		value, ok := ctx.Get(variable)
 		if !ok {
 			return InterpolationResult{
 				Excluded: true,

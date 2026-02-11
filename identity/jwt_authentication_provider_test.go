@@ -94,7 +94,7 @@ func TestJwtAuthenticationProvider_Verify_Success(t *testing.T) {
 		if r.Account != "tenant-a-acc" {
 			t.Errorf("role account = %q, want %q", r.Account, "tenant-a-acc")
 		}
-		roleSet[r.Role] = true
+		roleSet[r.Name] = true
 	}
 	if !roleSet["admin"] {
 		t.Error("expected role 'admin' not found")
@@ -149,7 +149,7 @@ func TestJwtAuthenticationProvider_Verify_WithExplicitAccount(t *testing.T) {
 	// Verify both accounts are present
 	accounts := make(map[string]string)
 	for _, role := range user.Roles {
-		accounts[role.Account] = role.Role
+		accounts[role.Account] = role.Name
 	}
 	if accounts["account-a"] != "admin" || accounts["account-b"] != "viewer" {
 		t.Errorf("user.Roles = %v, want account-a.admin and account-b.viewer", user.Roles)
@@ -325,7 +325,7 @@ func TestJwtAuthenticationProvider_CustomRolesPath(t *testing.T) {
 		t.Fatalf("Verify() error = %v", err)
 	}
 
-	if len(user.Roles) != 1 || user.Roles[0].Account != "myaccount" || user.Roles[0].Role != "myrole" {
+	if len(user.Roles) != 1 || user.Roles[0].Account != "myaccount" || user.Roles[0].Name != "myrole" {
 		t.Errorf("user.Roles = %v, want [{myaccount myrole}]", user.Roles)
 	}
 }
@@ -334,22 +334,22 @@ func TestParseJWTAccountRoles(t *testing.T) {
 	tests := []struct {
 		name  string
 		roles []string
-		want  []AccountRole
+		want  []Role
 	}{
 		{
 			name:  "valid roles",
 			roles: []string{"account.admin", "account.viewer"},
-			want: []AccountRole{
-				{Account: "account", Role: "admin"},
-				{Account: "account", Role: "viewer"},
+			want: []Role{
+				{Account: "account", Name: "admin"},
+				{Account: "account", Name: "viewer"},
 			},
 		},
 		{
 			name:  "mixed valid and invalid",
 			roles: []string{"account.admin", "invalid", "account.viewer", ".norole", "noaccount."},
-			want: []AccountRole{
-				{Account: "account", Role: "admin"},
-				{Account: "account", Role: "viewer"},
+			want: []Role{
+				{Account: "account", Name: "admin"},
+				{Account: "account", Name: "viewer"},
 			},
 		},
 		{
@@ -360,8 +360,8 @@ func TestParseJWTAccountRoles(t *testing.T) {
 		{
 			name:  "role with multiple dots",
 			roles: []string{"account.role.with.dots"},
-			want: []AccountRole{
-				{Account: "account", Role: "role.with.dots"},
+			want: []Role{
+				{Account: "account", Name: "role.with.dots"},
 			},
 		},
 	}

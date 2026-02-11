@@ -436,8 +436,8 @@ func constructUser(parsedARN *parsedARN, account, role string) *User {
 
 	return &User{
 		ID: parsedARN.FullARN,
-		Roles: []AccountRole{
-			{Account: account, Role: role},
+		Roles: []Role{
+			{Account: account, Name: role},
 		},
 		Attributes: attributes,
 	}

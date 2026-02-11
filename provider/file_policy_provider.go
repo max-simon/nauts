@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/msimon/nauts/identity"
 	"github.com/msimon/nauts/policy"
 )
 
@@ -126,8 +127,10 @@ func (fp *FilePolicyProvider) loadPolicies(path string) error {
 	return nil
 }
 
-// GetPolicy retrieves a policy by ID.
-func (fp *FilePolicyProvider) GetPolicy(_ context.Context, id string) (*policy.Policy, error) {
+// GetPolicy retrieves a policy by account and ID.
+// The account parameter is accepted for interface compliance but not used for lookup
+// in the file provider, since policy IDs are unique across the flat map.
+func (fp *FilePolicyProvider) GetPolicy(_ context.Context, _ string, id string) (*policy.Policy, error) {
 	p, ok := fp.policies[id]
 	if !ok {
 		return nil, ErrPolicyNotFound
@@ -135,17 +138,17 @@ func (fp *FilePolicyProvider) GetPolicy(_ context.Context, id string) (*policy.P
 	return p, nil
 }
 
-func (fp *FilePolicyProvider) GetPoliciesForRole(ctx context.Context, account string, role string) ([]*policy.Policy, error) {
-	role = strings.TrimSpace(role)
-	if role == "" {
+func (fp *FilePolicyProvider) GetPoliciesForRole(ctx context.Context, role identity.Role) ([]*policy.Policy, error) {
+	role.Name = strings.TrimSpace(role.Name)
+	if role.Name == "" {
 		return nil, ErrRoleNotFound
 	}
-	account = strings.TrimSpace(account)
-	if account == "" {
+	role.Account = strings.TrimSpace(role.Account)
+	if role.Account == "" {
 		return nil, ErrRoleNotFound
 	}
 
-	b := fp.bindings[bindingKey(account, role)]
+	b := fp.bindings[bindingKey(role.Account, role.Name)]
 	if b == nil {
 		return nil, ErrRoleNotFound
 	}
@@ -172,7 +175,7 @@ func (fp *FilePolicyProvider) GetPoliciesForRole(ctx context.Context, account st
 
 	result := make([]*policy.Policy, 0, len(policyIDs))
 	for _, id := range policyIDs {
-		p, err := fp.GetPolicy(ctx, id)
+		p, err := fp.GetPolicy(ctx, role.Account, id)
 		if err != nil {
 			if errors.Is(err, ErrPolicyNotFound) {
 				// Keep behavior consistent with previous behavior:
@@ -187,11 +190,23 @@ func (fp *FilePolicyProvider) GetPoliciesForRole(ctx context.Context, account st
 	return result, nil
 }
 
-// ListPolicies returns all policies.
-func (fp *FilePolicyProvider) ListPolicies(_ context.Context) ([]*policy.Policy, error) {
+// GetPolicies returns policies for the given account.
+// Global policies (Account="*") are always included.
+func (fp *FilePolicyProvider) GetPolicies(_ context.Context, account string) ([]*policy.Policy, error) {
+	account = strings.TrimSpace(account)
+
 	result := make([]*policy.Policy, 0, len(fp.policies))
 	for _, p := range fp.policies {
-		result = append(result, p)
+		if p == nil {
+			continue
+		}
+		if p.Account == "*" || (account != "" && p.Account == account) {
+			result = append(result, p)
+		}
 	}
+
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].ID < result[j].ID
+	})
 	return result, nil
 }

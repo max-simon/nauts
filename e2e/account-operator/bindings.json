@@ -1,0 +1,3 @@
+[
+  { "role": "consumer", "account": "APP", "policies": ["app-consumer"] }
+]

@@ -14,8 +14,9 @@ func TestPolicy_Validate(t *testing.T) {
 		{
 			name: "valid policy",
 			policy: Policy{
-				ID:   "test-policy",
-				Name: "Test Policy",
+				ID:      "test-policy",
+				Account: "APP",
+				Name:    "Test Policy",
 				Statements: []Statement{
 					{
 						Effect:    EffectAllow,
@@ -27,9 +28,25 @@ func TestPolicy_Validate(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "missing account",
+			policy: Policy{
+				ID:   "test-policy",
+				Name: "Test Policy",
+				Statements: []Statement{
+					{
+						Effect:    EffectAllow,
+						Actions:   []Action{ActionNATSPub},
+						Resources: []string{"nats:orders"},
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
 			name: "missing ID",
 			policy: Policy{
-				Name: "Test Policy",
+				Account: "APP",
+				Name:    "Test Policy",
 				Statements: []Statement{
 					{
 						Effect:    EffectAllow,
@@ -44,6 +61,7 @@ func TestPolicy_Validate(t *testing.T) {
 			name: "missing statements",
 			policy: Policy{
 				ID:         "test-policy",
+				Account:    "APP",
 				Name:       "Test Policy",
 				Statements: []Statement{},
 			},
@@ -52,8 +70,9 @@ func TestPolicy_Validate(t *testing.T) {
 		{
 			name: "invalid statement effect",
 			policy: Policy{
-				ID:   "test-policy",
-				Name: "Test Policy",
+				ID:      "test-policy",
+				Account: "APP",
+				Name:    "Test Policy",
 				Statements: []Statement{
 					{
 						Effect:    Effect("deny"),
@@ -67,8 +86,9 @@ func TestPolicy_Validate(t *testing.T) {
 		{
 			name: "invalid action",
 			policy: Policy{
-				ID:   "test-policy",
-				Name: "Test Policy",
+				ID:      "test-policy",
+				Account: "APP",
+				Name:    "Test Policy",
 				Statements: []Statement{
 					{
 						Effect:    EffectAllow,
@@ -82,8 +102,9 @@ func TestPolicy_Validate(t *testing.T) {
 		{
 			name: "missing actions",
 			policy: Policy{
-				ID:   "test-policy",
-				Name: "Test Policy",
+				ID:      "test-policy",
+				Account: "APP",
+				Name:    "Test Policy",
 				Statements: []Statement{
 					{
 						Effect:    EffectAllow,
@@ -97,8 +118,9 @@ func TestPolicy_Validate(t *testing.T) {
 		{
 			name: "missing resources",
 			policy: Policy{
-				ID:   "test-policy",
-				Name: "Test Policy",
+				ID:      "test-policy",
+				Account: "APP",
+				Name:    "Test Policy",
 				Statements: []Statement{
 					{
 						Effect:    EffectAllow,
@@ -144,8 +166,9 @@ func TestEffect_IsValid(t *testing.T) {
 
 func TestPolicy_JSON(t *testing.T) {
 	policy := Policy{
-		ID:   "test-policy",
-		Name: "Test Policy",
+		ID:      "test-policy",
+		Account: "APP",
+		Name:    "Test Policy",
 		Statements: []Statement{
 			{
 				Effect:    EffectAllow,
@@ -167,6 +190,9 @@ func TestPolicy_JSON(t *testing.T) {
 
 	if parsed.ID != policy.ID {
 		t.Errorf("ID mismatch: got %v, want %v", parsed.ID, policy.ID)
+	}
+	if parsed.Account != policy.Account {
+		t.Errorf("Account mismatch: got %v, want %v", parsed.Account, policy.Account)
 	}
 	if parsed.Name != policy.Name {
 		t.Errorf("Name mismatch: got %v, want %v", parsed.Name, policy.Name)

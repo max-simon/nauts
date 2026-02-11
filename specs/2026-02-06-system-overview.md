@@ -132,7 +132,7 @@ Client                 NATS Server              nauts (CalloutService)
 ## Data Model Relationships
 
 ```
-User ──has──► []AccountRole ──references──► Binding
+User ──has──► []Role ──references──► Binding
                                               │
                                               ├─ role: string
                                               ├─ account: string
@@ -147,8 +147,8 @@ User ──has──► []AccountRole ──references──► Binding
 ```
 
 **Key relationships:**
-- A `User` has multiple `AccountRole`s (scoped to accounts)
-- An `AccountRole(account, role)` maps to a `Binding`
+- A `User` has multiple `Role`s (scoped to accounts)
+- A `Role(account, name)` maps to a `Binding`
 - A `Binding` references multiple `Policy` IDs
 - A `Policy` contains `Statements` with `Actions` and `Resources`
 - `Resources` are NRN strings compiled into NATS permissions

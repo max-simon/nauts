@@ -487,8 +487,8 @@ func TestConstructUser(t *testing.T) {
 			role:    "admin",
 			want: &User{
 				ID: "arn:aws:iam::123456789012:role/nauts.prod.admin",
-				Roles: []AccountRole{
-					{Account: "prod", Role: "admin"},
+				Roles: []Role{
+					{Account: "prod", Name: "admin"},
 				},
 				Attributes: map[string]string{
 					"aws_account": "123456789012",
@@ -509,8 +509,8 @@ func TestConstructUser(t *testing.T) {
 			role:    "admin",
 			want: &User{
 				ID: "arn:aws:sts::123456789012:assumed-role/nauts.prod.admin/i-0abcd1234",
-				Roles: []AccountRole{
-					{Account: "prod", Role: "admin"},
+				Roles: []Role{
+					{Account: "prod", Name: "admin"},
 				},
 				Attributes: map[string]string{
 					"aws_account": "123456789012",

@@ -4,173 +4,108 @@ This directory contains end-to-end integration tests for `nauts`. These tests sp
 
 ## Structure
 
-*   `policy-static/`: Configuration for policy engine tests.
-*   `common/`: Shared setup scripts and keys.
-*   `env.go`: Test environment harness that manages process lifecycles.
-*   `policy_nats_test.go`: Tests for Core NATS actions.
-*   `policy_jetstream_test.go`: Tests for JetStream actions.
-*   `policy_kv_test.go`: Tests for KV actions.
+Suites are split by concern. Each suite folder is self-contained and includes a `setup.sh` that generates:
+- `nats-server.conf`
+- `nauts.json`
+- `policies.json` / `bindings.json`
+- `users.json`
+- any required keys/creds (e.g. issuer/account keys, xkeys)
+
+Edit `setup.sh` (not the generated JSON files) when changing fixtures.
+
+*   `account-static/`: Static account provider suite environment.
+*   `account-operator/`: Operator account provider suite environment.
+*   `auth/`: Authentication provider suite environment (file/jwt/aws).
+*   `provider-nats/`: NATS KV policy provider suite (uses `NatsPolicyProvider` instead of file-based policies).
+*   `policy-nats/`: Policy engine suite for Core NATS actions.
+*   `policy-jetstream/`: Policy engine suite for JetStream actions.
+*   `policy-kv/`: Policy engine suite for KV actions.
+
+The harness lives in `env.go` and is responsible for starting/stopping `nats-server` and `nauts` per suite. `WithTestEnv` accepts an optional `hook` function that runs after NATS starts but before nauts starts — useful for seeding data (e.g., KV buckets) that must exist before nauts initializes.
 
 ## Policy Engine Tests
 
-The policy engine tests (`TestPolicies*`) verify that the `nauts` authorization logic correctly enforces permissions defined in `POLICY.md`. The setup is defined in `e2e/policy-static/setup.sh` which generates a self-contained environment with users, policies, and roles.
+The policy engine tests (`TestPolicies*`) verify that the `nauts` authorization logic correctly enforces permissions defined in `POLICY.md`.
 
-**Note:** The setup script configures the NATS server to use a local `./jetstream` directory for state. The test harness (`env.go`) cleans this directory before every test run to ensure isolation.
+**Note:** Each suite uses its own JetStream `store_dir` under `/tmp/nauts-test-<suite>-jetstream`. The test harness (`env.go`) removes that directory before starting the suite to ensure isolation.
 
 ### Users and Roles
 
-The test setup creates the following users and assigns them to specific roles:
+Users/roles are suite-specific and intentionally minimal. See each suite's `setup.sh` for the exact fixture definitions.
 
-| User | Role | Description |
-|---|---|---|
-| `admin` | `admin` | **Superuser**. Full access (`*`) to all resources (`nats`, `js`, `kv`). |
-| `writer` | `writer` | **Publisher/Editor**. Can publish to `public.>`, manage `STREAM_WRITE`, and edit `BUCKET_WRITE`. |
-| `reader` | `reader` | **Subscriber/Viewer**. Can subscribe to `public.>`, view `STREAM_WRITE`, consume from `CONSUMER_READ`, and read `BUCKET_READ`. |
-| `service` | `service` | **Service**. specific permission to handle requests on `service.>`. |
-| `alice` | `user` | **Regular User**. Uses **variable interpolation**. Isolated access to `nats:user.alice.>`, `kv:USER_alice`, etc. |
-| `bob` | `user` | **Regular User**. Isolated access to `nats:user.bob.>`, etc. |
+Current policy suites focus on:
+- `policy-nats/`: core NATS actions with variable-scoped subjects using `{{ user.id }}` and `{{ role.name }}`.
+- `policy-jetstream/`: JetStream actions including explicit coverage for consumer wildcard `*`.
+- `policy-kv/`: KV actions including key wildcard `>` and a user-scoped key prefix test with `{{ user.id }}.>`.
 
 ### Test Coverage
 
-#### Core NATS (`policy_nats_test.go`)
-*   **`nats.pub`**: Verified that `writer` can publish to public subjects but not private ones.
-*   **`nats.sub`**: Verified that `reader` can subscribe to public subjects but not publish.
-*   **`nats.service`**: Verified that `service` user can implement a request-reply service but cannot subscribe to unrelated subjects.
-*   **Variables**: Verified that `alice` cannot publish/subscribe to `bob`'s subjects.
+#### Core NATS (`policy-nats/`)
+*   **`nats.pub`**: publish allowed only on the user/role-scoped subject.
+*   **`nats.sub`**: subscribe allowed only on the user/role-scoped subject.
+*   **`nats.service`**: service can listen and respond on the scoped subject.
+*   **Variables**: exercises `{{ user.id }}` and `{{ role.name }}` interpolation.
 
-#### JetStream (`policy_jetstream_test.go`)
-*   **`js.manage`**: Verified that `writer` can update/purge streams it manages, but not others.
-*   **`js.view`**: Verified that `reader` can view stream info but cannot create consumers on read-only streams.
-*   **`js.consume`**: Verified that `reader` can consume from a specifically permitted consumer, but cannot create arbitrary new consumers.
-*   **Variables**: Verified that `alice` cannot consume from `bob`'s permitted consumer.
+#### JetStream (`policy-jetstream/`)
+*   **`js.manage`**: can create/update/purge/delete an allowed stream.
+*   **`js.view`**: can view stream/consumer info without gaining data read permissions.
+*   **`js.consume`**: covers both a specific consumer and consumer wildcard `*`.
 
-#### Key-Value (`policy_kv_test.go`)
-*   **`kv.edit`**: Verified that `writer` can put, get, and delete keys.
-*   **`kv.read`**: Verified that `reader` can get values but fails to put (write).
-*   **`kv.view`**: Verified that users with view-only or no access cannot modify bucket data.
-*   **Variables**: Verified that `alice` can write to her personal bucket `USER_alice`.
+#### Key-Value (`policy-kv/`)
+*   **`kv.manage`**: create/delete an allowed bucket.
+*   **`kv.view`**: view bucket status without read/write access to keys.
+*   **`kv.read`**: read any key via `>` wildcard and watch updates.
+*   **`kv.edit`**: edit keys via `>` wildcard.
+*   **Variables**: user-scoped read to `{{ user.id }}.>` within a shared bucket.
+
+## NATS KV Policy Provider Tests
+
+The `provider-nats/` suite verifies that `NatsPolicyProvider` (backed by a NATS KV bucket) works end-to-end as a drop-in replacement for the file-based `FilePolicyProvider`. It mirrors the `account-static/` test cases but stores policies and bindings in a KV bucket instead of JSON files.
+
+The suite uses `WithTestEnv` with a hook that seeds the KV bucket after NATS starts but before nauts initializes (the `NatsPolicyProvider` requires the bucket to already exist at startup). The AUTH account has JetStream enabled so the policy provider can access KV.
 
 ## Running the Tests
 
 Ensure `nats-server`, `nk`, and `go` are installed.
 
-1.  **Regenerate Configuration (if needed):**
+The E2E harness builds `bin/nauts` automatically (once per `go test` run), so you usually don't need to build it manually.
+
+1.  **Generate suite configuration:**
     ```bash
-    cd e2e/policy-static
-    ./setup.sh
-    cd ../..
+    for d in account-static account-operator auth provider-nats policy-nats policy-jetstream policy-kv; do
+      (cd e2e/$d && ./setup.sh)
+    done
     ```
 
-2.  **Run All Tests:**
+2.  **Run all e2e tests:**
     ```bash
     go test -v ./e2e/...
     ```
 
-3.  **Run Specific Policy Tests:**
+3.  **Run only policy tests:**
     ```bash
-    go test -v ./e2e/ -run TestPolicies
+    go test -v ./e2e/... -run TestPolicies
     ```
 
-## Old Connection Tests
+## AWS SigV4 (Optional)
 
-*   `connection-static/`: Configuration for "Static Mode" (single key issuer) tests.
-*   `connection-operator/`: Configuration for "Operator Mode" (NSC-managed operator/account) tests.
-*   `connection_test_procedure.go`: The actual test logic (Alice/Bob scenarios).
-*   `connection_test.go`: Go test entry points (TestMain wrappers).
+The AWS SigV4 auth test is best-effort and will automatically `Skip` if token generation fails (missing credentials, cannot assume role, etc).
 
-### Prerequisites
+- Override the AWS profile used by setting `NAUTS_E2E_AWS_PROFILE`.
 
-To run these tests, you need the following tools installed and available in your `$PATH`:
+## Legacy Environments
 
-*   `go`
-*   `nats-server` (must be installed for the tests to run the server)
-*   `nsc` (NATS Account Server tool)
-*   `nk` (NATS Key tool)
-*   `jq` (Command-line JSON processor)
-*   `openssl` (for RSA key generation)
+These folders are kept as historical references for previous layouts and may be removed later:
 
-### Setup
+*   `connection-static/`
+*   `connection-operator/`
+*   `policy-static/`
 
-Before running tests for the first time or after a clean, you must generate the necessary configuration files and keys.
+### Ports
 
-1.  **Common Setup (Dependencies for both modes):**
-    ```bash
-    cd e2e/common
-    ./setup.sh
-    cd ../..
-    ```
-
-2.  **Static Mode Setup:**
-    ```bash
-    cd e2e/connection-static
-    ./setup.sh
-    cd ../..
-    ```
-
-3.  **Operator Mode Setup:**
-    ```bash
-    cd e2e/connection-operator
-    ./setup.sh
-    cd ../..
-    ```
-
-### Build
-
-The tests expect the `nauts` binary to be present in `bin/nauts`.
-
-```bash
-go build -o bin/nauts ./cmd/nauts
-```
-
-## Running Tests
-
-Tests are integrated into the standard `go test` workflow, but rely on flags to enable specific modes (to avoid running heavy integration tests by default or when not set up).
-
-### Static Mode Tests
-
-Verifies `nauts` functioning with a static account provider configuration.
-
-```bash
-cd e2e
-go test -v . -run TestNatsConnectionStatic
-# OR just run all
-go test -v .
-```
-
-### Operator Mode Tests
-
-Verifies `nauts` functioning with an operator account provider configuration (using `nsc` generated entities).
-
-```bash
-cd e2e
-go test -v . -run TestNatsConnectionOperator
-```
-
-### Policy Engine Tests
-
-Verify specific policy behaviors (Split into NATS, JetStream, and KV domains).
-
-```bash
-cd e2e
-go test -v . -run TestPolicies
-```
-
-## Test Coverage
-
-### Connect
-
-The connection test procedure (`connection_test_procedure.go`) verifies:
-
-1.  **Authentication**:
-    *   Successful login with username/password (File Provider).
-    *   Successful login with JWT (JWT Provider).
-    *   Failed login with incorrect password.
-    *   Failed login against wrong provider.
-
-2.  **Authorization**:
-    *   **Permission Enforcement**: Alice (role `APP.consumer`) cannot publish to `e2e.mytest`.
-    *   **Pub/Sub Flow**: Bob (role `APP.worker`) publishes to `e2e.mytest`, Alice subscribes and receives the message.
+Suites use fixed localhost ports by default (e.g. 4222-4225, 4230-4232). If you see timeouts, make sure those ports are free.
 
 ## Troubleshooting
 
 *   **Timeouts**: Integration tests rely on real network connections (localhost). Ensure ports 4222 (static) and 4223 (operator) are free.
+*   **Bcrypt hashes**: If you edit `setup.sh`, remember `$` is special in shell heredocs. Use `\$2a\$...` (as shown in the suite scripts) so generated `users.json` contains a literal bcrypt hash.
