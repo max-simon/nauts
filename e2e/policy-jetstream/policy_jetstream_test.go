@@ -10,7 +10,7 @@ import (
 )
 
 func TestPoliciesJetstream(t *testing.T) {
-	e2e.WithTestEnv(t, ".", "static", 4231, func(t *testing.T, env *e2e.TestEnv) {
+	e2e.WithTestEnv(t, ".", "static", 4231, nil, func(t *testing.T, env *e2e.TestEnv) {
 		adminNc, err := env.ConnectWithUsernameAndPassword("admin", "secret", "POLICY", "policy-file")
 		if err != nil {
 			t.Fatalf("setup failed to authenticate as admin: %v", err)

@@ -7,7 +7,7 @@ import (
 )
 
 func TestAccountStaticSuite(t *testing.T) {
-	e2e.WithTestEnv(t, ".", "static", 4222, func(t *testing.T, env *e2e.TestEnv) {
+	e2e.WithTestEnv(t, ".", "static", 4222, nil, func(t *testing.T, env *e2e.TestEnv) {
 		t.Run("file auth: alice can authenticate", func(t *testing.T) {
 			nc, err := env.ConnectWithUsernameAndPassword("alice", "secret", "APP", "intro-file")
 			if err != nil {

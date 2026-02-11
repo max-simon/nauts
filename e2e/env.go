@@ -55,6 +55,12 @@ func newTestEnv(t *testing.T, dir string, mode string, port int) *TestEnv {
 
 func (e *TestEnv) start() {
 	e.t.Helper()
+	e.startNatsOnly()
+	e.startNauts()
+}
+
+func (e *TestEnv) startNatsOnly() {
+	e.t.Helper()
 
 	// Clean up JetStream storage
 	// We use a convention where the store dir is /tmp/nauts-test-<dir>-jetstream
@@ -75,6 +81,10 @@ func (e *TestEnv) start() {
 
 	// Wait for NATS to be ready
 	time.Sleep(time.Second)
+}
+
+func (e *TestEnv) startNauts() {
+	e.t.Helper()
 
 	// Start nauts auth service
 	e.t.Log("Starting nauts auth service...")
@@ -297,13 +307,20 @@ func PublishSync(nc *nats.Conn, subject string, data []byte) error {
 	}
 }
 
-func WithTestEnv(t *testing.T, dir string, mode string, port int, fn func(t *testing.T, env *TestEnv)) {
+func WithTestEnv(t *testing.T, dir string, mode string, port int, hook func(t *testing.T, natsURL string), fn func(t *testing.T, env *TestEnv)) {
 	t.Helper()
 	env := newTestEnv(t, dir, mode, port)
-	env.start()
+	env.startNatsOnly()
 	defer func() {
 		env.stop()
 	}()
+
+	natsURL := fmt.Sprintf("nats://localhost:%d", port)
+	if hook != nil {
+		hook(t, natsURL)
+	}
+
+	env.startNauts()
 	time.Sleep(2 * time.Second)
 	fn(t, env)
 }

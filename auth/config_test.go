@@ -450,6 +450,157 @@ func TestConfig_Validate(t *testing.T) {
 			wantErr: "auth.jwt[jwt].publicKey is required",
 		},
 		{
+			name: "valid nats policy config",
+			config: Config{
+				Account: AccountConfig{
+					Type: "operator",
+					Operator: &provider.OperatorAccountProviderConfig{
+						Accounts: map[string]provider.AccountSigningConfig{
+							"AUTH": {
+								PublicKey:      "AAUTH1234567890123456789012345678901234567890123456789012345",
+								SigningKeyPath: "/path/to/auth-signing.nk",
+							},
+						},
+					},
+				},
+				Policy: PolicyConfig{
+					Type: "nats",
+					Nats: &provider.NatsPolicyProviderConfig{
+						Bucket:  "nauts-policies",
+						NatsURL: "nats://localhost:4222",
+					},
+				},
+				Auth: AuthConfig{
+					File: []FileAuthProviderConfig{{
+						ID:        "local",
+						UsersPath: "/path/to/users.json",
+						Accounts:  []string{"*"},
+					}},
+				},
+			},
+			wantErr: "",
+		},
+		{
+			name: "nats policy missing bucket",
+			config: Config{
+				Account: AccountConfig{
+					Type: "operator",
+					Operator: &provider.OperatorAccountProviderConfig{
+						Accounts: map[string]provider.AccountSigningConfig{
+							"AUTH": {
+								PublicKey:      "AAUTH1234567890123456789012345678901234567890123456789012345",
+								SigningKeyPath: "/path/to/auth-signing.nk",
+							},
+						},
+					},
+				},
+				Policy: PolicyConfig{
+					Type: "nats",
+					Nats: &provider.NatsPolicyProviderConfig{
+						NatsURL: "nats://localhost:4222",
+					},
+				},
+				Auth: AuthConfig{
+					File: []FileAuthProviderConfig{{
+						ID:        "local",
+						UsersPath: "/path/to/users.json",
+						Accounts:  []string{"*"},
+					}},
+				},
+			},
+			wantErr: "policy.nats.bucket is required",
+		},
+		{
+			name: "nats policy missing natsUrl",
+			config: Config{
+				Account: AccountConfig{
+					Type: "operator",
+					Operator: &provider.OperatorAccountProviderConfig{
+						Accounts: map[string]provider.AccountSigningConfig{
+							"AUTH": {
+								PublicKey:      "AAUTH1234567890123456789012345678901234567890123456789012345",
+								SigningKeyPath: "/path/to/auth-signing.nk",
+							},
+						},
+					},
+				},
+				Policy: PolicyConfig{
+					Type: "nats",
+					Nats: &provider.NatsPolicyProviderConfig{
+						Bucket: "nauts-policies",
+					},
+				},
+				Auth: AuthConfig{
+					File: []FileAuthProviderConfig{{
+						ID:        "local",
+						UsersPath: "/path/to/users.json",
+						Accounts:  []string{"*"},
+					}},
+				},
+			},
+			wantErr: "policy.nats.natsUrl is required",
+		},
+		{
+			name: "nats policy mutually exclusive credentials",
+			config: Config{
+				Account: AccountConfig{
+					Type: "operator",
+					Operator: &provider.OperatorAccountProviderConfig{
+						Accounts: map[string]provider.AccountSigningConfig{
+							"AUTH": {
+								PublicKey:      "AAUTH1234567890123456789012345678901234567890123456789012345",
+								SigningKeyPath: "/path/to/auth-signing.nk",
+							},
+						},
+					},
+				},
+				Policy: PolicyConfig{
+					Type: "nats",
+					Nats: &provider.NatsPolicyProviderConfig{
+						Bucket:          "nauts-policies",
+						NatsURL:         "nats://localhost:4222",
+						NatsCredentials: "/path/to/creds",
+						NatsNkey:        "/path/to/nkey",
+					},
+				},
+				Auth: AuthConfig{
+					File: []FileAuthProviderConfig{{
+						ID:        "local",
+						UsersPath: "/path/to/users.json",
+						Accounts:  []string{"*"},
+					}},
+				},
+			},
+			wantErr: "policy.nats.natsCredentials and policy.nats.natsNkey are mutually exclusive",
+		},
+		{
+			name: "nats policy missing nats config",
+			config: Config{
+				Account: AccountConfig{
+					Type: "operator",
+					Operator: &provider.OperatorAccountProviderConfig{
+						Accounts: map[string]provider.AccountSigningConfig{
+							"AUTH": {
+								PublicKey:      "AAUTH1234567890123456789012345678901234567890123456789012345",
+								SigningKeyPath: "/path/to/auth-signing.nk",
+							},
+						},
+					},
+				},
+				Policy: PolicyConfig{
+					Type: "nats",
+				},
+				Auth: AuthConfig{
+					File: []FileAuthProviderConfig{{
+						ID:        "local",
+						UsersPath: "/path/to/users.json",
+						Accounts:  []string{"*"},
+					}},
+				},
+			},
+			wantErr: "policy.nats configuration is required when type is 'nats'",
+		},
+		{
 			name: "duplicate auth provider ids",
 			config: Config{
 				Account: AccountConfig{

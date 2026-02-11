@@ -10,7 +10,7 @@ import (
 )
 
 func TestPoliciesKV(t *testing.T) {
-	e2e.WithTestEnv(t, ".", "static", 4230, func(t *testing.T, env *e2e.TestEnv) {
+	e2e.WithTestEnv(t, ".", "static", 4230, nil, func(t *testing.T, env *e2e.TestEnv) {
 		adminNc, err := env.ConnectWithUsernameAndPassword("admin", "secret", "POLICY", "policy-file")
 		if err != nil {
 			t.Fatalf("setup failed to authenticate as admin: %v", err)

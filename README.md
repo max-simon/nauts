@@ -19,6 +19,7 @@ nauts is a framework for scalable, human-friendly permission management for [NAT
 - **Variable Interpolation**: Scope resources dynamically with `{{ user.id }}`, `{{ account.id }}`, `{{ role.id }}` (alias: `{{ role.name }}`), and `{{ user.attr.<key> }}`.
 - **Multiple Identity Providers**: Authenticate users via file-based credentials, external JWTs (Keycloak, Auth0, Okta), AWS SigV4 (IAM roles), or custom providers.
 - **NATS Auth Callout**: Built-in service implementing [NATS auth callout protocol](https://docs.nats.io/running-a-nats-service/configuration/securing_nats/auth_callout).
+- **Dynamic Policy Storage**: Store policies in NATS KV for live updates without service restarts, or use simple JSON files for static setups.
 - **Operator & Static Modes**: Works with NATS operator/account hierarchies or simple single-key deployments.
 
 ## Quick Start
@@ -125,6 +126,26 @@ nauts is configured via a JSON file defining the account mode, policy storage, a
   }
 }
 ```
+
+### Example: NATS KV Policy Provider
+
+Policies and bindings can be stored in a NATS KV bucket instead of JSON files, enabling dynamic updates without service restarts.
+
+```json
+{
+  "policy": {
+    "type": "nats",
+    "nats": {
+      "bucket": "nauts-policies",
+      "natsUrl": "nats://localhost:4222",
+      "natsNkey": "./policy-reader.nk",
+      "cacheTtl": "30s"
+    }
+  }
+}
+```
+
+The KV bucket must exist before nauts starts. Policies are stored under `<account>.policy.<id>` keys and bindings under `<account>.binding.<role>` keys. A background watcher invalidates cached entries on change; `cacheTtl` controls the maximum staleness (default: 30s).
 
 ## Identity Providers
 

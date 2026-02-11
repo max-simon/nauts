@@ -16,11 +16,12 @@ Edit `setup.sh` (not the generated JSON files) when changing fixtures.
 *   `account-static/`: Static account provider suite environment.
 *   `account-operator/`: Operator account provider suite environment.
 *   `auth/`: Authentication provider suite environment (file/jwt/aws).
+*   `provider-nats/`: NATS KV policy provider suite (uses `NatsPolicyProvider` instead of file-based policies).
 *   `policy-nats/`: Policy engine suite for Core NATS actions.
 *   `policy-jetstream/`: Policy engine suite for JetStream actions.
 *   `policy-kv/`: Policy engine suite for KV actions.
 
-The harness lives in `env.go` and is responsible for starting/stopping `nats-server` and `nauts` per suite.
+The harness lives in `env.go` and is responsible for starting/stopping `nats-server` and `nauts` per suite. `WithTestEnv` accepts an optional `hook` function that runs after NATS starts but before nauts starts — useful for seeding data (e.g., KV buckets) that must exist before nauts initializes.
 
 ## Policy Engine Tests
 
@@ -57,6 +58,12 @@ Current policy suites focus on:
 *   **`kv.edit`**: edit keys via `>` wildcard.
 *   **Variables**: user-scoped read to `{{ user.id }}.>` within a shared bucket.
 
+## NATS KV Policy Provider Tests
+
+The `provider-nats/` suite verifies that `NatsPolicyProvider` (backed by a NATS KV bucket) works end-to-end as a drop-in replacement for the file-based `FilePolicyProvider`. It mirrors the `account-static/` test cases but stores policies and bindings in a KV bucket instead of JSON files.
+
+The suite uses `WithTestEnv` with a hook that seeds the KV bucket after NATS starts but before nauts initializes (the `NatsPolicyProvider` requires the bucket to already exist at startup). The AUTH account has JetStream enabled so the policy provider can access KV.
+
 ## Running the Tests
 
 Ensure `nats-server`, `nk`, and `go` are installed.
@@ -65,7 +72,7 @@ The E2E harness builds `bin/nauts` automatically (once per `go test` run), so yo
 
 1.  **Generate suite configuration:**
     ```bash
-    for d in account-static account-operator auth policy-nats policy-jetstream policy-kv; do
+    for d in account-static account-operator auth provider-nats policy-nats policy-jetstream policy-kv; do
       (cd e2e/$d && ./setup.sh)
     done
     ```
@@ -96,7 +103,7 @@ These folders are kept as historical references for previous layouts and may be 
 
 ### Ports
 
-Suites use fixed localhost ports by default (e.g. 4222-4224, 4230-4232). If you see timeouts, make sure those ports are free.
+Suites use fixed localhost ports by default (e.g. 4222-4225, 4230-4232). If you see timeouts, make sure those ports are free.
 
 ## Troubleshooting
 

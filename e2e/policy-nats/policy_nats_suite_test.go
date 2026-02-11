@@ -9,7 +9,7 @@ import (
 )
 
 func TestPoliciesNats(t *testing.T) {
-	e2e.WithTestEnv(t, ".", "static", 4232, func(t *testing.T, env *e2e.TestEnv) {
+	e2e.WithTestEnv(t, ".", "static", 4232, nil, func(t *testing.T, env *e2e.TestEnv) {
 		t.Run("admin can pub/sub to all subjects", func(t *testing.T) {
 			nc, err := env.ConnectWithUsernameAndPassword("admin", "secret", "POLICY", "policy-file")
 			if err != nil {
