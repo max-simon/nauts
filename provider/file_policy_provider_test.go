@@ -80,7 +80,7 @@ func TestNewFilePolicyProvider(t *testing.T) {
 	ctx := context.Background()
 
 	// Test GetPolicy
-	pol, err := fp.GetPolicy(ctx, "read-access")
+	pol, err := fp.GetPolicy(ctx, "APP", "read-access")
 	if err != nil {
 		t.Fatalf("GetPolicy() error = %v", err)
 	}
@@ -116,7 +116,7 @@ func TestFilePolicyProvider_GetPolicy_NotFound(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	_, err := fp.GetPolicy(ctx, "nonexistent")
+	_, err := fp.GetPolicy(ctx, "APP", "nonexistent")
 	if err != ErrPolicyNotFound {
 		t.Errorf("GetPolicy() error = %v, want ErrPolicyNotFound", err)
 	}

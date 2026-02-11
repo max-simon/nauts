@@ -127,8 +127,10 @@ func (fp *FilePolicyProvider) loadPolicies(path string) error {
 	return nil
 }
 
-// GetPolicy retrieves a policy by ID.
-func (fp *FilePolicyProvider) GetPolicy(_ context.Context, id string) (*policy.Policy, error) {
+// GetPolicy retrieves a policy by account and ID.
+// The account parameter is accepted for interface compliance but not used for lookup
+// in the file provider, since policy IDs are unique across the flat map.
+func (fp *FilePolicyProvider) GetPolicy(_ context.Context, _ string, id string) (*policy.Policy, error) {
 	p, ok := fp.policies[id]
 	if !ok {
 		return nil, ErrPolicyNotFound
@@ -173,7 +175,7 @@ func (fp *FilePolicyProvider) GetPoliciesForRole(ctx context.Context, role ident
 
 	result := make([]*policy.Policy, 0, len(policyIDs))
 	for _, id := range policyIDs {
-		p, err := fp.GetPolicy(ctx, id)
+		p, err := fp.GetPolicy(ctx, role.Account, id)
 		if err != nil {
 			if errors.Is(err, ErrPolicyNotFound) {
 				// Keep behavior consistent with previous behavior:

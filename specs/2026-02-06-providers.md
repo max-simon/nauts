@@ -75,15 +75,15 @@ type AccountProvider interface {
 #### `PolicyProvider`
 ```go
 type PolicyProvider interface {
-    GetPolicy(ctx context.Context, id string) (*policy.Policy, error)
-  GetPoliciesForRole(ctx context.Context, role identity.Role) ([]*policy.Policy, error)
-  GetPolicies(ctx context.Context, account string) ([]*policy.Policy, error)
+    GetPolicy(ctx context.Context, account string, id string) (*policy.Policy, error)
+    GetPoliciesForRole(ctx context.Context, role identity.Role) ([]*policy.Policy, error)
+    GetPolicies(ctx context.Context, account string) ([]*policy.Policy, error)
 }
 ```
 
 | Method | Purpose |
 |--------|---------|
-| `GetPolicy` | Retrieve a policy by its ID. Returns `ErrPolicyNotFound` if missing. |
+| `GetPolicy` | Retrieve a policy by account and ID. Returns `ErrPolicyNotFound` if missing. |
 | `GetPoliciesForRole` | Resolve all policies for a role via bindings (`role.Account`, `role.Name`). Returns `ErrRoleNotFound` if no binding exists. Missing policies within a valid binding are silently skipped. |
 | `GetPolicies` | Return all policies applicable to an account (including global policies). |
 

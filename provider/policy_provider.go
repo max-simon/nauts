@@ -9,9 +9,9 @@ import (
 
 // PolicyProvider provides read access to policies.
 type PolicyProvider interface {
-	// GetPolicy retrieves a policy by ID.
+	// GetPolicy retrieves a policy by account and ID.
 	// Returns ErrPolicyNotFound if the policy does not exist.
-	GetPolicy(ctx context.Context, id string) (*policy.Policy, error)
+	GetPolicy(ctx context.Context, account string, id string) (*policy.Policy, error)
 
 	// GetPoliciesForRole returns all policies attached to a role for the given account.
 	// Implementations may support both global roles (role.Account="*") and account-local roles.
