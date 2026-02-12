@@ -1,0 +1,1 @@
+nats --nkey user-auth.nk req nauts.debug '{"account":"APP","user":{"id":"alice","roles":[{"account":"APP","name":"consumer"}]}}' | jq

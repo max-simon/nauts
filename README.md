@@ -39,7 +39,10 @@ Run the NATS server and the nauts auth service:
 nats-server -c nats-server.conf
 
 # 2. Start nauts auth service
-./bin/nauts serve -c nauts.json
+./bin/nauts -c nauts.json
+
+# (Optional) Start with debug service enabled
+./bin/nauts -c nauts.json --enable-debug-svc
 ```
 
 ### Authenticate
@@ -74,7 +77,7 @@ Client                      NATS Server                     nauts
 
 ### Debug Service
 
-nauts can expose a debug endpoint on the `nauts.debug` subject for inspecting auth decisions. Protect this subject using NATS permissions or a separate account/server; nauts itself does not enforce access control for debug traffic.
+nauts can expose a debug endpoint on the `nauts.debug` subject for inspecting auth decisions. Enable it with `--enable-debug-svc`. Protect this subject using NATS permissions or a separate account/server; nauts itself does not enforce access control for debug traffic.
 
 ### Policies & Actions
 

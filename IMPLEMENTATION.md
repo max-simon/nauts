@@ -8,7 +8,7 @@ This document covers the architecture and implementation details of nauts.
 nauts/
 ├── cmd/
 │   └── nauts/              # CLI entrypoint
-│       └── main.go         # CLI with serve and debug subcommands
+│       └── main.go         # CLI for service (optional debug flag)
 ├── policy/                 # Policy types, compilation, interpolation
 │   ├── action.go           # Action types and group expansion
 │   ├── compile.go          # Compile() function
@@ -335,29 +335,14 @@ authorization {
 
 ## CLI Reference
 
-### serve Subcommand
-
-Run the NATS auth callout service.
+Run the NATS auth callout service (optionally with debug service).
 
 ```bash
-./bin/nauts serve [options]
+./bin/nauts [options]
 
 Options:
-  -c, --config string    Path to configuration file (required)
-
-Environment variables:
-  NAUTS_CONFIG    Path to configuration file
-```
-
-### debug Subcommand
-
-Run the NATS auth debug service.
-
-```bash
-./bin/nauts debug [options]
-
-Options:
-  -c, --config string    Path to configuration file (required)
+  -c, --config string       Path to configuration file (required)
+  --enable-debug-svc        Start the NATS auth debug service
 
 Environment variables:
   NAUTS_CONFIG    Path to configuration file

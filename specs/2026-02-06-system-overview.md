@@ -210,11 +210,11 @@ See [auth-controller-callout spec](2026-02-06-auth-controller-callout.md) for fu
 # Build
 go build -o bin/nauts ./cmd/nauts
 
-# One-shot authentication (outputs JWT)
-./bin/nauts auth -c nauts.json -token '{"account":"APP","token":"alice:secret"}'
-
 # Run auth callout service
-./bin/nauts serve -c nauts.json
+./bin/nauts -c nauts.json
+
+# Run auth callout + debug service
+./bin/nauts -c nauts.json --enable-debug-svc
 ```
 
 ---

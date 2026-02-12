@@ -46,7 +46,7 @@ See [README.md](./README.md) for architecture and [POLICY.md](./POLICY.md) for p
 nauts/
 ├── cmd/
 │   └── nauts/              # CLI entrypoint
-│       └── main.go         # CLI with serve and debug subcommands
+│       └── main.go         # CLI for service (optional debug flag)
 ├── policy/                 # Policy types, compilation, interpolation, action mapping
 │   ├── action.go           # Action types and action group expansion
 │   ├── compile.go          # Policy compilation (Compile function)
@@ -187,10 +187,10 @@ golangci-lint run
 go build -o bin/nauts ./cmd/nauts
 
 # Run auth callout service
-./bin/nauts serve -c nauts.json
+./bin/nauts -c nauts.json
 
-# Run auth debug service
-./bin/nauts debug -c nauts.json
+# Run auth callout + debug service
+./bin/nauts -c nauts.json --enable-debug-svc
 
 # Run e2e tests (from e2e/ directory)
 cd test
@@ -616,7 +616,7 @@ For now, nauts only extracts the standard subject claim:
 - [x] Auth controller: `auth/controller.go` - `AuthController` orchestrating full auth flow
 - [x] Account scoped user: `auth/account_scoped_user.go` - Wrapper for filtering roles by account
 - [x] Configuration: `auth/config.go` - `Config` types and `NewAuthControllerWithConfig()`
-- [x] CLI: `cmd/nauts/main.go` - CLI with `auth` and `serve` subcommands (config file based)
+- [x] CLI: `cmd/nauts/main.go` - CLI for service with optional debug flag (config file based)
 - [x] NATS auth callout: `auth/callout.go` - `CalloutService` implementing auth callout protocol
 - [x] E2E tests: Connection tests (`e2e/connection_test.go`) for static and operator modes
 - [x] E2E tests: Policy tests (`e2e/policy_*_test.go`) for NATS, JetStream, and KV actions

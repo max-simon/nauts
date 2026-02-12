@@ -20,33 +20,23 @@ func main() {
 }
 
 func run() error {
-	if len(os.Args) < 2 {
-		printUsage()
-		return fmt.Errorf("subcommand required")
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "-h", "-help", "--help", "help":
+			printUsage()
+			return nil
+		}
 	}
 
-	switch os.Args[1] {
-	case "serve":
-		return runServe(os.Args[2:])
-	case "debug":
-		return runDebug(os.Args[2:])
-	case "-h", "-help", "--help", "help":
-		printUsage()
-		return nil
-	default:
-		printUsage()
-		return fmt.Errorf("unknown subcommand: %s", os.Args[1])
-	}
+	return runServe(os.Args[1:])
 }
 
 func printUsage() {
-	fmt.Fprintf(os.Stderr, `Usage: %s <command> [options]
+	fmt.Fprintf(os.Stderr, `Usage: %s [options]
 
-Commands:
-	serve   Run the auth callout service
-	debug   Run the auth debug service
+Run the NATS auth callout service (optionally with debug service).
 
-Run '%s <command> -h' for more information on a command.
+Use '%s -h' for more information.
 `, os.Args[0], os.Args[0])
 }
 
@@ -60,15 +50,17 @@ func envOrDefault(key, defaultValue string) string {
 
 // runServe handles the 'serve' subcommand for the auth callout service.
 func runServe(args []string) error {
-	fs := flag.NewFlagSet("serve", flag.ExitOnError)
+	fs := flag.NewFlagSet("nauts", flag.ExitOnError)
 
 	var configPath string
+	var enableDebugSvc bool
 
 	fs.StringVar(&configPath, "c", envOrDefault("NAUTS_CONFIG", ""), "Path to configuration file")
 	fs.StringVar(&configPath, "config", envOrDefault("NAUTS_CONFIG", ""), "Path to configuration file")
+	fs.BoolVar(&enableDebugSvc, "enable-debug-svc", false, "Start the NATS auth debug service")
 
 	fs.Usage = func() {
-		printServiceUsage(fs, "serve", "Run the NATS auth callout service.", true)
+		printServiceUsage(fs, "Run the NATS auth callout service.", true)
 	}
 
 	if err := fs.Parse(args); err != nil {
@@ -92,53 +84,43 @@ func runServe(args []string) error {
 		return fmt.Errorf("creating callout service: %w", err)
 	}
 
+	var debugService *auth.DebugService
+	if enableDebugSvc {
+		debugService, err = auth.NewDebugService(controller, config.Server)
+		if err != nil {
+			return fmt.Errorf("creating debug service: %w", err)
+		}
+	}
+
 	ctx, cancel := setupSignalHandler(func() {
 		service.Stop()
+		if debugService != nil {
+			debugService.Stop()
+		}
 	})
 	defer cancel()
 
-	// Start the service (blocks until shutdown)
+	debugErrCh := make(chan error, 1)
+	if debugService != nil {
+		go func() {
+			if err := debugService.Start(ctx); err != nil {
+				debugErrCh <- err
+				cancel()
+				return
+			}
+			debugErrCh <- nil
+		}()
+	}
+
+	// Start the callout service (blocks until shutdown)
 	if err := service.Start(ctx); err != nil {
 		return fmt.Errorf("running callout service: %w", err)
 	}
 
-	return nil
-}
-
-// runDebug handles the 'debug' subcommand for the auth debug service.
-func runDebug(args []string) error {
-	fs := flag.NewFlagSet("debug", flag.ExitOnError)
-
-	var configPath string
-
-	fs.StringVar(&configPath, "c", envOrDefault("NAUTS_CONFIG", ""), "Path to configuration file")
-	fs.StringVar(&configPath, "config", envOrDefault("NAUTS_CONFIG", ""), "Path to configuration file")
-
-	fs.Usage = func() {
-		printServiceUsage(fs, "debug", "Run the NATS auth debug service.", false)
-	}
-
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-
-	config, controller, err := loadConfigAndController(configPath)
-	if err != nil {
-		return err
-	}
-
-	debugService, err := auth.NewDebugService(controller, config.Server)
-	if err != nil {
-		return fmt.Errorf("creating debug service: %w", err)
-	}
-
-	ctx, cancel := setupSignalHandler(func() {
-		debugService.Stop()
-	})
-	defer cancel()
-
-	if err := debugService.Start(ctx); err != nil {
-		return fmt.Errorf("running debug service: %w", err)
+	if debugService != nil {
+		if err := <-debugErrCh; err != nil {
+			return fmt.Errorf("running debug service: %w", err)
+		}
 	}
 
 	return nil
@@ -199,15 +181,15 @@ func setupSignalHandler(onStop func()) (context.Context, context.CancelFunc) {
 	return ctx, cancel
 }
 
-func printServiceUsage(fs *flag.FlagSet, command, description string, includeTTL bool) {
-	fmt.Fprintf(os.Stderr, "Usage: %s %s [options]\n\n", os.Args[0], command)
+func printServiceUsage(fs *flag.FlagSet, description string, includeTTL bool) {
+	fmt.Fprintf(os.Stderr, "Usage: %s [options]\n\n", os.Args[0])
 	fmt.Fprintf(os.Stderr, "%s\n\n", description)
 	fmt.Fprintf(os.Stderr, "Options:\n")
 	fs.PrintDefaults()
 	fmt.Fprintf(os.Stderr, "\nEnvironment variables:\n")
 	fmt.Fprintf(os.Stderr, "  NAUTS_CONFIG       Path to configuration file\n")
 	fmt.Fprintf(os.Stderr, "\nExample:\n")
-	fmt.Fprintf(os.Stderr, "  %s %s -c config.json\n", os.Args[0], command)
+	fmt.Fprintf(os.Stderr, "  %s -c config.json\n", os.Args[0])
 	fmt.Fprintf(os.Stderr, "\nConfiguration file format (JSON):\n")
 	fmt.Fprintf(os.Stderr, `  {
 	"account": {
