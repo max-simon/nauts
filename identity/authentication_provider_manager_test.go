@@ -20,13 +20,6 @@ func (p *recordingAuthProvider) ManageableAccounts() []string {
 	return p.patterns
 }
 
-func (p *recordingAuthProvider) GetConfig() map[string]any {
-	return map[string]any{
-		"type":                "test",
-		"manageable_accounts": append([]string(nil), p.patterns...),
-	}
-}
-
 func (p *recordingAuthProvider) Verify(_ context.Context, req AuthRequest) (*User, error) {
 	p.called++
 	p.lastReq = req

@@ -63,14 +63,6 @@ func (fp *FileAuthenticationProvider) ManageableAccounts() []string {
 	return append([]string(nil), fp.manageableAccounts...)
 }
 
-// GetConfig returns a JSON-serializable configuration map for debug output.
-func (fp *FileAuthenticationProvider) GetConfig() map[string]any {
-	return map[string]any{
-		"type":                "file",
-		"manageable_accounts": append([]string(nil), fp.manageableAccounts...),
-	}
-}
-
 // loadUsers loads users from a JSON file.
 func (fp *FileAuthenticationProvider) loadUsers(path string) error {
 	data, err := os.ReadFile(path)
