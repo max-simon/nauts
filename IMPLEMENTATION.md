@@ -36,6 +36,7 @@ nauts/
 ├── auth/                   # Authentication controller and callout service
 │   ├── controller.go       # AuthController
 │   ├── callout.go          # CalloutService (NATS auth callout)
+│   ├── debug.go            # DebugService (permission compilation)
 │   ├── config.go           # Config, LoadConfig, NewAuthControllerWithConfig
 │   └── errors.go           # AuthError
 └── e2e/                    # End-to-end tests
@@ -52,9 +53,9 @@ nauts/
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                              AuthController                                  │
 │                                                                             │
-│  ┌─────────────┐    ┌──────────────────────┐    ┌─────────────────────┐    │
-│  │ ResolveUser │───▶│ ResolveNatsPermissions│───▶│   CreateUserJWT     │    │
-│  └──────┬──────┘    └──────────┬───────────┘    └──────────┬──────────┘    │
+│  ┌──────────────────┐   ┌──────────────────────┐   ┌─────────────────────┐ │
+│  │ ScopeUserToAccount│──▶│ CompileNatsPermissions│──▶│   CreateUserJWT     │ │
+│  └─────────┬────────┘   └──────────┬───────────┘   └──────────┬──────────┘ │
 │         │                      │                           │               │
 └─────────┼──────────────────────┼───────────────────────────┼───────────────┘
           │                      │                           │
@@ -98,11 +99,12 @@ nauts/
 The `AuthController.Authenticate()` method performs:
 
 1. **Parse auth request**: Extract account and token from JSON `{"account":"APP","token":"..."}`
-2. **Verify identity token**: Identity provider verifies the token and returns user info
-3. **Resolve roles**: Collect user's roles (including default role)
-4. **Compile permissions**: For each role, fetch policies and compile to NATS permissions
-5. **Create JWT**: Sign a NATS user JWT with the compiled permissions
-6. **Return result**: `AuthResult` containing user, permissions, and signed JWT
+2. **Select provider**: Choose an auth provider via `AuthenticationProviderManager`
+3. **Verify identity token**: Provider verifies the token and returns user info
+4. **Scope user**: Filter roles to requested account, validate no wildcards
+5. **Compile permissions**: For each role, fetch policies and compile to NATS permissions
+6. **Create JWT**: Sign a NATS user JWT with the compiled permissions
+7. **Return result**: `AuthResult` containing user, compilation result, and signed JWT
 
 ```go
 // Using configuration file
@@ -113,7 +115,7 @@ controller, _ := auth.NewAuthControllerWithConfig(config)
 result, err := controller.Authenticate(ctx, natsjwt.ConnectOptions{
   Token: `{"account":"APP","token":"alice:secret"}`,
 }, userPublicKey, time.Hour)
-// result.User, result.Permissions, result.JWT
+// result.User, result.CompilationResult, result.JWT
 ```
 
 ## Permission Compilation

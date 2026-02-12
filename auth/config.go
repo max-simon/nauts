@@ -385,3 +385,13 @@ func (c *ServerConfig) ToCalloutConfig() (CalloutConfig, error) {
 		DefaultTTL:      c.GetTTL(time.Hour),
 	}, nil
 }
+
+// ToDebugConfig converts the server configuration to a DebugConfig.
+func (c *ServerConfig) ToDebugConfig() DebugConfig {
+	return DebugConfig{
+		NatsURL:         c.NatsURL,
+		NatsCredentials: c.NatsCredentials,
+		NatsNkey:        c.NatsNkey,
+		DefaultTTL:      c.GetTTL(time.Hour),
+	}
+}

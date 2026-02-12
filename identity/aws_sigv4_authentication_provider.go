@@ -111,6 +111,14 @@ func (p *AwsSigV4AuthenticationProvider) ManageableAccounts() []string {
 	return append([]string(nil), p.manageableAccounts...)
 }
 
+// GetConfig returns a JSON-serializable configuration map for debug output.
+func (p *AwsSigV4AuthenticationProvider) GetConfig() map[string]any {
+	return map[string]any{
+		"type":                "aws-sigv4",
+		"manageable_accounts": append([]string(nil), p.manageableAccounts...),
+	}
+}
+
 // Verify validates the authentication request and returns the user.
 func (p *AwsSigV4AuthenticationProvider) Verify(ctx context.Context, req AuthRequest) (*User, error) {
 	// 1. Parse token

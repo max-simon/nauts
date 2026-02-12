@@ -74,6 +74,14 @@ func (p *JwtAuthenticationProvider) ManageableAccounts() []string {
 	return append([]string(nil), p.manageableAccounts...)
 }
 
+// GetConfig returns a JSON-serializable configuration map for debug output.
+func (p *JwtAuthenticationProvider) GetConfig() map[string]any {
+	return map[string]any{
+		"type":                "jwt",
+		"manageable_accounts": append([]string(nil), p.manageableAccounts...),
+	}
+}
+
 // parsePublicKey parses a PEM-encoded public key.
 // pemDataB64 is base64 encoded.
 func parsePublicKey(pemDataB64 string) (any, error) {

@@ -225,6 +225,13 @@ func runServe(args []string) error {
 		return fmt.Errorf("creating callout service: %w", err)
 	}
 
+	// Create debug service
+	debugConfig := config.Server.ToDebugConfig()
+	debugService, err := auth.NewDebugService(controller, debugConfig)
+	if err != nil {
+		return fmt.Errorf("creating debug service: %w", err)
+	}
+
 	// Setup signal handling for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -237,11 +244,35 @@ func runServe(args []string) error {
 		fmt.Fprintf(os.Stderr, "\nReceived signal %v, shutting down...\n", sig)
 		cancel()
 		service.Stop()
+		debugService.Stop()
 	}()
 
-	// Start the service (blocks until shutdown)
-	if err := service.Start(ctx); err != nil {
-		return fmt.Errorf("running callout service: %w", err)
+	errCh := make(chan error, 2)
+	go func() {
+		if err := service.Start(ctx); err != nil {
+			errCh <- fmt.Errorf("callout: %w", err)
+			return
+		}
+		errCh <- nil
+	}()
+	go func() {
+		if err := debugService.Start(ctx); err != nil {
+			errCh <- fmt.Errorf("debug: %w", err)
+			return
+		}
+		errCh <- nil
+	}()
+
+	firstErr := <-errCh
+	service.Stop()
+	debugService.Stop()
+	secondErr := <-errCh
+
+	if firstErr != nil {
+		return fmt.Errorf("running service: %w", firstErr)
+	}
+	if secondErr != nil {
+		return fmt.Errorf("running service: %w", secondErr)
 	}
 
 	return nil

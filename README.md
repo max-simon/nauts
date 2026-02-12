@@ -72,6 +72,10 @@ Client                      NATS Server                     nauts
   │◄─────────────────────────────│                            │
 ```
 
+### Debug Service
+
+nauts can expose a debug endpoint on the `nauts.debug` subject for inspecting auth decisions. Protect this subject using NATS permissions or a separate account/server; nauts itself does not enforce access control for debug traffic.
+
 ### Policies & Actions
 
 Permissions are defined in `policies.json`. Instead of writing complex NATS subject rules, you use high-level **Actions**.

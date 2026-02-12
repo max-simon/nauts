@@ -79,7 +79,7 @@ func (ps *PermissionSet) Deduplicate() {
 
 // IsEmpty returns true if the permission set has no allowed subjects.
 func (ps *PermissionSet) IsEmpty() bool {
-	return ps.allow == nil || len(ps.allow) == 0
+	return len(ps.allow) == 0
 }
 
 func (ps *PermissionSet) String() string {
@@ -105,6 +105,26 @@ func NewNatsPermissions() *NatsPermissions {
 		sub:            NewPermissionSet(),
 		allowResponses: false,
 	}
+}
+
+// Clone returns a deep copy of the permissions.
+func (p *NatsPermissions) Clone() *NatsPermissions {
+	if p == nil {
+		return nil
+	}
+	clone := NewNatsPermissions()
+	clone.allowResponses = p.allowResponses
+	if p.pub != nil {
+		for perm := range p.pub.allow {
+			clone.pub.Add(perm)
+		}
+	}
+	if p.sub != nil {
+		for perm := range p.sub.allow {
+			clone.sub.Add(perm)
+		}
+	}
+	return clone
 }
 
 // Allow adds a permission to the appropriate allow set.

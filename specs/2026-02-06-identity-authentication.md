@@ -13,7 +13,7 @@ Define a pluggable authentication layer that verifies user credentials and retur
 
 ## Summary
 
-The `identity` package defines the `AuthenticationProvider` interface, the `User` and `AuthRequest` types, and ships two concrete providers: `FileAuthenticationProvider` (bcrypt passwords from a JSON file) and `JwtAuthenticationProvider` (external JWT verification for IdPs like Keycloak/Auth0). An `AuthenticationProviderManager` routes requests to the correct provider based on account patterns or explicit provider selection.
+The `identity` package defines the `AuthenticationProvider` interface, the `User` and `AuthRequest` types, and ships two concrete providers: `FileAuthenticationProvider` (bcrypt passwords from a JSON file) and `JwtAuthenticationProvider` (external JWT verification for IdPs like Keycloak/Auth0). An `AuthenticationProviderManager` selects the correct provider based on account patterns or explicit provider selection.
 
 ---
 
@@ -24,7 +24,7 @@ The `identity` package defines the `AuthenticationProvider` interface, the `User
 - `AuthenticationProvider` interface  
 - `FileAuthenticationProvider` — file-based username/password  
 - `JwtAuthenticationProvider` — external JWT verification  
-- `AuthenticationProviderManager` — provider routing  
+- `AuthenticationProviderManager` — provider selection  
 
 **Out of scope:** Authorization (role filtering), JWT issuance, NATS permissions.
 
@@ -153,8 +153,10 @@ func (p *JwtAuthenticationProvider) ManageableAccounts() []string
 #### `AuthenticationProviderManager`
 ```go
 func NewAuthenticationProviderManager(providers map[string]AuthenticationProvider) (*AuthenticationProviderManager, error)
-func (m *AuthenticationProviderManager) Verify(ctx context.Context, req AuthRequest) (*User, error)
+func (m *AuthenticationProviderManager) SelectProvider(req AuthRequest) (string, AuthenticationProvider, error)
 ```
+
+`SelectProvider` returns the provider id and provider instance; callers are responsible for invoking `Verify` on the returned provider.
 
 **Routing logic:**
 1. If `req.AP` is set: look up provider by id → `ErrAuthenticationProviderNotFound` if missing; verify account is manageable → `ErrAuthenticationProviderNotManageable`

@@ -1,7 +1,6 @@
 package identity
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -64,17 +63,18 @@ func NewAuthenticationProviderManager(providers map[string]AuthenticationProvide
 	return m, nil
 }
 
-// Verify routes the request to the selected provider and returns the verified user.
-func (m *AuthenticationProviderManager) Verify(ctx context.Context, req AuthRequest) (*User, error) {
+// SelectProvider selects the provider for a request without performing verification.
+// Returns the provider id and instance, or an error if selection is invalid or ambiguous.
+func (m *AuthenticationProviderManager) SelectProvider(req AuthRequest) (string, AuthenticationProvider, error) {
 	if req.AP != "" {
 		p, ok := m.providersBy[req.AP]
 		if !ok {
-			return nil, fmt.Errorf("%w: %s", ErrAuthenticationProviderNotFound, req.AP)
+			return "", nil, fmt.Errorf("%w: %s", ErrAuthenticationProviderNotFound, req.AP)
 		}
 		if !accountIsManageableByProvider(p.ManageableAccounts(), req.Account) {
-			return nil, fmt.Errorf("%w: %s", ErrAuthenticationProviderNotManageable, req.Account)
+			return "", nil, fmt.Errorf("%w: %s", ErrAuthenticationProviderNotManageable, req.Account)
 		}
-		return p.Verify(ctx, req)
+		return req.AP, p, nil
 	}
 
 	matches := make([]registeredAuthenticationProvider, 0, 1)
@@ -86,11 +86,11 @@ func (m *AuthenticationProviderManager) Verify(ctx context.Context, req AuthRequ
 
 	switch len(matches) {
 	case 0:
-		return nil, fmt.Errorf("%w: %s", ErrAuthenticationProviderNotManageable, req.Account)
+		return "", nil, fmt.Errorf("%w: %s", ErrAuthenticationProviderNotManageable, req.Account)
 	case 1:
-		return matches[0].provider.Verify(ctx, req)
+		return matches[0].id, matches[0].provider, nil
 	default:
-		return nil, fmt.Errorf("%w: %d providers match account %q", ErrAuthenticationProviderAmbiguous, len(matches), req.Account)
+		return "", nil, fmt.Errorf("%w: %d providers match account %q", ErrAuthenticationProviderAmbiguous, len(matches), req.Account)
 	}
 }
 

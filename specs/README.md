@@ -91,11 +91,13 @@ Start with the system overview, then work through standalone components before d
 4. **[identity-authentication](2026-02-06-identity-authentication.md)** — User, AuthProvider, Manager (no dependencies)
 5. **[providers](2026-02-06-providers.md)** — AccountProvider, PolicyProvider (depends on policy, jwt)
 6. **[auth-controller-callout](2026-02-06-auth-controller-callout.md)** — AuthController, CalloutService (depends on all)
-7. **[cli](2026-02-08-cli.md)** — Command-line interface (depends on auth)
+7. **[auth-debug-service](2026-02-12-auth-debug-service.md)** — Debug endpoint for auth pipeline introspection (Draft)
+8. **[cli](2026-02-08-cli.md)** — Command-line interface (depends on auth)
 
 ### Additional Specifications (Draft/Proposed)
 
 - **[aws-sigv4-authentication](2026-02-08-aws-sigv4-authentication.md)** — AWS IAM role-based authentication provider (Draft)
+- **[control-plane](2026-02-11-control-plane.md)** — Angular web UI for policy and binding management in NATS KV (Draft)
 
 ### For code agents
 

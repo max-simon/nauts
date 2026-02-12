@@ -20,6 +20,13 @@ func (p *recordingAuthProvider) ManageableAccounts() []string {
 	return p.patterns
 }
 
+func (p *recordingAuthProvider) GetConfig() map[string]any {
+	return map[string]any{
+		"type":                "test",
+		"manageable_accounts": append([]string(nil), p.patterns...),
+	}
+}
+
 func (p *recordingAuthProvider) Verify(_ context.Context, req AuthRequest) (*User, error) {
 	p.called++
 	p.lastReq = req
@@ -52,7 +59,7 @@ func TestNewAuthenticationProviderManager_Validation(t *testing.T) {
 	})
 }
 
-func TestAuthenticationProviderManager_Verify_ExplicitAP(t *testing.T) {
+func TestAuthenticationProviderManager_SelectProvider_ExplicitAP(t *testing.T) {
 	p1 := &recordingAuthProvider{patterns: []string{"ACME"}, userID: "p1"}
 	p2 := &recordingAuthProvider{patterns: []string{"ACME"}, userID: "p2"}
 
@@ -64,7 +71,11 @@ func TestAuthenticationProviderManager_Verify_ExplicitAP(t *testing.T) {
 		t.Fatalf("NewAuthenticationProviderManager() error = %v", err)
 	}
 
-	user, err := m.Verify(context.Background(), AuthRequest{Account: "ACME", Token: "t", AP: "p2"})
+	_, provider, err := m.SelectProvider(AuthRequest{Account: "ACME", Token: "t", AP: "p2"})
+	if err != nil {
+		t.Fatalf("SelectProvider() error = %v", err)
+	}
+	user, err := provider.Verify(context.Background(), AuthRequest{Account: "ACME", Token: "t", AP: "p2"})
 	if err != nil {
 		t.Fatalf("Verify() error = %v", err)
 	}
@@ -79,7 +90,7 @@ func TestAuthenticationProviderManager_Verify_ExplicitAP(t *testing.T) {
 	}
 }
 
-func TestAuthenticationProviderManager_Verify_ExplicitAP_NotFound(t *testing.T) {
+func TestAuthenticationProviderManager_SelectProvider_ExplicitAP_NotFound(t *testing.T) {
 	m, err := NewAuthenticationProviderManager(map[string]AuthenticationProvider{
 		"p1": &recordingAuthProvider{patterns: []string{"*"}, userID: "p1"},
 	})
@@ -87,13 +98,13 @@ func TestAuthenticationProviderManager_Verify_ExplicitAP_NotFound(t *testing.T) 
 		t.Fatalf("NewAuthenticationProviderManager() error = %v", err)
 	}
 
-	_, err = m.Verify(context.Background(), AuthRequest{Account: "ACME", Token: "t", AP: "missing"})
+	_, _, err = m.SelectProvider(AuthRequest{Account: "ACME", Token: "t", AP: "missing"})
 	if !errors.Is(err, ErrAuthenticationProviderNotFound) {
-		t.Fatalf("Verify() error = %v, want %v", err, ErrAuthenticationProviderNotFound)
+		t.Fatalf("SelectProvider() error = %v, want %v", err, ErrAuthenticationProviderNotFound)
 	}
 }
 
-func TestAuthenticationProviderManager_Verify_ExplicitAP_NotManageable(t *testing.T) {
+func TestAuthenticationProviderManager_SelectProvider_ExplicitAP_NotManageable(t *testing.T) {
 	m, err := NewAuthenticationProviderManager(map[string]AuthenticationProvider{
 		"p1": &recordingAuthProvider{patterns: []string{"ACME"}, userID: "p1"},
 	})
@@ -101,13 +112,13 @@ func TestAuthenticationProviderManager_Verify_ExplicitAP_NotManageable(t *testin
 		t.Fatalf("NewAuthenticationProviderManager() error = %v", err)
 	}
 
-	_, err = m.Verify(context.Background(), AuthRequest{Account: "OTHER", Token: "t", AP: "p1"})
+	_, _, err = m.SelectProvider(AuthRequest{Account: "OTHER", Token: "t", AP: "p1"})
 	if !errors.Is(err, ErrAuthenticationProviderNotManageable) {
-		t.Fatalf("Verify() error = %v, want %v", err, ErrAuthenticationProviderNotManageable)
+		t.Fatalf("SelectProvider() error = %v, want %v", err, ErrAuthenticationProviderNotManageable)
 	}
 }
 
-func TestAuthenticationProviderManager_Verify_ImplicitSelection(t *testing.T) {
+func TestAuthenticationProviderManager_SelectProvider_ImplicitSelection(t *testing.T) {
 	t.Run("single match", func(t *testing.T) {
 		p1 := &recordingAuthProvider{patterns: []string{"AC*"}, userID: "p1"}
 		p2 := &recordingAuthProvider{patterns: []string{"ZZ*"}, userID: "p2"}
@@ -117,7 +128,11 @@ func TestAuthenticationProviderManager_Verify_ImplicitSelection(t *testing.T) {
 			t.Fatalf("NewAuthenticationProviderManager() error = %v", err)
 		}
 
-		user, err := m.Verify(context.Background(), AuthRequest{Account: "ACME", Token: "t"})
+		_, provider, err := m.SelectProvider(AuthRequest{Account: "ACME", Token: "t"})
+		if err != nil {
+			t.Fatalf("SelectProvider() error = %v", err)
+		}
+		user, err := provider.Verify(context.Background(), AuthRequest{Account: "ACME", Token: "t"})
 		if err != nil {
 			t.Fatalf("Verify() error = %v", err)
 		}
@@ -137,9 +152,9 @@ func TestAuthenticationProviderManager_Verify_ImplicitSelection(t *testing.T) {
 			t.Fatalf("NewAuthenticationProviderManager() error = %v", err)
 		}
 
-		_, err = m.Verify(context.Background(), AuthRequest{Account: "OTHER", Token: "t"})
+		_, _, err = m.SelectProvider(AuthRequest{Account: "OTHER", Token: "t"})
 		if !errors.Is(err, ErrAuthenticationProviderNotManageable) {
-			t.Fatalf("Verify() error = %v, want %v", err, ErrAuthenticationProviderNotManageable)
+			t.Fatalf("SelectProvider() error = %v, want %v", err, ErrAuthenticationProviderNotManageable)
 		}
 	})
 
@@ -152,12 +167,12 @@ func TestAuthenticationProviderManager_Verify_ImplicitSelection(t *testing.T) {
 			t.Fatalf("NewAuthenticationProviderManager() error = %v", err)
 		}
 
-		_, err = m.Verify(context.Background(), AuthRequest{Account: "ACME", Token: "t"})
+		_, _, err = m.SelectProvider(AuthRequest{Account: "ACME", Token: "t"})
 		if !errors.Is(err, ErrAuthenticationProviderAmbiguous) {
-			t.Fatalf("Verify() error = %v, want %v", err, ErrAuthenticationProviderAmbiguous)
+			t.Fatalf("SelectProvider() error = %v, want %v", err, ErrAuthenticationProviderAmbiguous)
 		}
 		if err != nil && !strings.Contains(err.Error(), "providers match") {
-			t.Fatalf("Verify() error = %q, expected ambiguity details", err.Error())
+			t.Fatalf("SelectProvider() error = %q, expected ambiguity details", err.Error())
 		}
 	})
 }
@@ -172,7 +187,11 @@ func TestAuthenticationProviderManager_ManageableAccountMatching_SYS_AUTH(t *tes
 	}
 
 	// SYS should NOT be matched by wildcard patterns.
-	user, err := m.Verify(context.Background(), AuthRequest{Account: "SYS", Token: "t", AP: "p2"})
+	_, provider, err := m.SelectProvider(AuthRequest{Account: "SYS", Token: "t", AP: "p2"})
+	if err != nil {
+		t.Fatalf("SelectProvider() error = %v", err)
+	}
+	user, err := provider.Verify(context.Background(), AuthRequest{Account: "SYS", Token: "t", AP: "p2"})
 	if err != nil {
 		t.Fatalf("Verify() error = %v", err)
 	}
@@ -181,7 +200,11 @@ func TestAuthenticationProviderManager_ManageableAccountMatching_SYS_AUTH(t *tes
 	}
 
 	// If AP is not specified, SYS should still not match "*"; only explicit SYS pattern matches.
-	user, err = m.Verify(context.Background(), AuthRequest{Account: "SYS", Token: "t"})
+	_, provider, err = m.SelectProvider(AuthRequest{Account: "SYS", Token: "t"})
+	if err != nil {
+		t.Fatalf("SelectProvider() error = %v", err)
+	}
+	user, err = provider.Verify(context.Background(), AuthRequest{Account: "SYS", Token: "t"})
 	if err != nil {
 		t.Fatalf("Verify() error = %v", err)
 	}

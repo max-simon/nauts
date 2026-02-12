@@ -249,47 +249,18 @@ func (s *CalloutService) handleRequest(msg *nats.Msg) {
 
 	s.logger.Debug("auth request received")
 
-	// Extract credentials
-	token := authReq.ConnectOptions.Token
-	userNkey := authReq.UserNkey
-
-	if token == "" {
-		s.logger.Debug("missing token in auth request")
+	// Authenticate
+	result, err := s.controller.Authenticate(ctx, authReq.ConnectOptions, authReq.UserNkey, s.config.DefaultTTL)
+	if err != nil {
+		s.logger.Warn("authentication failed: %v", err)
 		s.respondWithError(msg, responseConfig, "authentication failed")
 		return
 	}
-
-	// Authenticate user
-	result, err := s.controller.Authenticate(ctx, authReq.ConnectOptions, userNkey, s.config.DefaultTTL)
-	if err != nil {
-		// Log full error internally
-		s.logger.Warn("authentication failed: %v", err)
-		// Return generic error to client
-		errMsg := "authentication failed"
-		var authErr *AuthError
-		if errors.As(err, &authErr) {
-			if authErr.Phase == "create_jwt" {
-				errMsg = "internal error"
-			}
-		}
-		s.respondWithError(msg, responseConfig, errMsg)
-		return
-	}
-
 	// update user public key in response config
 	responseConfig.UserNkey = result.UserPublicKey
 
-	s.logger.Debug("authentication successful for user: %s", result.User.ID)
-
-	accountID := result.User.Account
-	if accountID == "" {
-		s.logger.Warn("user %s has empty account scope", result.User.ID)
-		s.respondWithError(msg, responseConfig, "internal error")
-		return
-	}
-
 	// Get account for IssuerAccount
-	account, err := s.controller.AccountProvider().GetAccount(ctx, accountID)
+	account, err := s.controller.AccountProvider().GetAccount(ctx, result.User.Account)
 	if err != nil {
 		s.logger.Warn("failed to get account for user %s: %v", result.User.ID, err)
 		s.respondWithError(msg, responseConfig, "internal error")

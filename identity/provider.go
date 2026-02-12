@@ -48,4 +48,7 @@ type AuthenticationProvider interface {
 	// ManageableAccounts returns the list of account patterns this provider can manage.
 	// Patterns support wildcards in the form of "*" (all) or "prefix*".
 	ManageableAccounts() []string
+
+	// GetConfig returns a JSON-serializable configuration map for debug output.
+	GetConfig() map[string]any
 }

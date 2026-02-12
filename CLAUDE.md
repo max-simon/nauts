@@ -67,7 +67,7 @@ nauts/
 │   └── errors.go           # Provider errors (ErrNotFound, etc.)
 ├── identity/               # User identity management
 │   ├── user.go             # User type
-│   ├── provider.go         # AuthenticationProvider interface, IdentityToken
+│   ├── provider.go         # AuthenticationProvider interface, AuthRequest
 │   └── file_authentication_provider.go # FileAuthenticationProvider (bcrypt passwords)
 ├── jwt/                    # JWT issuance
 │   ├── signer.go           # Signer interface
@@ -76,6 +76,7 @@ nauts/
 ├── auth/                   # Authentication controller and callout service
 │   ├── controller.go       # AuthController (orchestrates auth flow)
 │   ├── callout.go          # CalloutService (NATS auth callout handler)
+│   ├── debug.go            # DebugService (permission compilation)
 │   ├── config.go           # Config types and NewAuthControllerWithConfig
 │   └── errors.go           # Auth errors (AuthError)
 ├── e2e/                    # End-to-End tests
@@ -125,12 +126,17 @@ go test -v ./e2e/ -static -operator
 - Define sentinel errors for expected failure modes
 - Use custom error types when callers need to inspect error details
 
+### Auth Provider Selection
+
+- Use `AuthenticationProviderManager.SelectProvider()` to select a provider, then call `provider.Verify(...)` directly.
+- `AuthenticationProvider.GetConfig()` returns a JSON-serializable map for debug output (type + manageable accounts).
+
 ### Naming
 
 - Resource types: `Resource`, `ResourceType`, `ParseAndValidateResource()`
 - Policy types: `Policy`, `Statement`, `Effect`
 - Actions: `Action`, `ActionDef`, `ResolveActions()`
-- Auth controller: `AuthController`, `NewAuthController()`, `NewAuthControllerWithConfig()`, `Authenticate()`, `ResolveUser()`, `ResolveNatsPermissions()`, `CreateUserJWT()`
+- Auth controller: `AuthController`, `NewAuthController()`, `NewAuthControllerWithConfig()`, `Authenticate()`, `ScopeUserToAccount()`, `CompileNatsPermissions()`, `CreateUserJWT()`
 - Callout service: `CalloutService`, `NewCalloutService()`, `CalloutConfig`, `Start()`, `Stop()`
 - Configuration: `Config`, `LoadConfig()`, `AccountConfig`, `PolicyConfig`, `IdentityConfig`, `ServerConfig`
 - Permissions: `NatsPermissions`, `Permission`, `PermissionSet`
