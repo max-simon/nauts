@@ -123,12 +123,12 @@ func parseAuthRequest(token string) (identity.AuthRequest, error) {
 }
 
 type NautsCompilationResult struct {
-	User           *AccountScopedUser
-	Permissions    *policy.NatsPermissions
-	PermissionsRaw *policy.NatsPermissions
-	Warnings       []string
-	Roles          []identity.Role
-	Policies       map[string][]*policy.Policy
+	User           *AccountScopedUser          `json:"user"`
+	Permissions    *policy.NatsPermissions     `json:"permissions"`
+	PermissionsRaw *policy.NatsPermissions     `json:"permissionsRaw"`
+	Warnings       []string                    `json:"warnings"`
+	Roles          []identity.Role             `json:"roles"`
+	Policies       map[string][]*policy.Policy `json:"policies"`
 }
 
 // CompileNatsPermissions compiles NATS permissions for a given user.

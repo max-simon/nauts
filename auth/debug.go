@@ -168,6 +168,9 @@ type debugResponse struct {
 }
 
 func (r *debugResponse) setError(code, message string) {
+	if r.Error == nil {
+		r.Error = &debugError{}
+	}
 	if r.Error.Code != "" {
 		return
 	}
@@ -186,7 +189,7 @@ func (s *DebugService) handleRequest(msg *nats.Msg) {
 	// get debugRequest from msg.Data json
 	var req debugRequest
 	if err := json.Unmarshal(msg.Data, &req); err != nil {
-		resp.setError("invalid_request", "failed to parse debug request")
+		resp.setError("invalid_request", fmt.Sprintf("failed to parse debug request: %v", err))
 		s.respondWithJSON(msg, resp)
 		return
 	}
@@ -195,7 +198,7 @@ func (s *DebugService) handleRequest(msg *nats.Msg) {
 	// scope user
 	scopedUser, err := s.controller.ScopeUserToAccount(ctx, req.User, req.Account)
 	if err != nil {
-		resp.setError("compile_error", fmt.Sprintf("failed to scope user %s to account %s", req.User.ID, req.Account))
+		resp.setError("compile_error", fmt.Sprintf("failed to scope user %s to account %s: %v", req.User.ID, req.Account, err))
 		s.respondWithJSON(msg, resp)
 		return
 	}
@@ -203,7 +206,7 @@ func (s *DebugService) handleRequest(msg *nats.Msg) {
 	// compile permissions
 	compileResult, err := s.controller.CompileNatsPermissions(ctx, scopedUser)
 	if err != nil {
-		resp.setError("compile_error", fmt.Sprintf("failed to compile permissions for user %s", scopedUser.ID))
+		resp.setError("compile_error", fmt.Sprintf("failed to compile permissions for user %s: %v", scopedUser.ID, err))
 		s.respondWithJSON(msg, resp)
 		return
 	}

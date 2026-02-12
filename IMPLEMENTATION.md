@@ -138,6 +138,11 @@ The `policy.Compile()` function transforms policies to NATS permissions:
 - `foo.*` covered by `foo.>` → remove `foo.*`
 - Queue subscriptions are handled separately unless covered by a broader subscription without queue.
 
+### JSON Encoding of Permissions
+
+`PermissionSet` marshals to JSON as an object with an `allow` array. `NatsPermissions` uses
+`pub` and `sub` fields containing these arrays, so the type is JSON-serializable for debug output.
+
 ## JWT Permission Encoding
 
 NATS JWT defaults to empowering everything when no permissions are specified. nauts handles this by explicitly denying all when no allow permissions are granted:
@@ -330,29 +335,26 @@ authorization {
 
 ## CLI Reference
 
-### auth Subcommand
-
-Authenticate a user and output a signed NATS JWT.
-
-```bash
-./bin/nauts auth [options]
-
-Options:
-  -c, --config string    Path to configuration file (required)
-  -token string          Token to authenticate (JSON format, required)
-  -user-pubkey string    User's public key for JWT subject (optional)
-  -ttl duration          JWT time-to-live (default 1h)
-
-Environment variables:
-  NAUTS_CONFIG    Path to configuration file
-```
-
 ### serve Subcommand
 
 Run the NATS auth callout service.
 
 ```bash
 ./bin/nauts serve [options]
+
+Options:
+  -c, --config string    Path to configuration file (required)
+
+Environment variables:
+  NAUTS_CONFIG    Path to configuration file
+```
+
+### debug Subcommand
+
+Run the NATS auth debug service.
+
+```bash
+./bin/nauts debug [options]
 
 Options:
   -c, --config string    Path to configuration file (required)

@@ -3,6 +3,7 @@
 package policy
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -91,19 +92,31 @@ func (ps *PermissionSet) String() string {
 	return strings.Join(strs, ", ")
 }
 
+type permissionSetJSON struct {
+	Allow []Permission `json:"allow"`
+}
+
+// MarshalJSON encodes the permission set as a JSON object with an allow list.
+func (ps *PermissionSet) MarshalJSON() ([]byte, error) {
+	if ps == nil {
+		return json.Marshal(permissionSetJSON{Allow: []Permission{}})
+	}
+	return json.Marshal(permissionSetJSON{Allow: ps.AllowList()})
+}
+
 // NatsPermissions holds compiled NATS permissions.
 type NatsPermissions struct {
-	pub            *PermissionSet
-	sub            *PermissionSet
-	allowResponses bool // If true, sets Resp permissions
+	Pub            *PermissionSet `json:"pub"`
+	Sub            *PermissionSet `json:"sub"`
+	AllowResponses bool           `json:"AllowResponses"` // If true, sets Resp permissions
 }
 
 // NewNatsPermissions creates an empty NatsPermissions struct.
 func NewNatsPermissions() *NatsPermissions {
 	return &NatsPermissions{
-		pub:            NewPermissionSet(),
-		sub:            NewPermissionSet(),
-		allowResponses: false,
+		Pub:            NewPermissionSet(),
+		Sub:            NewPermissionSet(),
+		AllowResponses: false,
 	}
 }
 
@@ -113,15 +126,15 @@ func (p *NatsPermissions) Clone() *NatsPermissions {
 		return nil
 	}
 	clone := NewNatsPermissions()
-	clone.allowResponses = p.allowResponses
-	if p.pub != nil {
-		for perm := range p.pub.allow {
-			clone.pub.Add(perm)
+	clone.AllowResponses = p.AllowResponses
+	if p.Pub != nil {
+		for perm := range p.Pub.allow {
+			clone.Pub.Add(perm)
 		}
 	}
-	if p.sub != nil {
-		for perm := range p.sub.allow {
-			clone.sub.Add(perm)
+	if p.Sub != nil {
+		for perm := range p.Sub.allow {
+			clone.Sub.Add(perm)
 		}
 	}
 	return clone
@@ -131,11 +144,11 @@ func (p *NatsPermissions) Clone() *NatsPermissions {
 func (p *NatsPermissions) Allow(perm Permission) {
 	switch perm.Type {
 	case PermPub:
-		p.pub.Add(perm)
+		p.Pub.Add(perm)
 	case PermSub:
-		p.sub.Add(perm)
+		p.Sub.Add(perm)
 	case PermResp:
-		p.allowResponses = true
+		p.AllowResponses = true
 	}
 }
 
@@ -145,40 +158,40 @@ func (p *NatsPermissions) Merge(other *NatsPermissions) {
 		return
 	}
 
-	if other.pub != nil {
-		for s := range other.pub.allow {
-			p.pub.Add(s)
+	if other.Pub != nil {
+		for s := range other.Pub.allow {
+			p.Pub.Add(s)
 		}
 	}
-	if other.sub != nil {
-		for s := range other.sub.allow {
-			p.sub.Add(s)
+	if other.Sub != nil {
+		for s := range other.Sub.allow {
+			p.Sub.Add(s)
 		}
 	}
-	if other.allowResponses {
-		p.allowResponses = true
+	if other.AllowResponses {
+		p.AllowResponses = true
 	}
 }
 
 // Deduplicate removes duplicate permissions using wildcard-aware deduplication.
 func (p *NatsPermissions) Deduplicate() {
-	p.pub.Deduplicate()
-	p.sub.Deduplicate()
+	p.Pub.Deduplicate()
+	p.Sub.Deduplicate()
 }
 
 // IsEmpty returns true if there are no permissions.
 func (p *NatsPermissions) IsEmpty() bool {
-	return p.pub.IsEmpty() && p.sub.IsEmpty()
+	return p.Pub.IsEmpty() && p.Sub.IsEmpty()
 }
 
 // PubList returns the list of publish subjects.
 func (p *NatsPermissions) PubList() []Permission {
-	return p.pub.AllowList()
+	return p.Pub.AllowList()
 }
 
 // SubList returns the list of subscribe subjects (without queue).
 func (p *NatsPermissions) SubList() []Permission {
-	return p.sub.AllowList()
+	return p.Sub.AllowList()
 }
 
 // ToNatsJWT converts policy.NatsPermissions to natsjwt.Permissions.
@@ -217,7 +230,7 @@ func (p *NatsPermissions) ToNatsJWT() natsjwt.Permissions {
 		natsPerms.Sub.Deny = []string{">"}
 	}
 
-	if p.allowResponses {
+	if p.AllowResponses {
 		// Set empty response permission to allow responses (MaxMsgs and Expires default to 0/nil which means unlimited/default)
 		natsPerms.Resp = &natsjwt.ResponsePermission{}
 	}
@@ -378,7 +391,7 @@ func matchTokens(subject, pattern []string) bool {
 }
 
 func (p *NatsPermissions) String() string {
-	pub := p.pub.String()
-	sub := p.sub.String()
+	pub := p.Pub.String()
+	sub := p.Sub.String()
 	return fmt.Sprintf("pub: %s, sub: %s", pub, sub)
 }
