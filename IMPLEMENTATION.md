@@ -8,7 +8,7 @@ This document covers the architecture and implementation details of nauts.
 nauts/
 ├── cmd/
 │   └── nauts/              # CLI entrypoint
-│       └── main.go         # CLI with auth and serve subcommands
+│       └── main.go         # CLI for service (optional debug flag)
 ├── policy/                 # Policy types, compilation, interpolation
 │   ├── action.go           # Action types and group expansion
 │   ├── compile.go          # Compile() function
@@ -36,6 +36,7 @@ nauts/
 ├── auth/                   # Authentication controller and callout service
 │   ├── controller.go       # AuthController
 │   ├── callout.go          # CalloutService (NATS auth callout)
+│   ├── debug.go            # DebugService (permission compilation)
 │   ├── config.go           # Config, LoadConfig, NewAuthControllerWithConfig
 │   └── errors.go           # AuthError
 └── e2e/                    # End-to-end tests
@@ -52,9 +53,9 @@ nauts/
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                              AuthController                                  │
 │                                                                             │
-│  ┌─────────────┐    ┌──────────────────────┐    ┌─────────────────────┐    │
-│  │ ResolveUser │───▶│ ResolveNatsPermissions│───▶│   CreateUserJWT     │    │
-│  └──────┬──────┘    └──────────┬───────────┘    └──────────┬──────────┘    │
+│  ┌──────────────────┐   ┌──────────────────────┐   ┌─────────────────────┐ │
+│  │ ScopeUserToAccount│──▶│ CompileNatsPermissions│──▶│   CreateUserJWT     │ │
+│  └─────────┬────────┘   └──────────┬───────────┘   └──────────┬──────────┘ │
 │         │                      │                           │               │
 └─────────┼──────────────────────┼───────────────────────────┼───────────────┘
           │                      │                           │
@@ -98,11 +99,12 @@ nauts/
 The `AuthController.Authenticate()` method performs:
 
 1. **Parse auth request**: Extract account and token from JSON `{"account":"APP","token":"..."}`
-2. **Verify identity token**: Identity provider verifies the token and returns user info
-3. **Resolve roles**: Collect user's roles (including default role)
-4. **Compile permissions**: For each role, fetch policies and compile to NATS permissions
-5. **Create JWT**: Sign a NATS user JWT with the compiled permissions
-6. **Return result**: `AuthResult` containing user, permissions, and signed JWT
+2. **Select provider**: Choose an auth provider via `AuthenticationProviderManager`
+3. **Verify identity token**: Provider verifies the token and returns user info
+4. **Scope user**: Filter roles to requested account, validate no wildcards
+5. **Compile permissions**: For each role, fetch policies and compile to NATS permissions
+6. **Create JWT**: Sign a NATS user JWT with the compiled permissions
+7. **Return result**: `AuthResult` containing user, compilation result, and signed JWT
 
 ```go
 // Using configuration file
@@ -113,7 +115,7 @@ controller, _ := auth.NewAuthControllerWithConfig(config)
 result, err := controller.Authenticate(ctx, natsjwt.ConnectOptions{
   Token: `{"account":"APP","token":"alice:secret"}`,
 }, userPublicKey, time.Hour)
-// result.User, result.Permissions, result.JWT
+// result.User, result.CompilationResult, result.JWT
 ```
 
 ## Permission Compilation
@@ -136,6 +138,11 @@ The `policy.Compile()` function transforms policies to NATS permissions:
 - `foo.*` covered by `foo.>` → remove `foo.*`
 - Queue subscriptions are handled separately unless covered by a broader subscription without queue.
 
+### JSON Encoding of Permissions
+
+`PermissionSet` marshals to JSON as an object with an `allow` array. `NatsPermissions` uses
+`pub` and `sub` fields containing these arrays, so the type is JSON-serializable for debug output.
+
 ## JWT Permission Encoding
 
 NATS JWT defaults to empowering everything when no permissions are specified. nauts handles this by explicitly denying all when no allow permissions are granted:
@@ -146,6 +153,22 @@ NATS JWT defaults to empowering everything when no permissions are specified. na
 - Queue subscriptions are merged into the main `Allow` list as NATS JWTs do not support specific queue restrictions.
 
 This ensures the principle of least privilege.
+
+## Debug Service
+
+The debug service listens on `nauts.debug` and accepts a plain JSON payload:
+
+```json
+{
+  "user": {"id": "alice", "roles": [{"account": "APP", "name": "workers"}]},
+  "account": "APP"
+}
+```
+
+It scopes the user to the account, compiles permissions via `CompileNatsPermissions`,
+and returns a JSON response containing `NautsCompilationResult`.
+The service uses `ServerConfig` for NATS connectivity (credentials or nkey) and ignores
+`xkeySeedFile`.
 
 ## Role Bindings
 
@@ -312,32 +335,14 @@ authorization {
 
 ## CLI Reference
 
-### auth Subcommand
-
-Authenticate a user and output a signed NATS JWT.
+Run the NATS auth callout service (optionally with debug service).
 
 ```bash
-./bin/nauts auth [options]
+./bin/nauts [options]
 
 Options:
-  -c, --config string    Path to configuration file (required)
-  -token string          Token to authenticate (JSON format, required)
-  -user-pubkey string    User's public key for JWT subject (optional)
-  -ttl duration          JWT time-to-live (default 1h)
-
-Environment variables:
-  NAUTS_CONFIG    Path to configuration file
-```
-
-### serve Subcommand
-
-Run the NATS auth callout service.
-
-```bash
-./bin/nauts serve [options]
-
-Options:
-  -c, --config string    Path to configuration file (required)
+  -c, --config string       Path to configuration file (required)
+  --enable-debug-svc        Start the NATS auth debug service
 
 Environment variables:
   NAUTS_CONFIG    Path to configuration file

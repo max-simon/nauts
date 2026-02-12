@@ -33,11 +33,11 @@ The `auth` package is the top-level coordinator of nauts. `AuthController` wires
 
 | Decision | Rationale |
 |----------|-----------|
-| **Controller pattern** | A single orchestrator avoids scattering the auth flow across packages. Each step (resolve user → compile perms → issue JWT) is a separate public method for testability. |
+| **Controller pattern** | A single orchestrator avoids scattering the auth flow across packages. Each step (scope user → compile perms → issue JWT) is a separate public method for testability. |
 | **`default` role always included** | Every user gets the `default` role's policies (if bound). This provides a safe baseline without explicit assignment. |
 | **Role filtering in controller, not provider** | Identity providers return all roles. The controller filters by requested account. This keeps providers simple and moves authorization logic to a single location. |
 | **Ephemeral user keys** | When no user public key is provided (auth callout scenario), the controller generates an ephemeral nkeys user key. This allows NATS to establish the connection without pre-provisioned user keys. |
-| **Generic error responses** | The callout service never leaks internal error details to clients. All auth failures return `"authentication failed"`. Only JWT-creation errors return `"internal error"`. Full errors are logged server-side. |
+| **Generic error responses** | The callout service never leaks internal error details to clients. All auth failures return `"authentication failed"`. Full errors are logged server-side. |
 | **Encrypted auth callout via XKey** | If both the service and NATS server are configured with curve keys (xkey), requests and responses are encrypted. This is optional — the service works without encryption. |
 | **Config-driven bootstrapping** | `NewAuthControllerWithConfig` creates all providers from a single JSON config. This simplifies CLI usage and operational deployment. |
 
@@ -67,9 +67,9 @@ func NewAuthControllerWithConfig(config *Config, opts ...ControllerOption) (*Aut
 
 | Method | Signature | Purpose |
 |--------|-----------|---------|
-| `Authenticate` | `(ctx, connectOptions, userPublicKey, ttl) → (*AuthResult, error)` | Full flow: verify → compile → sign |
-| `ResolveUser` | `(ctx, token string) → (*AccountScopedUser, error)` | Parse JSON token, verify identity, filter roles by account, attach account scope |
-| `ResolveNatsPermissions` | `(ctx, user) → (*policy.NatsPermissions, error)` | Compile permissions for all user roles (scoped account provided by user) |
+| `Authenticate` | `(ctx, connectOptions, userPublicKey, ttl) → (*AuthResult, error)` | Full flow: verify → scope → compile → sign |
+| `ScopeUserToAccount` | `(ctx, user, account) → (*AccountScopedUser, error)` | Filter roles by account, validate no wildcards, attach account scope |
+| `CompileNatsPermissions` | `(ctx, user) → (*NautsCompilationResult, error)` | Compile permissions + warnings for all roles (scoped account provided by user) |
 | `CreateUserJWT` | `(ctx, user, pubKey, perms, ttl) → (string, error)` | Sign a NATS user JWT (scoped account provided by user) |
 | `AccountProvider` | `() → provider.AccountProvider` | Accessor for the account provider |
 
@@ -80,15 +80,28 @@ type AccountScopedUser struct {
     Account string
 }
 ```
-Returned by `ResolveUser`. Roles are filtered to only those matching `Account`.
+Returned by `ScopeUserToAccount`. Roles are filtered to only those matching `Account`.
 
 #### `AuthResult`
 ```go
 type AuthResult struct {
-    User          *AccountScopedUser
-    UserPublicKey string
-    Permissions   *policy.NatsPermissions
-    JWT           string
+  User              *AccountScopedUser
+  UserPublicKey     string
+  CompilationResult *NautsCompilationResult
+  AuthProviderId    string
+  JWT               string
+}
+```
+
+#### `NautsCompilationResult`
+```go
+type NautsCompilationResult struct {
+  User           *AccountScopedUser
+  Permissions    *policy.NatsPermissions
+  PermissionsRaw *policy.NatsPermissions
+  Warnings       []string
+  Roles          []identity.Role
+  Policies       map[string][]*policy.Policy
 }
 ```
 
@@ -105,19 +118,20 @@ Token (JSON string)
   ├─► parseAuthRequest(token) → AuthRequest{account, token, ap}
   │     - Validate: account required, no wildcards in account
   │
-  ├─► authProviders.Verify(ctx, authReq) → *User (all roles)
-  │     - Routes to correct provider (by ap or account pattern)
+  ├─► authProviders.SelectProvider(authReq) → (id, provider)
+  │     - Selects correct provider (by ap or account pattern)
+  ├─► provider.Verify(ctx, authReq) → *User (all roles)
   │
-    ├─► Filter user.Roles to requested account only
+  ├─► ScopeUserToAccount(ctx, user, authReq.Account)
   │     - Validate: no wildcards in role names
-    │
-    ├─► Return AccountScopedUser{Account: authReq.Account, User: user}
+  │     - Filter roles to requested account
   │
-  ├─► ResolveNatsPermissions(ctx, user)
+  ├─► CompileNatsPermissions(ctx, scopedUser)
   │     ├─► collectRoleNames(user) → ["default", role1, role2, ...]
   │     ├─► for each role:
   │     │     ├─► policyProvider.GetPoliciesForRole(account, role)
   │     │     └─► policy.Compile(policies, userCtx, roleCtx, perms)
+  │     ├─► capture pre-dedup perms + warnings + roles + policies
   │     └─► perms.Deduplicate()
   │
   ├─► Generate ephemeral user key (if not provided)
@@ -172,7 +186,6 @@ NATS Server                    CalloutService
 - Decode failure → `"authentication failed"`
 - Missing token → `"authentication failed"`
 - Auth failure → `"authentication failed"` (detailed error logged)
-- JWT creation failure → `"internal error"` (detailed error logged)
 
 **Graceful shutdown:**
 1. `Stop()` closes the done channel

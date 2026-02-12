@@ -83,45 +83,21 @@ func (c *AuthController) AccountProvider() provider.AccountProvider {
 	return c.accountProvider
 }
 
-// ResolveUser verifies the identity token and returns the user scoped to a single account.
-// The token should be a JSON object with the structure: { "account": string, "token": string }
-// Returns identity.ErrInvalidCredentials if the credentials are invalid.
-// Returns identity.ErrUserNotFound if the user does not exist.
-// Returns identity.ErrInvalidTokenType if the token type is wrong for the provider.
-// Returns identity.ErrInvalidAccount if the requested account is not valid for the user.
-func (c *AuthController) ResolveUser(ctx context.Context, token string) (*AccountScopedUser, error) {
-	authReq, err := parseAuthRequest(token)
-	if err != nil {
-		return nil, NewAuthError("", "resolve_user", "failed to parse auth request", err)
-	}
-	if strings.Contains(authReq.Account, "*") {
-		return nil, NewAuthError("", "resolve_user", "account must not contain wildcards", nil)
-	}
-
-	user, err := c.authProviders.Verify(ctx, authReq)
-	if err != nil {
-		return nil, NewAuthError("", "resolve_user", "failed to verify identity", err)
-	}
-
-	// Validate that roles do not contain wildcards
-	for _, role := range user.Roles {
-		if strings.Contains(role.Account, "*") || strings.Contains(role.Name, "*") {
-			return nil, NewAuthError(user.ID, "resolve_user", "invalid role: wildcards not allowed", nil)
-		}
-	}
-
+func (c *AuthController) ScopeUserToAccount(ctx context.Context, user *identity.User, account string) (*AccountScopedUser, error) {
 	// Filter user roles to only include those for the requested account
 	// This is the authorization step - separating it from authentication
 	filteredRoles := make([]identity.Role, 0, len(user.Roles))
 	for _, role := range user.Roles {
-		if role.Account == authReq.Account {
+		if strings.Contains(role.Account, "*") || strings.Contains(role.Name, "*") {
+			return nil, NewAuthError(user.ID, "resolve_user", "invalid role: wildcards not allowed", nil)
+		}
+		if role.Account == account {
 			filteredRoles = append(filteredRoles, role)
 		}
 	}
-
 	scoped := &AccountScopedUser{
 		User:    *user,
-		Account: authReq.Account,
+		Account: account,
 	}
 	scoped.Roles = filteredRoles
 	return scoped, nil
@@ -140,72 +116,83 @@ func parseAuthRequest(token string) (identity.AuthRequest, error) {
 	if req.Account == "" {
 		return identity.AuthRequest{}, errors.New("account field is required")
 	}
+	if strings.Contains(req.Account, "*") {
+		return identity.AuthRequest{}, errors.New("account must not contain wildcards")
+	}
 	return req, nil
 }
 
-// ResolveNatsPermissions compiles NATS permissions for a user based on their roles and policies.
-// The compilation process:
-// 1. Resolve user's roles (always include "default")
-// 2. For each role name, fetch both global and local roles and compile policies
-// 3. Deduplicate and return permissions
-func (c *AuthController) ResolveNatsPermissions(ctx context.Context, user *AccountScopedUser) (*policy.NatsPermissions, error) {
+type NautsCompilationResult struct {
+	User           *AccountScopedUser          `json:"user"`
+	Permissions    *policy.NatsPermissions     `json:"permissions"`
+	PermissionsRaw *policy.NatsPermissions     `json:"permissionsRaw"`
+	Warnings       []string                    `json:"warnings"`
+	Roles          []identity.Role             `json:"roles"`
+	Policies       map[string][]*policy.Policy `json:"policies"`
+}
+
+// CompileNatsPermissions compiles NATS permissions for a given user.
+func (c *AuthController) CompileNatsPermissions(ctx context.Context, user *AccountScopedUser) (*NautsCompilationResult, error) {
 	if user == nil {
 		return nil, NewAuthError("", "resolve_permissions", "user is nil", nil)
 	}
 
-	// Collect all roles (including default)
 	roles := c.collectRoles(user)
-
-	result := policy.NewNatsPermissions()
-
-	// Build base policy context once
+	compiled := policy.NewNatsPermissions()
 	basePolicyCtx := userToPolicyContext(user)
 
-	// Process each role
+	warnings := make([]string, 0)
+	policiesByRole := make(map[string][]*policy.Policy, len(roles))
+
 	for _, role := range roles {
 		policies, err := c.policyProvider.GetPoliciesForRole(ctx, role)
 		if err != nil {
 			if errors.Is(err, provider.ErrRoleNotFound) {
-				c.logger.Warn("role not found: %s.%s (user: %s)", role.Account, role.Name, user.ID)
+				warnings = append(warnings, fmt.Sprintf("role not found: %s.%s (user: %s)", role.Account, role.Name, user.ID))
+				policiesByRole[role.Account+"."+role.Name] = []*policy.Policy{}
 				continue
 			}
 			return nil, NewAuthError(user.ID, "resolve_permissions", err.Error(), err)
 		}
+		policiesByRole[role.Account+"."+role.Name] = policies
 
-		c.compilePoliciesForRole(basePolicyCtx, role, policies, result)
+		ctxCopy := basePolicyCtx.Clone()
+		if ctxCopy == nil {
+			ctxCopy = &policy.PolicyContext{}
+		}
+		ctxCopy.Role = role.Name
+		compileResult := policy.Compile(policies, ctxCopy, compiled)
+		if len(compileResult.Warnings) > 0 {
+			warnings = append(warnings, compileResult.Warnings...)
+		}
 	}
 
-	// Deduplicate
-	result.Deduplicate()
-
-	return result, nil
-}
-
-func (c *AuthController) compilePoliciesForRole(baseCtx *policy.PolicyContext, role identity.Role, policies []*policy.Policy, result *policy.NatsPermissions) {
-	ctx := baseCtx.Clone()
-	if ctx == nil {
-		ctx = &policy.PolicyContext{}
+	preDedup := compiled.Clone()
+	postDedup := compiled.Clone()
+	if postDedup != nil {
+		postDedup.Deduplicate()
 	}
-	ctx.Role = role.Name
-	compileResult := policy.Compile(policies, ctx, result)
-	for _, warning := range compileResult.Warnings {
-		c.logger.Warn("%s", warning)
-	}
+
+	return &NautsCompilationResult{
+		User:           user,
+		Permissions:    postDedup,
+		PermissionsRaw: preDedup,
+		Warnings:       warnings,
+		Roles:          roles,
+		Policies:       policiesByRole,
+	}, nil
 }
 
 // AuthResult contains the result of a successful authentication.
 type AuthResult struct {
-	User          *AccountScopedUser
-	UserPublicKey string
-	Permissions   *policy.NatsPermissions
-	JWT           string
+	User              *AccountScopedUser
+	UserPublicKey     string
+	CompilationResult *NautsCompilationResult
+	AuthProviderId    string
+	JWT               string
 }
 
-// Authenticate performs the complete authentication flow:
-// 1. Verifies the identity token to get the user
-// 2. Compiles NATS permissions for the user
-// 3. Creates a signed JWT with the permissions
-//
+// Authenticate performs the complete authentication flow
 // Parameters:
 //   - ctx: context for the operation
 //   - token: the identity token to verify
@@ -217,21 +204,37 @@ func (c *AuthController) Authenticate(
 	userPublicKey string,
 	ttl time.Duration,
 ) (*AuthResult, error) {
-	// Step 1: Resolve user
-	user, err := c.ResolveUser(ctx, connectOptions.Token)
+	// Step 1: Parse AuthRequest
+	authReq, err := parseAuthRequest(connectOptions.Token)
 	if err != nil {
 		return nil, err
 	}
 
-	// Step 2: Resolve permissions
-	permissions, err := c.ResolveNatsPermissions(ctx, user)
+	// Step 2: select auth provider
+	providerID, provider, err := c.authProviders.SelectProvider(authReq)
 	if err != nil {
 		return nil, err
 	}
 
-	c.logger.Debug(fmt.Sprintf("Permissions for user %s: %s", user.ID, permissions.String()))
+	// Step 3: Verify user
+	user, err := provider.Verify(ctx, authReq)
+	if err != nil {
+		return nil, err
+	}
 
-	// Step 3: Generate ephemeral key if not provided
+	// Step 4: scope user to account
+	userScoped, err := c.ScopeUserToAccount(ctx, user, authReq.Account)
+	if err != nil {
+		return nil, err
+	}
+
+	// Step 5: compile NATS permissions
+	compilationResult, err := c.CompileNatsPermissions(ctx, userScoped)
+	if err != nil {
+		return nil, err
+	}
+
+	// Step 6: Generate ephemeral key if not provided
 	if userPublicKey == "" {
 		userPublicKey, err = generateEphemeralUserKey()
 		if err != nil {
@@ -239,17 +242,18 @@ func (c *AuthController) Authenticate(
 		}
 	}
 
-	// Step 4: Create JWT
-	jwtToken, err := c.CreateUserJWT(ctx, user, userPublicKey, permissions, ttl)
+	// Step 7: Create JWT
+	jwtToken, err := c.CreateUserJWT(ctx, userScoped, userPublicKey, compilationResult.Permissions, ttl)
 	if err != nil {
 		return nil, err
 	}
 
 	return &AuthResult{
-		User:          user,
-		UserPublicKey: userPublicKey,
-		Permissions:   permissions,
-		JWT:           jwtToken,
+		User:              userScoped,
+		UserPublicKey:     userPublicKey,
+		CompilationResult: compilationResult,
+		AuthProviderId:    providerID,
+		JWT:               jwtToken,
 	}, nil
 }
 

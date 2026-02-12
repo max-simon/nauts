@@ -36,31 +36,46 @@ func (l *testLogger) Debug(msg string, args ...any) {
 	l.debugs = append(l.debugs, msg)
 }
 
-func TestResolveUser_ValidCredentials(t *testing.T) {
+func TestScopeUserToAccount_ValidRoles(t *testing.T) {
 	ctrl := createTestController(t)
 
-	user, err := ctrl.ResolveUser(context.Background(), `{"account":"test-account","token":"alice:secret123"}`)
-	if err != nil {
-		t.Fatalf("ResolveUser() error = %v", err)
+	user := &identity.User{
+		ID: "alice",
+		Roles: []identity.Role{
+			{Account: "test-account", Name: "workers"},
+			{Account: "other-account", Name: "admin"},
+		},
 	}
 
-	if user.ID != "alice" {
-		t.Errorf("user.ID = %q, want %q", user.ID, "alice")
+	scoped, err := ctrl.ScopeUserToAccount(context.Background(), user, "test-account")
+	if err != nil {
+		t.Fatalf("ScopeUserToAccount() error = %v", err)
 	}
-	if user.Account != "test-account" {
-		t.Errorf("user.Account = %q, want %q", user.Account, "test-account")
+
+	if scoped.ID != "alice" {
+		t.Errorf("scoped.ID = %q, want %q", scoped.ID, "alice")
 	}
-	if len(user.Roles) == 0 || user.Roles[0].Account != "test-account" {
-		t.Errorf("user roles = %v, want account scoped to test-account", user.Roles)
+	if scoped.Account != "test-account" {
+		t.Errorf("scoped.Account = %q, want %q", scoped.Account, "test-account")
+	}
+	if len(scoped.Roles) != 1 || scoped.Roles[0].Name != "workers" {
+		t.Errorf("scoped.Roles = %v, want only workers role", scoped.Roles)
 	}
 }
 
-func TestResolveUser_InvalidCredentials(t *testing.T) {
+func TestScopeUserToAccount_WildcardInRole(t *testing.T) {
 	ctrl := createTestController(t)
 
-	_, err := ctrl.ResolveUser(context.Background(), `{"account":"test-account","token":"alice:wrongpassword"}`)
+	user := &identity.User{
+		ID: "test-user",
+		Roles: []identity.Role{
+			{Account: "test-account", Name: "admin*"},
+		},
+	}
+
+	_, err := ctrl.ScopeUserToAccount(context.Background(), user, "test-account")
 	if err == nil {
-		t.Fatal("ResolveUser() expected error")
+		t.Fatal("ScopeUserToAccount() expected error for wildcard in role")
 	}
 
 	var authErr *AuthError
@@ -72,32 +87,7 @@ func TestResolveUser_InvalidCredentials(t *testing.T) {
 	}
 }
 
-func TestResolveUser_WildcardInRole(t *testing.T) {
-	ctrl := createTestController(t)
-
-	// Create a mock identity provider that returns roles with wildcards
-	mockProvider := &mockAuthProviderWithWildcard{}
-	manager, err := identity.NewAuthenticationProviderManager(map[string]identity.AuthenticationProvider{"mock": mockProvider})
-	if err != nil {
-		t.Fatalf("creating provider manager: %v", err)
-	}
-	ctrl.authProviders = manager
-
-	_, err = ctrl.ResolveUser(context.Background(), `{"account":"test-account","token":"test"}`)
-	if err == nil {
-		t.Fatal("ResolveUser() expected error for wildcard in role")
-	}
-
-	var authErr *AuthError
-	if !errors.As(err, &authErr) {
-		t.Fatalf("error is not AuthError: %T", err)
-	}
-	if authErr.Phase != "resolve_user" {
-		t.Errorf("AuthError.Phase = %q, want %q", authErr.Phase, "resolve_user")
-	}
-}
-
-func TestResolveNatsPermissions_Basic(t *testing.T) {
+func TestCompileNatsPermissions_Basic(t *testing.T) {
 	ctrl := createTestController(t)
 
 	user := &AccountScopedUser{
@@ -113,26 +103,26 @@ func TestResolveNatsPermissions_Basic(t *testing.T) {
 		Account: "test-account",
 	}
 
-	perms, err := ctrl.ResolveNatsPermissions(context.Background(), user)
+	result, err := ctrl.CompileNatsPermissions(context.Background(), user)
 	if err != nil {
-		t.Fatalf("ResolveNatsPermissions() error = %v", err)
+		t.Fatalf("CompileNatsPermissions() error = %v", err)
 	}
 
-	if perms.IsEmpty() {
+	if result == nil || result.Permissions == nil || result.Permissions.IsEmpty() {
 		t.Error("Expected non-empty permissions")
 	}
 }
 
-func TestResolveNatsPermissions_NilUser(t *testing.T) {
+func TestCompileNatsPermissions_NilUser(t *testing.T) {
 	ctrl := createTestController(t)
 
-	_, err := ctrl.ResolveNatsPermissions(context.Background(), nil)
+	_, err := ctrl.CompileNatsPermissions(context.Background(), nil)
 	if err == nil {
 		t.Error("Expected error for nil user")
 	}
 }
 
-func TestResolveNatsPermissions_DefaultRole(t *testing.T) {
+func TestCompileNatsPermissions_DefaultRole(t *testing.T) {
 	ctrl := createTestController(t)
 
 	user := &AccountScopedUser{
@@ -145,13 +135,13 @@ func TestResolveNatsPermissions_DefaultRole(t *testing.T) {
 		Account: "test-account",
 	}
 
-	perms, err := ctrl.ResolveNatsPermissions(context.Background(), user)
+	result, err := ctrl.CompileNatsPermissions(context.Background(), user)
 	if err != nil {
-		t.Fatalf("ResolveNatsPermissions() error = %v", err)
+		t.Fatalf("CompileNatsPermissions() error = %v", err)
 	}
 
 	// Default role should be processed (even if it doesn't exist or has no policies)
-	_ = perms
+	_ = result
 }
 
 func TestCreateUserJWT(t *testing.T) {
@@ -167,9 +157,9 @@ func TestCreateUserJWT(t *testing.T) {
 		Account: "test-account",
 	}
 
-	perms, err := ctrl.ResolveNatsPermissions(context.Background(), user)
+	result, err := ctrl.CompileNatsPermissions(context.Background(), user)
 	if err != nil {
-		t.Fatalf("ResolveNatsPermissions() error = %v", err)
+		t.Fatalf("CompileNatsPermissions() error = %v", err)
 	}
 
 	// Create a user keypair for testing
@@ -182,7 +172,7 @@ func TestCreateUserJWT(t *testing.T) {
 		t.Fatalf("getting user public key: %v", err)
 	}
 
-	token, err := ctrl.CreateUserJWT(context.Background(), user, userPub, perms, time.Hour)
+	token, err := ctrl.CreateUserJWT(context.Background(), user, userPub, result.Permissions, time.Hour)
 	if err != nil {
 		t.Fatalf("CreateUserJWT() error = %v", err)
 	}
@@ -246,8 +236,14 @@ func TestAuthenticate_Success(t *testing.T) {
 	if result.User.ID != "alice" {
 		t.Errorf("result.User.ID = %q, want %q", result.User.ID, "alice")
 	}
-	if result.Permissions == nil {
-		t.Fatal("result.Permissions is nil")
+	if result.CompilationResult == nil {
+		t.Fatal("result.CompilationResult is nil")
+	}
+	if result.CompilationResult.Permissions == nil {
+		t.Fatal("result.CompilationResult.Permissions is nil")
+	}
+	if result.CompilationResult.PermissionsRaw == nil {
+		t.Fatal("result.CompilationResult.PermissionsRaw is nil")
 	}
 	if result.JWT == "" {
 		t.Error("result.JWT is empty")
@@ -453,6 +449,13 @@ type mockAuthProviderWithWildcard struct{}
 
 func (m *mockAuthProviderWithWildcard) ManageableAccounts() []string {
 	return []string{"*"}
+}
+
+func (m *mockAuthProviderWithWildcard) GetConfig() map[string]any {
+	return map[string]any{
+		"type":                "mock",
+		"manageable_accounts": []string{"*"},
+	}
 }
 
 func (m *mockAuthProviderWithWildcard) Verify(_ context.Context, req identity.AuthRequest) (*identity.User, error) {

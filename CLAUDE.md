@@ -46,7 +46,7 @@ See [README.md](./README.md) for architecture and [POLICY.md](./POLICY.md) for p
 nauts/
 ├── cmd/
 │   └── nauts/              # CLI entrypoint
-│       └── main.go         # CLI with auth and serve subcommands
+│       └── main.go         # CLI for service (optional debug flag)
 ├── policy/                 # Policy types, compilation, interpolation, action mapping
 │   ├── action.go           # Action types and action group expansion
 │   ├── compile.go          # Policy compilation (Compile function)
@@ -67,7 +67,7 @@ nauts/
 │   └── errors.go           # Provider errors (ErrNotFound, etc.)
 ├── identity/               # User identity management
 │   ├── user.go             # User type
-│   ├── provider.go         # AuthenticationProvider interface, IdentityToken
+│   ├── provider.go         # AuthenticationProvider interface, AuthRequest
 │   └── file_authentication_provider.go # FileAuthenticationProvider (bcrypt passwords)
 ├── jwt/                    # JWT issuance
 │   ├── signer.go           # Signer interface
@@ -76,6 +76,7 @@ nauts/
 ├── auth/                   # Authentication controller and callout service
 │   ├── controller.go       # AuthController (orchestrates auth flow)
 │   ├── callout.go          # CalloutService (NATS auth callout handler)
+│   ├── debug.go            # DebugService (permission compilation)
 │   ├── config.go           # Config types and NewAuthControllerWithConfig
 │   └── errors.go           # Auth errors (AuthError)
 ├── e2e/                    # End-to-End tests
@@ -125,12 +126,23 @@ go test -v ./e2e/ -static -operator
 - Define sentinel errors for expected failure modes
 - Use custom error types when callers need to inspect error details
 
+### Auth Provider Selection
+
+- Use `AuthenticationProviderManager.SelectProvider()` to select a provider, then call `provider.Verify(...)` directly.
+- `AuthenticationProvider.GetConfig()` returns a JSON-serializable map for debug output (type + manageable accounts).
+
+### Debug Service
+
+- `DebugService` listens on `nauts.debug` and accepts a JSON payload with `user` and `account`.
+- It uses `AuthController.ScopeUserToAccount` + `CompileNatsPermissions` and returns `NautsCompilationResult`.
+- It uses `ServerConfig` for NATS connectivity (credentials or nkey) and ignores `xkeySeedFile`.
+
 ### Naming
 
 - Resource types: `Resource`, `ResourceType`, `ParseAndValidateResource()`
 - Policy types: `Policy`, `Statement`, `Effect`
 - Actions: `Action`, `ActionDef`, `ResolveActions()`
-- Auth controller: `AuthController`, `NewAuthController()`, `NewAuthControllerWithConfig()`, `Authenticate()`, `ResolveUser()`, `ResolveNatsPermissions()`, `CreateUserJWT()`
+- Auth controller: `AuthController`, `NewAuthController()`, `NewAuthControllerWithConfig()`, `Authenticate()`, `ScopeUserToAccount()`, `CompileNatsPermissions()`, `CreateUserJWT()`
 - Callout service: `CalloutService`, `NewCalloutService()`, `CalloutConfig`, `Start()`, `Stop()`
 - Configuration: `Config`, `LoadConfig()`, `AccountConfig`, `PolicyConfig`, `IdentityConfig`, `ServerConfig`
 - Permissions: `NatsPermissions`, `Permission`, `PermissionSet`
@@ -174,12 +186,11 @@ golangci-lint run
 # Build binary
 go build -o bin/nauts ./cmd/nauts
 
-# One-shot authentication (get JWT)
-# Token is JSON format: { "account": string, "token": string, "ap"?: string }
-./bin/nauts auth -c nauts.json -token '{"account":"APP","token":"alice:secret"}'
-
 # Run auth callout service
-./bin/nauts serve -c nauts.json
+./bin/nauts -c nauts.json
+
+# Run auth callout + debug service
+./bin/nauts -c nauts.json --enable-debug-svc
 
 # Run e2e tests (from e2e/ directory)
 cd test
@@ -605,7 +616,7 @@ For now, nauts only extracts the standard subject claim:
 - [x] Auth controller: `auth/controller.go` - `AuthController` orchestrating full auth flow
 - [x] Account scoped user: `auth/account_scoped_user.go` - Wrapper for filtering roles by account
 - [x] Configuration: `auth/config.go` - `Config` types and `NewAuthControllerWithConfig()`
-- [x] CLI: `cmd/nauts/main.go` - CLI with `auth` and `serve` subcommands (config file based)
+- [x] CLI: `cmd/nauts/main.go` - CLI for service with optional debug flag (config file based)
 - [x] NATS auth callout: `auth/callout.go` - `CalloutService` implementing auth callout protocol
 - [x] E2E tests: Connection tests (`e2e/connection_test.go`) for static and operator modes
 - [x] E2E tests: Policy tests (`e2e/policy_*_test.go`) for NATS, JetStream, and KV actions
