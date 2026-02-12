@@ -90,7 +90,7 @@ func (e *TestEnv) startNauts() {
 	e.t.Log("Starting nauts auth service...")
 	// environment variable NATS_URL
 	nautsPath := "../../bin/nauts"
-	e.nautsCmd = exec.Command(nautsPath, "serve", "-c", "nauts.json")
+	e.nautsCmd = exec.Command(nautsPath, "-c", "nauts.json")
 	e.nautsCmd.Env = []string{fmt.Sprintf("NATS_URL=nats://localhost:%d", e.port)}
 	e.nautsCmd.Dir = e.baseDir
 	e.nautsCmd.Stdout = os.Stdout
