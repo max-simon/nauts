@@ -8,7 +8,7 @@ This document covers the architecture and implementation details of nauts.
 nauts/
 ├── cmd/
 │   └── nauts/              # CLI entrypoint
-│       └── main.go         # CLI with auth and serve subcommands
+│       └── main.go         # CLI with serve and debug subcommands
 ├── policy/                 # Policy types, compilation, interpolation
 │   ├── action.go           # Action types and group expansion
 │   ├── compile.go          # Compile() function

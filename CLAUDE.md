@@ -46,7 +46,7 @@ See [README.md](./README.md) for architecture and [POLICY.md](./POLICY.md) for p
 nauts/
 ├── cmd/
 │   └── nauts/              # CLI entrypoint
-│       └── main.go         # CLI with auth and serve subcommands
+│       └── main.go         # CLI with serve and debug subcommands
 ├── policy/                 # Policy types, compilation, interpolation, action mapping
 │   ├── action.go           # Action types and action group expansion
 │   ├── compile.go          # Policy compilation (Compile function)
@@ -186,12 +186,11 @@ golangci-lint run
 # Build binary
 go build -o bin/nauts ./cmd/nauts
 
-# One-shot authentication (get JWT)
-# Token is JSON format: { "account": string, "token": string, "ap"?: string }
-./bin/nauts auth -c nauts.json -token '{"account":"APP","token":"alice:secret"}'
-
 # Run auth callout service
 ./bin/nauts serve -c nauts.json
+
+# Run auth debug service
+./bin/nauts debug -c nauts.json
 
 # Run e2e tests (from e2e/ directory)
 cd test

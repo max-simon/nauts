@@ -8,10 +8,8 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/msimon/nauts/auth"
-	natsjwt "github.com/nats-io/jwt/v2"
 )
 
 func main() {
@@ -28,10 +26,10 @@ func run() error {
 	}
 
 	switch os.Args[1] {
-	case "auth":
-		return runAuth(os.Args[2:])
 	case "serve":
 		return runServe(os.Args[2:])
+	case "debug":
+		return runDebug(os.Args[2:])
 	case "-h", "-help", "--help", "help":
 		printUsage()
 		return nil
@@ -45,8 +43,8 @@ func printUsage() {
 	fmt.Fprintf(os.Stderr, `Usage: %s <command> [options]
 
 Commands:
-  auth    Authenticate a user and output a NATS JWT
-  serve   Run the auth callout service
+	serve   Run the auth callout service
+	debug   Run the auth debug service
 
 Run '%s <command> -h' for more information on a command.
 `, os.Args[0], os.Args[0])
@@ -60,90 +58,6 @@ func envOrDefault(key, defaultValue string) string {
 	return defaultValue
 }
 
-// runAuth handles the 'auth' subcommand for one-shot authentication.
-func runAuth(args []string) error {
-	fs := flag.NewFlagSet("auth", flag.ExitOnError)
-
-	var (
-		configPath string
-		token      string
-		userPubKey string
-		ttl        time.Duration
-	)
-
-	fs.StringVar(&configPath, "c", envOrDefault("NAUTS_CONFIG", ""), "Path to configuration file")
-	fs.StringVar(&configPath, "config", envOrDefault("NAUTS_CONFIG", ""), "Path to configuration file")
-	fs.StringVar(&token, "token", "", "Token to authenticate (JSON: {\"account\":\"APP\",\"token\":\"...\"} with optional \"ap\")")
-	fs.StringVar(&userPubKey, "user-pubkey", "", "User's public key for JWT subject (optional, generates ephemeral key if not provided)")
-	fs.DurationVar(&ttl, "ttl", time.Hour, "JWT time-to-live (overrides config file)")
-
-	fs.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: %s auth [options]\n\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "Authenticate a user and generate a NATS JWT.\n\n")
-		fmt.Fprintf(os.Stderr, "Options:\n")
-		fs.PrintDefaults()
-		fmt.Fprintf(os.Stderr, "\nEnvironment variables:\n")
-		fmt.Fprintf(os.Stderr, "  NAUTS_CONFIG       Path to configuration file\n")
-		fmt.Fprintf(os.Stderr, "\nExample:\n")
-		fmt.Fprintf(os.Stderr, "  %s auth -c config.json -token '{\\\"account\\\":\\\"APP\\\",\\\"token\\\":\\\"alice:secret\\\"}'\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "\nConfiguration file format (JSON):\n")
-		fmt.Fprintf(os.Stderr, `  {
-	"account": {
-	  "type": "static",
-	  "static": { "publicKey": "AXXXXX...", "privateKeyPath": "account.nk", "accounts": ["APP"] }
-	},
-	"policy": {
-	  "type": "file",
-	  "file": { "policiesPath": "policies.json", "bindingsPath": "bindings.json" }
-	},
-	"auth": {
-	  "file": [
-	    { "id": "local", "accounts": ["APP"], "userPath": "users.json" }
-	  ]
-	}
-  }
-`)
-	}
-
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-
-	// Validate required flags
-	if configPath == "" {
-		return fmt.Errorf("-c/--config is required")
-	}
-	if token == "" {
-		return fmt.Errorf("--token is required")
-	}
-
-	// Load configuration
-	config, err := auth.LoadConfig(configPath)
-	if err != nil {
-		return fmt.Errorf("loading configuration: %w", err)
-	}
-
-	// Create auth controller from config
-	controller, err := auth.NewAuthControllerWithConfig(config)
-	if err != nil {
-		return fmt.Errorf("creating auth controller: %w", err)
-	}
-
-	// Authenticate
-	ctx := context.Background()
-	result, err := controller.Authenticate(ctx, natsjwt.ConnectOptions{
-		Token: token,
-	}, userPubKey, ttl)
-	if err != nil {
-		return fmt.Errorf("authentication failed: %w", err)
-	}
-
-	// Output the JWT
-	fmt.Println(result.JWT)
-
-	return nil
-}
-
 // runServe handles the 'serve' subcommand for the auth callout service.
 func runServe(args []string) error {
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
@@ -154,63 +68,16 @@ func runServe(args []string) error {
 	fs.StringVar(&configPath, "config", envOrDefault("NAUTS_CONFIG", ""), "Path to configuration file")
 
 	fs.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: %s serve [options]\n\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "Run the NATS auth callout service.\n\n")
-		fmt.Fprintf(os.Stderr, "Options:\n")
-		fs.PrintDefaults()
-		fmt.Fprintf(os.Stderr, "\nEnvironment variables:\n")
-		fmt.Fprintf(os.Stderr, "  NAUTS_CONFIG       Path to configuration file\n")
-		fmt.Fprintf(os.Stderr, "\nExample:\n")
-		fmt.Fprintf(os.Stderr, "  %s serve -c config.json\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "\nConfiguration file format (JSON):\n")
-		fmt.Fprintf(os.Stderr, `  {
-	"account": {
-	  "type": "static",
-	  "static": { "publicKey": "AXXXXX...", "privateKeyPath": "account.nk", "accounts": ["APP"] }
-	},
-	"policy": {
-	  "type": "file",
-	  "file": { "policiesPath": "policies.json", "bindingsPath": "bindings.json" }
-	},
-	"auth": {
-	  "file": [
-	    { "id": "local", "accounts": ["APP"], "userPath": "users.json" }
-	  ]
-	},
-    "server": {
-      "natsUrl": "nats://localhost:4222",
-      "natsNkey": "auth-service.nk",
-      "xkeySeedFile": "xkey.seed",
-      "ttl": "1h"
-    }
-  }
-`)
+		printServiceUsage(fs, "serve", "Run the NATS auth callout service.", true)
 	}
 
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 
-	// Validate required flags
-	if configPath == "" {
-		return fmt.Errorf("-c/--config is required")
-	}
-
-	// Load configuration
-	config, err := auth.LoadConfig(configPath)
+	config, controller, err := loadConfigAndController(configPath)
 	if err != nil {
-		return fmt.Errorf("loading configuration: %w", err)
-	}
-
-	// Validate server config for serve mode
-	if err := validateServerConfig(&config.Server); err != nil {
 		return err
-	}
-
-	// Create auth controller from config
-	controller, err := auth.NewAuthControllerWithConfig(config)
-	if err != nil {
-		return fmt.Errorf("creating auth controller: %w", err)
 	}
 
 	// Create callout config
@@ -225,54 +92,53 @@ func runServe(args []string) error {
 		return fmt.Errorf("creating callout service: %w", err)
 	}
 
-	// Create debug service
-	debugConfig := config.Server.ToDebugConfig()
-	debugService, err := auth.NewDebugService(controller, debugConfig)
+	ctx, cancel := setupSignalHandler(func() {
+		service.Stop()
+	})
+	defer cancel()
+
+	// Start the service (blocks until shutdown)
+	if err := service.Start(ctx); err != nil {
+		return fmt.Errorf("running callout service: %w", err)
+	}
+
+	return nil
+}
+
+// runDebug handles the 'debug' subcommand for the auth debug service.
+func runDebug(args []string) error {
+	fs := flag.NewFlagSet("debug", flag.ExitOnError)
+
+	var configPath string
+
+	fs.StringVar(&configPath, "c", envOrDefault("NAUTS_CONFIG", ""), "Path to configuration file")
+	fs.StringVar(&configPath, "config", envOrDefault("NAUTS_CONFIG", ""), "Path to configuration file")
+
+	fs.Usage = func() {
+		printServiceUsage(fs, "debug", "Run the NATS auth debug service.", false)
+	}
+
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	config, controller, err := loadConfigAndController(configPath)
+	if err != nil {
+		return err
+	}
+
+	debugService, err := auth.NewDebugService(controller, config.Server)
 	if err != nil {
 		return fmt.Errorf("creating debug service: %w", err)
 	}
 
-	// Setup signal handling for graceful shutdown
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := setupSignalHandler(func() {
+		debugService.Stop()
+	})
 	defer cancel()
 
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-
-	go func() {
-		sig := <-sigCh
-		fmt.Fprintf(os.Stderr, "\nReceived signal %v, shutting down...\n", sig)
-		cancel()
-		service.Stop()
-		debugService.Stop()
-	}()
-
-	errCh := make(chan error, 2)
-	go func() {
-		if err := service.Start(ctx); err != nil {
-			errCh <- fmt.Errorf("callout: %w", err)
-			return
-		}
-		errCh <- nil
-	}()
-	go func() {
-		if err := debugService.Start(ctx); err != nil {
-			errCh <- fmt.Errorf("debug: %w", err)
-			return
-		}
-		errCh <- nil
-	}()
-
-	firstErr := <-errCh
-	service.Stop()
-	debugService.Stop()
-	secondErr := <-errCh
-
-	if firstErr != nil {
-		return fmt.Errorf("running service: %w", firstErr)
-	}
-	if secondErr != nil {
-		return fmt.Errorf("running service: %w", secondErr)
+	if err := debugService.Start(ctx); err != nil {
+		return fmt.Errorf("running debug service: %w", err)
 	}
 
 	return nil
@@ -291,4 +157,82 @@ func validateServerConfig(c *auth.ServerConfig) error {
 	}
 
 	return nil
+}
+
+func loadConfigAndController(configPath string) (*auth.Config, *auth.AuthController, error) {
+	if configPath == "" {
+		return nil, nil, fmt.Errorf("-c/--config is required")
+	}
+
+	config, err := auth.LoadConfig(configPath)
+	if err != nil {
+		return nil, nil, fmt.Errorf("loading configuration: %w", err)
+	}
+
+	if err := validateServerConfig(&config.Server); err != nil {
+		return nil, nil, err
+	}
+
+	controller, err := auth.NewAuthControllerWithConfig(config)
+	if err != nil {
+		return nil, nil, fmt.Errorf("creating auth controller: %w", err)
+	}
+
+	return config, controller, nil
+}
+
+func setupSignalHandler(onStop func()) (context.Context, context.CancelFunc) {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		sig := <-sigCh
+		fmt.Fprintf(os.Stderr, "\nReceived signal %v, shutting down...\n", sig)
+		cancel()
+		if onStop != nil {
+			onStop()
+		}
+	}()
+
+	return ctx, cancel
+}
+
+func printServiceUsage(fs *flag.FlagSet, command, description string, includeTTL bool) {
+	fmt.Fprintf(os.Stderr, "Usage: %s %s [options]\n\n", os.Args[0], command)
+	fmt.Fprintf(os.Stderr, "%s\n\n", description)
+	fmt.Fprintf(os.Stderr, "Options:\n")
+	fs.PrintDefaults()
+	fmt.Fprintf(os.Stderr, "\nEnvironment variables:\n")
+	fmt.Fprintf(os.Stderr, "  NAUTS_CONFIG       Path to configuration file\n")
+	fmt.Fprintf(os.Stderr, "\nExample:\n")
+	fmt.Fprintf(os.Stderr, "  %s %s -c config.json\n", os.Args[0], command)
+	fmt.Fprintf(os.Stderr, "\nConfiguration file format (JSON):\n")
+	fmt.Fprintf(os.Stderr, `  {
+	"account": {
+	  "type": "static",
+	  "static": { "publicKey": "AXXXXX...", "privateKeyPath": "account.nk", "accounts": ["APP"] }
+	},
+	"policy": {
+	  "type": "file",
+	  "file": { "policiesPath": "policies.json", "bindingsPath": "bindings.json" }
+	},
+	"auth": {
+	  "file": [
+	    { "id": "local", "accounts": ["APP"], "userPath": "users.json" }
+	  ]
+	},
+    "server": {
+      "natsUrl": "nats://localhost:4222",
+      "natsNkey": "auth-service.nk"`)
+	if includeTTL {
+		fmt.Fprintf(os.Stderr, `,
+      "xkeySeedFile": "xkey.seed",
+      "ttl": "1h"`)
+	}
+	fmt.Fprintf(os.Stderr, `
+    }
+  }
+`)
 }
