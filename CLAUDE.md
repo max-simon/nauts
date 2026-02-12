@@ -131,6 +131,12 @@ go test -v ./e2e/ -static -operator
 - Use `AuthenticationProviderManager.SelectProvider()` to select a provider, then call `provider.Verify(...)` directly.
 - `AuthenticationProvider.GetConfig()` returns a JSON-serializable map for debug output (type + manageable accounts).
 
+### Debug Service
+
+- `DebugService` listens on `nauts.debug` and accepts a JSON payload with `user` and `account`.
+- It uses `AuthController.ScopeUserToAccount` + `CompileNatsPermissions` and returns `NautsCompilationResult`.
+- It uses `ServerConfig` for NATS connectivity (credentials or nkey) and ignores `xkeySeedFile`.
+
 ### Naming
 
 - Resource types: `Resource`, `ResourceType`, `ParseAndValidateResource()`

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"sync"
-	"time"
 
 	"github.com/nats-io/nats.go"
 
@@ -19,27 +18,10 @@ const (
 	DebugSubject = "nauts.debug"
 )
 
-// DebugConfig holds configuration for the auth debug service.
-type DebugConfig struct {
-	// NatsURL is the NATS server URL.
-	NatsURL string
-
-	// NatsCredentials is the path to the credentials file for connecting to NATS.
-	// Mutually exclusive with NatsNkey.
-	NatsCredentials string
-
-	// NatsNkey is the path to the nkey seed file for NATS authentication.
-	// Mutually exclusive with NatsCredentials.
-	NatsNkey string
-
-	// DefaultTTL is the default JWT time-to-live.
-	DefaultTTL time.Duration
-}
-
 // DebugService handles NATS debug requests.
 type DebugService struct {
 	controller *AuthController
-	config     DebugConfig
+	config     ServerConfig
 
 	nc     *nats.Conn
 	sub    *nats.Subscription
@@ -62,7 +44,7 @@ func WithDebugLogger(l Logger) DebugOption {
 }
 
 // NewDebugService creates a new DebugService.
-func NewDebugService(controller *AuthController, config DebugConfig, opts ...DebugOption) (*DebugService, error) {
+func NewDebugService(controller *AuthController, config ServerConfig, opts ...DebugOption) (*DebugService, error) {
 	if controller == nil {
 		return nil, errors.New("controller is required")
 	}
@@ -74,9 +56,6 @@ func NewDebugService(controller *AuthController, config DebugConfig, opts ...Deb
 	}
 	if hasCredentials && hasNkey {
 		return nil, errors.New("NatsCredentials and NatsNkey are mutually exclusive")
-	}
-	if config.DefaultTTL == 0 {
-		config.DefaultTTL = time.Hour
 	}
 	if config.NatsURL == "" {
 		config.NatsURL = nats.DefaultURL

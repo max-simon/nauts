@@ -4,32 +4,31 @@ import (
 	"os"
 	"strings"
 	"testing"
-	"time"
 )
 
 func TestNewDebugService_Validation(t *testing.T) {
 	tests := []struct {
 		name       string
 		controller *AuthController
-		config     DebugConfig
+		config     ServerConfig
 		wantErr    string
 	}{
 		{
 			name:       "nil controller",
 			controller: nil,
-			config:     DebugConfig{NatsCredentials: "/path/to/creds"},
+			config:     ServerConfig{NatsCredentials: "/path/to/creds"},
 			wantErr:    "controller is required",
 		},
 		{
 			name:       "missing authentication",
 			controller: &AuthController{},
-			config:     DebugConfig{},
+			config:     ServerConfig{},
 			wantErr:    "NATS authentication required",
 		},
 		{
 			name:       "mutually exclusive authentication",
 			controller: &AuthController{},
-			config: DebugConfig{
+			config: ServerConfig{
 				NatsCredentials: "/path/to/creds",
 				NatsNkey:        "/path/to/nkey",
 			},
@@ -53,7 +52,7 @@ func TestNewDebugService_Validation(t *testing.T) {
 func TestNewDebugService_Defaults(t *testing.T) {
 	ctrl := &AuthController{}
 
-	svc, err := NewDebugService(ctrl, DebugConfig{
+	svc, err := NewDebugService(ctrl, ServerConfig{
 		NatsCredentials: "/path/to/creds",
 	})
 	if err != nil {
@@ -63,9 +62,6 @@ func TestNewDebugService_Defaults(t *testing.T) {
 	if svc.config.NatsURL == "" {
 		t.Error("NatsURL should be defaulted, got empty")
 	}
-	if svc.config.DefaultTTL != time.Hour {
-		t.Errorf("DefaultTTL = %v, want 1h", svc.config.DefaultTTL)
-	}
 }
 
 func TestNewDebugService_EnvForNATSURL(t *testing.T) {
@@ -74,7 +70,7 @@ func TestNewDebugService_EnvForNATSURL(t *testing.T) {
 	os.Setenv("NATS_URL", "nats://localhost:4000")
 	defer os.Unsetenv("NATS_URL")
 
-	svc, err := NewDebugService(ctrl, DebugConfig{
+	svc, err := NewDebugService(ctrl, ServerConfig{
 		NatsCredentials: "/path/to/creds",
 	})
 	if err != nil {
@@ -89,7 +85,7 @@ func TestNewDebugService_EnvForNATSURL(t *testing.T) {
 func TestNewDebugService_WithNkey(t *testing.T) {
 	ctrl := &AuthController{}
 
-	svc, err := NewDebugService(ctrl, DebugConfig{
+	svc, err := NewDebugService(ctrl, ServerConfig{
 		NatsNkey: "/path/to/auth-service.nk",
 	})
 	if err != nil {
@@ -105,7 +101,7 @@ func TestNewDebugService_WithLogger(t *testing.T) {
 	ctrl := &AuthController{}
 	logger := &testLogger{}
 
-	svc, err := NewDebugService(ctrl, DebugConfig{
+	svc, err := NewDebugService(ctrl, ServerConfig{
 		NatsCredentials: "/path/to/creds",
 	}, WithDebugLogger(logger))
 	if err != nil {
@@ -120,7 +116,7 @@ func TestNewDebugService_WithLogger(t *testing.T) {
 func TestDebugService_Stop(t *testing.T) {
 	ctrl := &AuthController{}
 
-	svc, err := NewDebugService(ctrl, DebugConfig{
+	svc, err := NewDebugService(ctrl, ServerConfig{
 		NatsCredentials: "/path/to/creds",
 	})
 	if err != nil {

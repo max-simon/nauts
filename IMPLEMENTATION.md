@@ -149,6 +149,22 @@ NATS JWT defaults to empowering everything when no permissions are specified. na
 
 This ensures the principle of least privilege.
 
+## Debug Service
+
+The debug service listens on `nauts.debug` and accepts a plain JSON payload:
+
+```json
+{
+  "user": {"id": "alice", "roles": [{"account": "APP", "name": "workers"}]},
+  "account": "APP"
+}
+```
+
+It scopes the user to the account, compiles permissions via `CompileNatsPermissions`,
+and returns a JSON response containing `NautsCompilationResult`.
+The service uses `ServerConfig` for NATS connectivity (credentials or nkey) and ignores
+`xkeySeedFile`.
+
 ## Role Bindings
 
 Role bindings replace the older "groups" concept. Each binding maps a role name to a set of policy ids for a specific account:
