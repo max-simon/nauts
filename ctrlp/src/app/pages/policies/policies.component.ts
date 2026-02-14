@@ -56,6 +56,8 @@ import { validatePolicyResources } from '../../validators/resource.validator';
             <mat-icon matPrefix>search</mat-icon>
             <input matInput [(ngModel)]="searchQuery" (ngModelChange)="applyFilter()" placeholder="Filter by name or ID">
           </mat-form-field>
+        </div>
+        <div class="filter-row">
           <mat-slide-toggle [(ngModel)]="showGlobalPolicies" (change)="loadPolicies()" class="global-toggle">
             Show Global Policies
           </mat-slide-toggle>
@@ -69,38 +71,33 @@ import { validatePolicyResources } from '../../validators/resource.validator';
           <app-empty-state icon="policy" message="No policies found"></app-empty-state>
         } @else if (!loading) {
           <table mat-table [dataSource]="filteredEntries" matSort (matSortChange)="sortData($event)" class="full-width">
+            <ng-container matColumnDef="account">
+              <th mat-header-cell *matHeaderCellDef mat-sort-header>Account</th>
+              <td mat-cell *matCellDef="let entry" [class.global-account]="entry.policy.account === '_global'">
+                {{ entry.policy.account === '_global' ? 'global' : entry.policy.account }}
+              </td>
+            </ng-container>
+
             <ng-container matColumnDef="name">
               <th mat-header-cell *matHeaderCellDef mat-sort-header>Name</th>
               <td mat-cell *matCellDef="let entry">{{ entry.policy.name }}</td>
             </ng-container>
 
-            <ng-container matColumnDef="id">
-              <th mat-header-cell *matHeaderCellDef mat-sort-header>ID</th>
-              <td mat-cell *matCellDef="let entry" class="id-cell">{{ entry.policy.id }}</td>
-            </ng-container>
-
-            <ng-container matColumnDef="account">
-              <th mat-header-cell *matHeaderCellDef mat-sort-header>Account</th>
-              <td mat-cell *matCellDef="let entry">{{ entry.policy.account }}</td>
-            </ng-container>
-
             <ng-container matColumnDef="status">
               <th mat-header-cell *matHeaderCellDef>Status</th>
               <td mat-cell *matCellDef="let entry" class="status-cell">
-                @if (hasInvalidResources(entry)) {
-                  <mat-icon class="warning-icon" 
-                            matTooltip="Policy contains invalid resources">warning</mat-icon>
-                } @else if (hasEmptyResources(entry)) {
-                  <mat-icon class="warning-icon" 
-                            matTooltip="Policy contains statements with no resources">warning</mat-icon>
-                } @else {
-                  <mat-chip-set class="action-chips">
-                    @for (action of getUniqueActions(entry); track action) {
-                      <mat-chip class="action-chip">{{ action }}</mat-chip>
-                    }
-                  </mat-chip-set>
-                }
+                <span class="binding-count"
+                      [class.valid]="!hasInvalidResources(entry) && !hasEmptyResources(entry)"
+                      [class.invalid]="hasInvalidResources(entry) || hasEmptyResources(entry)"
+                      [matTooltip]="getStatusTooltip(entry)">
+                  {{ getBindingCount(entry) }}
+                </span>
               </td>
+            </ng-container>
+
+            <ng-container matColumnDef="id">
+              <th mat-header-cell *matHeaderCellDef mat-sort-header>ID</th>
+              <td mat-cell *matCellDef="let entry" class="id-cell">{{ entry.policy.id }}</td>
             </ng-container>
 
             <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
@@ -138,27 +135,30 @@ import { validatePolicyResources } from '../../validators/resource.validator';
     .list-panel {
       flex: 1;
       min-width: 0;
+      max-width: 50%;
       position: relative;
       display: flex;
       flex-direction: column;
     }
     .details-panel {
-      width: 400px;
-      flex-shrink: 0;
+      flex: 1;
+      min-width: 0;
+      max-width: 50%;
     }
     .toolbar {
       display: flex;
       align-items: center;
-      gap: 12px;
       margin-bottom: 8px;
-      flex-wrap: wrap;
     }
     .search-field {
-      flex: 1;
-      min-width: 200px;
+      width: 100%;
+    }
+    .filter-row {
+      margin-bottom: 12px;
     }
     .global-toggle {
-      flex-shrink: 0;
+      transform: scale(0.85);
+      transform-origin: left center;
     }
     table {
       width: 100%;
@@ -173,18 +173,26 @@ import { validatePolicyResources } from '../../validators/resource.validator';
     .status-cell {
       vertical-align: middle;
     }
-    .warning-icon {
-      color: var(--mat-sys-error);
-      font-size: 20px;
-      width: 20px;
-      height: 20px;
+    .global-account {
+      font-style: italic;
+      color: var(--mat-sys-on-surface-variant);
     }
-    .action-chips {
-      display: inline-flex;
+    .binding-count {
+      display: inline-block;
+      min-width: 24px;
+      padding: 4px 8px;
+      border-radius: 12px;
+      text-align: center;
+      font-weight: 500;
+      font-size: 13px;
     }
-    .action-chip {
-      font-size: 11px;
-      min-height: 24px;
+    .binding-count.valid {
+      background: #81c784;
+      color: white;
+    }
+    .binding-count.invalid {
+      background: var(--mat-sys-error-container);
+      color: var(--mat-sys-on-error-container);
     }
     tr.mat-mdc-row:hover {
       background: var(--mat-sys-surface-variant);
@@ -210,7 +218,7 @@ export class PoliciesComponent implements OnInit, OnDestroy {
   private router = inject(Router);
   private route = inject(ActivatedRoute);
 
-  displayedColumns = ['name', 'id', 'account', 'status'];
+  displayedColumns = ['account', 'name', 'status', 'id'];
 
   selectedAccount = '';
   searchQuery = '';
@@ -312,9 +320,9 @@ export class PoliciesComponent implements OnInit, OnDestroy {
     this.filteredEntries.sort((a, b) => {
       const isAsc = sort.direction === 'asc';
       switch (sort.active) {
+        case 'account': return compare(a.policy.account, b.policy.account, isAsc);
         case 'name': return compare(a.policy.name, b.policy.name, isAsc);
         case 'id': return compare(a.policy.id, b.policy.id, isAsc);
-        case 'account': return compare(a.policy.account, b.policy.account, isAsc);
         default: return 0;
       }
     });
@@ -324,15 +332,18 @@ export class PoliciesComponent implements OnInit, OnDestroy {
     if (this.selectedEntry?.policy.id === entry.policy.id && this.selectedEntry?.policy.account === entry.policy.account) {
       this.selectedEntry = null;
       // Navigate back to account view
-      if (entry.policy.account) {
-        this.router.navigate(['/policies', entry.policy.account]);
+      if (this.selectedAccount) {
+        this.router.navigate(['/policies', this.selectedAccount]);
       } else {
         this.router.navigate(['/policies']);
       }
     } else {
       this.selectedEntry = entry;
-      // Navigate to detail view
-      this.router.navigate(['/policies', entry.policy.account, entry.policy.id]);
+      // Navigate to detail view - use current selectedAccount for global policies
+      const accountForRoute = entry.policy.account === '_global' && this.selectedAccount
+        ? this.selectedAccount
+        : entry.policy.account;
+      this.router.navigate(['/policies', accountForRoute, entry.policy.id]);
     }
   }
 
@@ -345,14 +356,21 @@ export class PoliciesComponent implements OnInit, OnDestroy {
     return entry.policy.statements.some(stmt => !stmt.resources || stmt.resources.length === 0);
   }
 
-  getUniqueActions(entry: PolicyEntry): string[] {
-    const actions = new Set<string>();
-    for (const stmt of entry.policy.statements) {
-      for (const action of stmt.actions) {
-        actions.add(action);
-      }
+  getBindingCount(entry: PolicyEntry): number {
+    return this.policyService.getBindingsForPolicy(entry.policy.id).length;
+  }
+
+  getStatusTooltip(entry: PolicyEntry): string {
+    const count = this.getBindingCount(entry);
+    const bindingText = count === 1 ? 'binding' : 'bindings';
+
+    if (this.hasInvalidResources(entry)) {
+      return `Policy contains invalid resources. Used by ${count} ${bindingText}.`;
+    } else if (this.hasEmptyResources(entry)) {
+      return `Policy contains statements with no resources. Used by ${count} ${bindingText}.`;
+    } else {
+      return `Validation succeeded. Used by ${count} ${bindingText}.`;
     }
-    return Array.from(actions).sort();
   }
 
   openCreateDialog(): void {

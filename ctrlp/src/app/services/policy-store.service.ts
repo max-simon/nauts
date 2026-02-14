@@ -128,6 +128,11 @@ export class PolicyStoreService {
     await this.kv.delete(key, revision);
   }
 
+  getBindingsForPolicy(policyId: string): BindingEntry[] {
+    return Array.from(this.bindingsMap.values())
+      .filter(b => b.binding.policies.includes(policyId));
+  }
+
   // --- Binding methods ---
 
   getBindings$(): Observable<BindingEntry[]> {

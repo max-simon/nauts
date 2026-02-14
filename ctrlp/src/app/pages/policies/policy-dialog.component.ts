@@ -57,7 +57,7 @@ export interface PolicyDialogData {
           }
         </mat-form-field>
 
-        <mat-checkbox formControlName="isGlobal" (change)="onGlobalChange()">
+        <mat-checkbox formControlName="isGlobal" (change)="onGlobalChange()" [disabled]="data.mode === 'edit'">
           Global Policy
         </mat-checkbox>
 
