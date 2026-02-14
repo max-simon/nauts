@@ -128,9 +128,14 @@ func (fp *FilePolicyProvider) loadPolicies(path string) error {
 }
 
 // GetPolicy retrieves a policy by account and ID.
+// If the id starts with "_global:", the prefix is stripped before lookup.
 // The account parameter is accepted for interface compliance but not used for lookup
 // in the file provider, since policy IDs are unique across the flat map.
 func (fp *FilePolicyProvider) GetPolicy(_ context.Context, _ string, id string) (*policy.Policy, error) {
+	if strings.HasPrefix(id, "_global:") {
+		id = strings.TrimPrefix(id, "_global:")
+	}
+
 	p, ok := fp.policies[id]
 	if !ok {
 		return nil, ErrPolicyNotFound

@@ -266,3 +266,21 @@ interface Policy {
     statements: list[Statement]  // list of permission statements
 }
 ```
+
+## Bindings
+
+A binding maps a role in a specific account to a set of policy IDs:
+
+```json
+{ "role": "admin", "account": "APP", "policies": ["app-admin", "app-read"] }
+```
+
+### Referencing Global Policies
+
+To reference a global policy (one with `account: "*"`) from a binding, prefix the policy ID with `_global:`:
+
+```json
+{ "role": "admin", "account": "APP", "policies": ["app-admin", "_global:base-permissions"] }
+```
+
+The `_global:` prefix tells the provider to look up the policy in the global scope instead of the binding's account scope. Without the prefix, the provider would look for `APP.policy.base-permissions` (which doesn't exist) instead of `_global.policy.base-permissions`.
