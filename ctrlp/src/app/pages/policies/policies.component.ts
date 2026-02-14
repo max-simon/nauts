@@ -10,6 +10,8 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
+import { MatTooltipModule } from '@angular/material/tooltip';
+import { MatChipsModule } from '@angular/material/chips';
 import { FormsModule } from '@angular/forms';
 import { PolicyService } from '../../services/policy.service';
 import { AccountService } from '../../services/account.service';
@@ -21,6 +23,7 @@ import { PolicyDialogComponent, PolicyDialogData } from './policy-dialog.compone
 import { ConfirmDialogComponent, ConfirmDialogData } from '../../shared/confirm-dialog.component';
 import { EmptyStateComponent } from '../../shared/empty-state.component';
 import { ConflictError } from '../../services/kv-store.service';
+import { validatePolicyResources } from '../../validators/resource.validator';
 
 @Component({
   selector: 'app-policies',
@@ -37,6 +40,8 @@ import { ConflictError } from '../../services/kv-store.service';
     MatProgressBarModule,
     MatSnackBarModule,
     MatDialogModule,
+    MatTooltipModule,
+    MatChipsModule,
     PolicyDetailsComponent,
     EmptyStateComponent,
   ],
@@ -84,9 +89,23 @@ import { ConflictError } from '../../services/kv-store.service';
               <td mat-cell *matCellDef="let entry">{{ entry.policy.account }}</td>
             </ng-container>
 
-            <ng-container matColumnDef="statements">
-              <th mat-header-cell *matHeaderCellDef>Statements</th>
-              <td mat-cell *matCellDef="let entry">{{ entry.policy.statements.length }}</td>
+            <ng-container matColumnDef="status">
+              <th mat-header-cell *matHeaderCellDef>Status</th>
+              <td mat-cell *matCellDef="let entry" class="status-cell">
+                @if (hasInvalidResources(entry)) {
+                  <mat-icon class="warning-icon" 
+                            matTooltip="Policy contains invalid resources">warning</mat-icon>
+                } @else if (hasEmptyResources(entry)) {
+                  <mat-icon class="warning-icon" 
+                            matTooltip="Policy contains statements with no resources">warning</mat-icon>
+                } @else {
+                  <mat-chip-set class="action-chips">
+                    @for (action of getUniqueActions(entry); track action) {
+                      <mat-chip class="action-chip">{{ action }}</mat-chip>
+                    }
+                  </mat-chip-set>
+                }
+              </td>
             </ng-container>
 
             <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
@@ -155,6 +174,22 @@ import { ConflictError } from '../../services/kv-store.service';
       overflow: hidden;
       text-overflow: ellipsis;
     }
+    .status-cell {
+      vertical-align: middle;
+    }
+    .warning-icon {
+      color: var(--mat-sys-error);
+      font-size: 20px;
+      width: 20px;
+      height: 20px;
+    }
+    .action-chips {
+      display: inline-flex;
+    }
+    .action-chip {
+      font-size: 11px;
+      min-height: 24px;
+    }
     tr.mat-mdc-row:hover {
       background: var(--mat-sys-surface-variant);
       cursor: pointer;
@@ -180,7 +215,7 @@ export class PoliciesComponent implements OnInit, OnDestroy {
   private router = inject(Router);
   private route = inject(ActivatedRoute);
 
-  displayedColumns = ['name', 'id', 'account', 'statements'];
+  displayedColumns = ['name', 'id', 'account', 'status'];
 
   accounts: string[] = [];
   selectedAccount = '';
@@ -305,6 +340,25 @@ export class PoliciesComponent implements OnInit, OnDestroy {
       // Navigate to detail view
       this.router.navigate(['/policies', entry.policy.account, entry.policy.id]);
     }
+  }
+
+  hasInvalidResources(entry: PolicyEntry): boolean {
+    const errors = validatePolicyResources(entry.policy);
+    return errors.size > 0;
+  }
+
+  hasEmptyResources(entry: PolicyEntry): boolean {
+    return entry.policy.statements.some(stmt => !stmt.resources || stmt.resources.length === 0);
+  }
+
+  getUniqueActions(entry: PolicyEntry): string[] {
+    const actions = new Set<string>();
+    for (const stmt of entry.policy.statements) {
+      for (const action of stmt.actions) {
+        actions.add(action);
+      }
+    }
+    return Array.from(actions).sort();
   }
 
   openCreateDialog(): void {
