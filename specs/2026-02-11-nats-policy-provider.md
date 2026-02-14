@@ -117,7 +117,7 @@ All three methods from `PolicyProvider`:
 1. Build binding key: `<role.Account>.binding.<role.Name>`
 2. Check cache for binding. On miss/expired: fetch from KV, decode JSON, cache.
 3. Return `ErrRoleNotFound` if key does not exist.
-4. For each policy ID in the binding, call `GetPolicy(ctx, role.Account, id)`.
+4. For each policy ID in the binding, call `GetPolicy(ctx, role.Account, id)`. If the ID starts with `_global:`, `GetPolicy` strips the prefix and resolves the policy from the global scope (account=`*`).
 5. Skip policies that return `ErrPolicyNotFound` (consistent with `FilePolicyProvider`).
 6. Return resolved policy list, sorted by ID.
 
@@ -183,9 +183,11 @@ APP.binding.default             → default role in APP account
 {
   "role": "readonly",
   "account": "APP",
-  "policies": ["read-access"]
+  "policies": ["read-access", "_global:base-permissions"]
 }
 ```
+
+Policy IDs prefixed with `_global:` reference global policies. When `GetPolicy` encounters this prefix, it strips `_global:` and looks up the policy with account=`*`, resolving to key `_global.policy.<id>`.
 
 ---
 
