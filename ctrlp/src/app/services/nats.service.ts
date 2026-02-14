@@ -132,12 +132,14 @@ export class NatsService {
     }
     try {
       const js = this.connection.jetstream();
-      await js.views.kv(this.currentParams.bucket, { bindOnly: true });
+      const kv = await js.views.kv(this.currentParams.bucket, { bindOnly: true });
+      // Actually try to access the bucket to verify it exists
+      await kv.status();
       return true;
     } catch (err: unknown) {
       // Only treat 404 (stream not found) as "bucket missing".
       // Re-throw everything else (e.g. 503 JetStream not enabled).
-      if (isNatsError(err) && err.code === '404') {
+      if (isBucketNotFound(err)) {
         return false;
       }
       throw err;
@@ -163,7 +165,7 @@ export class NatsService {
     }
 
     const js = this.connection.jetstream();
-    this.kvBucket = await js.views.kv(this.currentParams.bucket);
+    this.kvBucket = await js.views.kv(this.currentParams.bucket, { bindOnly: true });
     return this.kvBucket;
   }
 
@@ -184,13 +186,36 @@ export class NatsService {
 }
 
 interface NatsError extends Error {
-  code: string;
+  code: string | number;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  api_error?: { code: number; description: string; err_code?: number };
+  api_error?: { code: number | string; description: string; err_code?: number };
 }
 
 function isNatsError(err: unknown): err is NatsError {
   return err instanceof Error && 'code' in err;
+}
+
+function isBucketNotFound(err: unknown): boolean {
+  if (!isNatsError(err)) {
+    return false;
+  }
+
+  // Check both top-level code and api_error code for 404
+  // Handle both string '404' and numeric 404
+  if (err.code === 404 || err.code === '404') {
+    return true;
+  }
+  if (err.api_error?.code === 404 || err.api_error?.code === '404') {
+    return true;
+  }
+  if (err.api_error?.err_code === 404 || err.api_error?.err_code === 10059) {
+    return true;
+  }
+  // Check description as last resort
+  if (err.api_error?.description?.toLowerCase().includes('stream not found')) {
+    return true;
+  }
+  return false;
 }
 
 export function describeNatsError(err: unknown): string {

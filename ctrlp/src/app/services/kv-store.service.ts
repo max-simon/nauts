@@ -72,11 +72,20 @@ export class KvStoreService {
     const entries: KvEntry<T>[] = [];
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let watcher: any;
+    let earlyInit = false;
     watcher = await kv.watch({
       initializedFn: () => {
-        watcher.stop();
+        if (watcher) {
+          watcher.stop();
+        } else {
+          earlyInit = true;
+        }
       },
     });
+    if (earlyInit) {
+      watcher.stop();
+      return entries;
+    }
     for await (const entry of watcher) {
       if (entry.operation === 'PUT') {
         entries.push(this.decode<T>(entry));

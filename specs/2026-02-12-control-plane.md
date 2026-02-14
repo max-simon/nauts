@@ -161,7 +161,7 @@ _global.policy.base-permissions
 ### Connection Settings
 
 - URL, credentials, and TLS settings are provided to the UI via configuration
-- Supported auth: **token** and **NKey** (no encryption required)
+- Supported auth: **NKey** and **Credentials File**
 - The UI uses JetStream KV APIs over the WebSocket connection
 
 ### Required Permissions

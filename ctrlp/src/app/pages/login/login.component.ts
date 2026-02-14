@@ -1,5 +1,5 @@
 import { Component, inject } from '@angular/core';
-import { Router } from '@angular/router';
+import { Router, ActivatedRoute } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { MatCardModule } from '@angular/material/card';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -155,6 +155,7 @@ export class LoginComponent {
   private nats = inject(NatsService);
   private config = inject(ConfigService);
   private router = inject(Router);
+  private route = inject(ActivatedRoute);
 
   url = this.config.nats.url;
   bucket = this.config.nats.bucket;
@@ -178,14 +179,20 @@ export class LoginComponent {
       this.bucket = saved.bucket;
       switch (saved.auth.type) {
         case 'nkey':
-          this.authTabIndex = 1;
+          this.authTabIndex = 0;
           this.nkeySeed = saved.auth.seed;
           break;
         case 'creds':
-          this.authTabIndex = 2;
+          this.authTabIndex = 1;
           this.credsContents = saved.auth.contents;
           break;
       }
+    }
+
+    // Check if we're here because the bucket is missing
+    const bucketMissingParam = this.route.snapshot.queryParamMap.get('bucketMissing');
+    if (bucketMissingParam === 'true') {
+      this.bucketMissing = true;
     }
   }
 
@@ -256,9 +263,9 @@ export class LoginComponent {
 
   private buildAuthMethod(): AuthMethod {
     switch (this.authTabIndex) {
-      case 1:
+      case 0:
         return { type: 'nkey', seed: this.nkeySeed };
-      case 2:
+      case 1:
         return { type: 'creds', contents: this.credsContents };
       default:
         return { type: 'none' };

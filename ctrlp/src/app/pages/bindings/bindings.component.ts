@@ -44,16 +44,6 @@ import { ConflictError } from '../../services/kv-store.service';
     <div class="page-container">
       <div class="list-panel">
         <div class="toolbar">
-          <mat-form-field appearance="outline" class="filter-field">
-            <mat-label>Account</mat-label>
-            <mat-select [(value)]="selectedAccount" (selectionChange)="onAccountChange()">
-              <mat-option value="">All Accounts</mat-option>
-              @for (account of accounts; track account) {
-                <mat-option [value]="account">{{ account }}</mat-option>
-              }
-            </mat-select>
-          </mat-form-field>
-
           <mat-form-field appearance="outline" class="filter-field search-field">
             <mat-label>Search role</mat-label>
             <mat-icon matPrefix>search</mat-icon>
@@ -151,6 +141,7 @@ import { ConflictError } from '../../services/kv-store.service';
     }
     .search-field {
       flex: 1;
+      min-width: 200px;
     }
     table {
       width: 100%;
@@ -172,7 +163,6 @@ import { ConflictError } from '../../services/kv-store.service';
 })
 export class BindingsComponent implements OnInit, OnDestroy {
   private store = inject(PolicyStoreService);
-  private accountService = inject(AccountService);
   private configService = inject(ConfigService);
   private navigationService = inject(NavigationService);
   private dialog = inject(MatDialog);
@@ -182,7 +172,6 @@ export class BindingsComponent implements OnInit, OnDestroy {
 
   displayedColumns = ['role', 'account', 'policies'];
 
-  accounts: string[] = [];
   selectedAccount = '';
   roleFilter = '';
   policyFilter = '';
@@ -203,10 +192,8 @@ export class BindingsComponent implements OnInit, OnDestroy {
 
   async ngOnInit(): Promise<void> {
     this.loading = true;
-    
-    try {
-      this.accounts = await this.accountService.discoverAccounts();
 
+    try {
       // Initialize store
       await this.store.initialize();
 
@@ -214,12 +201,15 @@ export class BindingsComponent implements OnInit, OnDestroy {
       this.route.params.subscribe(params => {
         const accountParam = params['account'];
         const roleParam = params['role'];
-        
+
         // Set selected account from route, default to empty (all accounts)
         this.selectedAccount = accountParam || '';
-        
+
+        // Sync with navigation service
+        this.navigationService.setCurrentAccount(this.selectedAccount);
+
         this.loadBindings();
-        
+
         // If role param is present, select that binding
         if (roleParam && accountParam) {
           const binding = this.store.getBinding(accountParam, roleParam);
@@ -277,16 +267,6 @@ export class BindingsComponent implements OnInit, OnDestroy {
           this.updateDanglingPolicies();
         }
       }
-  }
-
-  onAccountChange(): void {
-    this.selectedEntry = null;
-    this.navigationService.setCurrentAccount(this.selectedAccount);
-    if (this.selectedAccount) {
-      this.router.navigate(['/bindings', this.selectedAccount]);
-    } else {
-      this.router.navigate(['/bindings']);
-    }
   }
 
   applyFilter(): void {
@@ -347,7 +327,7 @@ export class BindingsComponent implements OnInit, OnDestroy {
       width: '600px',
       data: {
         mode: 'create',
-        accounts: this.accounts,
+        accounts: [],
         currentAccount: this.selectedAccount,
         allPolicyEntries: this.availablePolicyEntries,
       } as BindingDialogData,
@@ -374,7 +354,7 @@ export class BindingsComponent implements OnInit, OnDestroy {
       data: {
         mode: 'edit',
         binding: { ...this.selectedEntry.binding },
-        accounts: this.accounts,
+        accounts: [],
         currentAccount: this.selectedAccount,
         allPolicyEntries: this.availablePolicyEntries,
       } as BindingDialogData,
@@ -383,13 +363,28 @@ export class BindingsComponent implements OnInit, OnDestroy {
     dialogRef.afterClosed().subscribe(async (result) => {
       if (result && this.selectedEntry) {
         try {
-          await this.store.updateBinding(
-            this.selectedEntry.binding.account,
-            this.selectedEntry.binding.role,
-            result,
-            this.selectedEntry.revision,
-          );
-          this.snackBar.open('Binding updated', 'Dismiss', { duration: 3000 });
+          const oldRole = this.selectedEntry.binding.role;
+          const newRole = result.role;
+
+          // If role name changed, delete old binding and create new one
+          if (oldRole !== newRole) {
+            await this.store.deleteBinding(
+              this.selectedEntry.binding.account,
+              oldRole,
+              this.selectedEntry.revision,
+            );
+            await this.store.createBinding(result);
+            this.snackBar.open('Binding renamed', 'Dismiss', { duration: 3000 });
+          } else {
+            // Role unchanged, just update
+            await this.store.updateBinding(
+              this.selectedEntry.binding.account,
+              this.selectedEntry.binding.role,
+              result,
+              this.selectedEntry.revision,
+            );
+            this.snackBar.open('Binding updated', 'Dismiss', { duration: 3000 });
+          }
           // Data will be updated automatically via watcher
         } catch (err) {
           this.handleError(err);

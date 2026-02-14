@@ -5,11 +5,16 @@ import { MatSidenavModule } from '@angular/material/sidenav';
 import { MatListModule } from '@angular/material/list';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
+import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatSelectModule } from '@angular/material/select';
+import { FormsModule } from '@angular/forms';
 import { ConnectionBannerComponent } from './shared/connection-banner.component';
 import { NatsService } from './services/nats.service';
 import { NavigationService } from './services/navigation.service';
+import { AccountService } from './services/account.service';
+import { PolicyStoreService } from './services/policy-store.service';
 import { Subscription } from 'rxjs';
-import { filter, map, skip } from 'rxjs/operators';
+import { filter, map, skip, debounceTime } from 'rxjs/operators';
 
 @Component({
   selector: 'app-root',
@@ -23,6 +28,9 @@ import { filter, map, skip } from 'rxjs/operators';
     MatListModule,
     MatIconModule,
     MatButtonModule,
+    MatFormFieldModule,
+    MatSelectModule,
+    FormsModule,
     ConnectionBannerComponent,
   ],
   template: `
@@ -43,6 +51,17 @@ import { filter, map, skip } from 'rxjs/operators';
 
         <mat-sidenav-container class="sidenav-container">
           <mat-sidenav #sidenav mode="side" opened>
+            <div class="account-selector">
+              <mat-form-field appearance="outline" class="account-field">
+                <mat-label>Account</mat-label>
+                <mat-select [(value)]="currentAccount" (selectionChange)="onAccountChange()">
+                  <mat-option value="">All Accounts</mat-option>
+                  @for (account of accounts; track account) {
+                    <mat-option [value]="account">{{ account }}</mat-option>
+                  }
+                </mat-select>
+              </mat-form-field>
+            </div>
             <mat-nav-list>
               <a mat-list-item [routerLink]="getPoliciesLink()" routerLinkActive="active-link">
                 <mat-icon matListItemIcon>policy</mat-icon>
@@ -86,16 +105,26 @@ import { filter, map, skip } from 'rxjs/operators';
     .active-link {
       background: var(--mat-sys-secondary-container);
     }
+    .account-selector {
+      padding: 16px 12px 8px;
+    }
+    .account-field {
+      width: 100%;
+      font-size: 14px;
+    }
   `],
 })
 export class AppComponent implements OnInit, OnDestroy {
   private router = inject(Router);
   private nats = inject(NatsService);
   private navigationService = inject(NavigationService);
+  private accountService = inject(AccountService);
+  private policyStore = inject(PolicyStoreService);
   private subs: Subscription[] = [];
 
   showShell = false;
   currentAccount = '';
+  accounts: string[] = [];
 
   ngOnInit(): void {
     // Track current account
@@ -105,12 +134,40 @@ export class AppComponent implements OnInit, OnDestroy {
       })
     );
 
-    // Track current route to show/hide shell
+    // Track current route to show/hide shell and load accounts when navigating to protected routes
     this.subs.push(
       this.router.events.pipe(
         filter((e): e is NavigationEnd => e instanceof NavigationEnd),
-        map(e => !e.urlAfterRedirects.startsWith('/login')),
-      ).subscribe(show => this.showShell = show),
+      ).subscribe(async (e) => {
+        const showShell = !e.urlAfterRedirects.startsWith('/login');
+        this.showShell = showShell;
+
+        // Load accounts when navigating to protected routes (if not already loaded)
+        if (showShell && this.accounts.length === 0) {
+          await this.loadAccounts();
+        }
+      }),
+    );
+
+    // Reload accounts when policies or bindings change (debounced to avoid multiple rapid calls)
+    this.subs.push(
+      this.policyStore.getPolicies$().pipe(
+        debounceTime(100),
+      ).subscribe(() => {
+        if (this.showShell) {
+          this.loadAccounts();
+        }
+      })
+    );
+
+    this.subs.push(
+      this.policyStore.getBindings$().pipe(
+        debounceTime(100),
+      ).subscribe(() => {
+        if (this.showShell) {
+          this.loadAccounts();
+        }
+      })
     );
 
     // Auto-redirect to login on disconnect (skip initial 'disconnected' state)
@@ -122,8 +179,27 @@ export class AppComponent implements OnInit, OnDestroy {
     );
   }
 
+  private async loadAccounts(): Promise<void> {
+    try {
+      this.accounts = await this.accountService.discoverAccounts();
+    } catch (err) {
+      console.error('Failed to load accounts:', err);
+    }
+  }
+
   ngOnDestroy(): void {
     this.subs.forEach(s => s.unsubscribe());
+  }
+
+  onAccountChange(): void {
+    this.navigationService.setCurrentAccount(this.currentAccount);
+    // Navigate to the current page with the new account parameter
+    const currentUrl = this.router.url;
+    if (currentUrl.startsWith('/policies')) {
+      this.router.navigate(this.getPoliciesLink());
+    } else if (currentUrl.startsWith('/bindings')) {
+      this.router.navigate(this.getBindingsLink());
+    }
   }
 
   getPoliciesLink(): string[] {

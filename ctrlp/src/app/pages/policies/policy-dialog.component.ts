@@ -10,6 +10,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatChipInputEvent, MatChipsModule } from '@angular/material/chips';
 import { MatDividerModule } from '@angular/material/divider';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { MatCheckboxModule } from '@angular/material/checkbox';
 import { COMMA, ENTER } from '@angular/cdk/keycodes';
 import { Policy } from '../../models/policy.model';
 import { validateResource } from '../../validators/resource.validator';
@@ -42,6 +43,7 @@ export interface PolicyDialogData {
     MatChipsModule,
     MatDividerModule,
     MatTooltipModule,
+    MatCheckboxModule,
   ],
   template: `
     <h2 mat-dialog-title>{{ data.mode === 'create' ? 'Create Policy' : 'Edit Policy' }}</h2>
@@ -54,6 +56,10 @@ export interface PolicyDialogData {
             <mat-error>Name is required</mat-error>
           }
         </mat-form-field>
+
+        <mat-checkbox formControlName="isGlobal" (change)="onGlobalChange()">
+          Global Policy
+        </mat-checkbox>
 
         <mat-form-field appearance="outline" class="full-width">
           <mat-label>Account</mat-label>
@@ -235,15 +241,34 @@ export class PolicyDialogComponent implements OnInit {
       this.stmtResources = [[]];
     }
 
+    const isGlobal = policy?.account === '_global';
+    const accountDisabled = this.data.mode === 'edit' || isGlobal;
+
     this.form = this.fb.group({
       name: [policy?.name || '', Validators.required],
-      account: [{ value: policy?.account || this.data.currentAccount, disabled: this.data.mode === 'edit' }, Validators.required],
+      isGlobal: [isGlobal],
+      account: [{ value: policy?.account || this.data.currentAccount, disabled: accountDisabled }, Validators.required],
     });
 
     this.form.get('account')?.valueChanges.subscribe(val => {
       const q = (val || '').toLowerCase();
       this.filteredAccounts = this.data.accounts.filter(a => a.toLowerCase().includes(q));
     });
+  }
+
+  onGlobalChange(): void {
+    const isGlobal = this.form.get('isGlobal')?.value;
+    const accountControl = this.form.get('account');
+
+    if (isGlobal) {
+      accountControl?.setValue('_global');
+      accountControl?.disable();
+    } else {
+      if (accountControl?.value === '_global') {
+        accountControl?.setValue(this.data.currentAccount);
+      }
+      accountControl?.enable();
+    }
   }
 
   isValid(): boolean {

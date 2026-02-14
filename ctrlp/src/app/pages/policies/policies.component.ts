@@ -12,6 +12,7 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatChipsModule } from '@angular/material/chips';
+import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { FormsModule } from '@angular/forms';
 import { PolicyStoreService } from '../../services/policy-store.service';
 import { AccountService } from '../../services/account.service';
@@ -42,6 +43,7 @@ import { validatePolicyResources } from '../../validators/resource.validator';
     MatDialogModule,
     MatTooltipModule,
     MatChipsModule,
+    MatSlideToggleModule,
     PolicyDetailsComponent,
     EmptyStateComponent,
   ],
@@ -49,21 +51,14 @@ import { validatePolicyResources } from '../../validators/resource.validator';
     <div class="page-container">
       <div class="list-panel">
         <div class="toolbar">
-          <mat-form-field appearance="outline" class="filter-field">
-            <mat-label>Account</mat-label>
-            <mat-select [(value)]="selectedAccount" (selectionChange)="onAccountChange()">
-              <mat-option value="">All Accounts</mat-option>
-              @for (account of accounts; track account) {
-                <mat-option [value]="account">{{ account }}</mat-option>
-              }
-            </mat-select>
-          </mat-form-field>
-
-          <mat-form-field appearance="outline" class="filter-field search-field">
+          <mat-form-field appearance="outline" class="search-field">
             <mat-label>Search</mat-label>
             <mat-icon matPrefix>search</mat-icon>
             <input matInput [(ngModel)]="searchQuery" (ngModelChange)="applyFilter()" placeholder="Filter by name or ID">
           </mat-form-field>
+          <mat-slide-toggle [(ngModel)]="showGlobalPolicies" (change)="loadPolicies()" class="global-toggle">
+            Show Global Policies
+          </mat-slide-toggle>
         </div>
 
         @if (loading) {
@@ -158,11 +153,12 @@ import { validatePolicyResources } from '../../validators/resource.validator';
       margin-bottom: 8px;
       flex-wrap: wrap;
     }
-    .filter-field {
-      min-width: 150px;
-    }
     .search-field {
       flex: 1;
+      min-width: 200px;
+    }
+    .global-toggle {
+      flex-shrink: 0;
     }
     table {
       width: 100%;
@@ -207,7 +203,6 @@ import { validatePolicyResources } from '../../validators/resource.validator';
 })
 export class PoliciesComponent implements OnInit, OnDestroy {
   private policyService = inject(PolicyStoreService);
-  private accountService = inject(AccountService);
   private configService = inject(ConfigService);
   private navigationService = inject(NavigationService);
   private dialog = inject(MatDialog);
@@ -217,9 +212,9 @@ export class PoliciesComponent implements OnInit, OnDestroy {
 
   displayedColumns = ['name', 'id', 'account', 'status'];
 
-  accounts: string[] = [];
   selectedAccount = '';
   searchQuery = '';
+  showGlobalPolicies = true;
   loading = false;
 
   entries: PolicyEntry[] = [];
@@ -231,10 +226,8 @@ export class PoliciesComponent implements OnInit, OnDestroy {
 
   async ngOnInit(): Promise<void> {
     this.loading = true;
-    
-    try {
-      this.accounts = await this.accountService.discoverAccounts();
 
+    try {
       // Initialize store
       await this.policyService.initialize();
 
@@ -242,12 +235,15 @@ export class PoliciesComponent implements OnInit, OnDestroy {
       this.route.params.subscribe(params => {
         const accountParam = params['account'];
         const idParam = params['id'];
-        
+
         // Set selected account from route, default to empty (all accounts)
         this.selectedAccount = accountParam || '';
-        
+
+        // Sync with navigation service
+        this.navigationService.setCurrentAccount(this.selectedAccount);
+
         this.loadPolicies();
-        
+
         // If ID param is present, select that policy
         if (idParam && accountParam) {
           const policy = this.policyService.getPolicy(accountParam, idParam);
@@ -262,7 +258,7 @@ export class PoliciesComponent implements OnInit, OnDestroy {
         this.allPolicies = policies;
         this.loadPolicies();
       }) as unknown as ReturnType<typeof setTimeout>;
-      
+
     } catch (err) {
       this.handleError(err);
     } finally {
@@ -277,26 +273,26 @@ export class PoliciesComponent implements OnInit, OnDestroy {
   }
 
   loadPolicies(): void {
-    this.entries = this.selectedAccount
+    let policies = this.selectedAccount
       ? this.policyService.listPolicies(this.selectedAccount)
       : this.policyService.listAllPolicies();
-      
+
+    // Filter out global policies if toggle is off
+    if (!this.showGlobalPolicies) {
+      policies = policies.filter(p => p.policy.account !== '_global');
+    } else if (this.selectedAccount) {
+      // If showing specific account, also include global policies
+      const globalPolicies = this.policyService.listGlobalPolicies();
+      policies = [...policies, ...globalPolicies];
+    }
+
+    this.entries = policies;
     this.applyFilter();
 
     // Re-select if still exists
     if (this.selectedEntry) {
       const found = this.entries.find(e => e.policy.id === this.selectedEntry!.policy.id && e.policy.account === this.selectedEntry!.policy.account);
       this.selectedEntry = found || null;
-    }
-  }
-
-  onAccountChange(): void {
-    this.selectedEntry = null;
-    this.navigationService.setCurrentAccount(this.selectedAccount);
-    if (this.selectedAccount) {
-      this.router.navigate(['/policies', this.selectedAccount]);
-    } else {
-      this.router.navigate(['/policies']);
     }
   }
 
@@ -364,7 +360,7 @@ export class PoliciesComponent implements OnInit, OnDestroy {
       width: '600px',
       data: {
         mode: 'create',
-        accounts: this.accounts,
+        accounts: [],
         currentAccount: this.selectedAccount,
       } as PolicyDialogData,
     });
@@ -390,7 +386,7 @@ export class PoliciesComponent implements OnInit, OnDestroy {
       data: {
         mode: 'edit',
         policy: { ...this.selectedEntry.policy },
-        accounts: this.accounts,
+        accounts: [],
         currentAccount: this.selectedAccount,
       } as PolicyDialogData,
     });

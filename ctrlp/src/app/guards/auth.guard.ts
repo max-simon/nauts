@@ -6,20 +6,28 @@ export const authGuard: CanActivateFn = async () => {
   const nats = inject(NatsService);
   const router = inject(Router);
 
-  if (nats.connectionStatus$.value === 'connected') {
-    return true;
-  }
-
-  // Try to restore session from saved params
-  const saved = nats.getSavedParams();
-  if (saved) {
+  // If not connected, try to restore session
+  if (nats.connectionStatus$.value !== 'connected') {
+    const saved = nats.getSavedParams();
+    if (!saved) {
+      return router.createUrlTree(['/login']);
+    }
     try {
       await nats.connect(saved);
-      return true;
     } catch {
-      // Saved params are stale — fall through to login
+      return router.createUrlTree(['/login']);
     }
   }
 
-  return router.createUrlTree(['/login']);
+  // Always verify the KV bucket exists (even if already connected)
+  try {
+    const exists = await nats.checkBucketExists();
+    if (!exists) {
+      return router.createUrlTree(['/login'], { queryParams: { bucketMissing: 'true' } });
+    }
+  } catch {
+    return router.createUrlTree(['/login']);
+  }
+
+  return true;
 };
