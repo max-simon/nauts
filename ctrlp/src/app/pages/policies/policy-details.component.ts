@@ -1,15 +1,17 @@
-import { Component, EventEmitter, Input, Output } from '@angular/core';
+import { Component, EventEmitter, Input, Output, OnChanges } from '@angular/core';
 import { MatCardModule } from '@angular/material/card';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatDividerModule } from '@angular/material/divider';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { PolicyEntry } from '../../models/policy.model';
+import { validatePolicyResources } from '../../validators/resource.validator';
 
 @Component({
   selector: 'app-policy-details',
   standalone: true,
-  imports: [MatCardModule, MatChipsModule, MatButtonModule, MatIconModule, MatDividerModule],
+  imports: [MatCardModule, MatChipsModule, MatButtonModule, MatIconModule, MatDividerModule, MatTooltipModule],
   template: `
     @if (entry) {
       <mat-card>
@@ -44,7 +46,13 @@ import { PolicyEntry } from '../../models/policy.model';
                 <span class="chip-label">Resources</span>
                 <mat-chip-set>
                   @for (resource of stmt.resources; track resource) {
-                    <mat-chip>{{ resource }}</mat-chip>
+                    <mat-chip [class.invalid-resource]="getResourceError(resource)">
+                      @if (getResourceError(resource)) {
+                        <mat-icon matChipAvatar class="warning-icon" 
+                                  [matTooltip]="getResourceError(resource)!">warning</mat-icon>
+                      }
+                      {{ resource }}
+                    </mat-chip>
                   }
                 </mat-chip-set>
               </div>
@@ -87,10 +95,34 @@ import { PolicyEntry } from '../../models/policy.model';
       display: block;
       margin-bottom: 4px;
     }
+    .invalid-resource {
+      background: var(--mat-sys-error-container) !important;
+      color: var(--mat-sys-on-error-container) !important;
+    }
+    .warning-icon {
+      color: var(--mat-sys-error);
+      font-size: 18px;
+      width: 18px;
+      height: 18px;
+    }
   `],
 })
-export class PolicyDetailsComponent {
+export class PolicyDetailsComponent implements OnChanges {
   @Input() entry: PolicyEntry | null = null;
   @Output() edit = new EventEmitter<void>();
   @Output() delete = new EventEmitter<void>();
+  
+  resourceErrors = new Map<string, string>();
+
+  ngOnChanges(): void {
+    if (this.entry) {
+      this.resourceErrors = validatePolicyResources(this.entry.policy);
+    } else {
+      this.resourceErrors.clear();
+    }
+  }
+
+  getResourceError(resource: string): string | null {
+    return this.resourceErrors.get(resource) || null;
+  }
 }

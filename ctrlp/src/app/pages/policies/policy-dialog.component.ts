@@ -9,8 +9,10 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatChipInputEvent, MatChipsModule } from '@angular/material/chips';
 import { MatDividerModule } from '@angular/material/divider';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { COMMA, ENTER } from '@angular/cdk/keycodes';
 import { Policy } from '../../models/policy.model';
+import { validateResource } from '../../validators/resource.validator';
 
 const VALID_ACTIONS = [
   'nats.pub', 'nats.sub', 'nats.service', 'nats.*',
@@ -39,6 +41,7 @@ export interface PolicyDialogData {
     MatIconModule,
     MatChipsModule,
     MatDividerModule,
+    MatTooltipModule,
   ],
   template: `
     <h2 mat-dialog-title>{{ data.mode === 'create' ? 'Create Policy' : 'Edit Policy' }}</h2>
@@ -113,7 +116,12 @@ export interface PolicyDialogData {
                 <mat-label>Resources</mat-label>
                 <mat-chip-grid #resourcesChipGrid>
                   @for (resource of stmtResources[i]; track resource) {
-                    <mat-chip-row (removed)="removeResource(i, resource)">
+                    <mat-chip-row (removed)="removeResource(i, resource)"
+                                  [class.invalid-resource]="getResourceError(resource)">
+                      @if (getResourceError(resource)) {
+                        <mat-icon matChipAvatar class="warning-icon" 
+                                  [matTooltip]="getResourceError(resource)!">warning</mat-icon>
+                      }
                       {{ resource }}
                       <button matChipRemove><mat-icon>cancel</mat-icon></button>
                     </mat-chip-row>
@@ -123,6 +131,12 @@ export interface PolicyDialogData {
                        [matChipInputFor]="resourcesChipGrid"
                        [matChipInputSeparatorKeyCodes]="separatorKeyCodes"
                        (matChipInputTokenEnd)="addResource(i, $event)">
+                @if (hasInvalidResources(i)) {
+                  <mat-hint class="warning-hint">
+                    <mat-icon class="hint-icon">warning</mat-icon>
+                    Some resources have invalid formats
+                  </mat-hint>
+                }
               </mat-form-field>
             </div>
           </div>
@@ -171,6 +185,28 @@ export interface PolicyDialogData {
       font-weight: 500;
       font-size: 14px;
       color: var(--mat-sys-on-surface-variant);
+    }
+    .invalid-resource {
+      background: var(--mat-sys-error-container) !important;
+      color: var(--mat-sys-on-error-container) !important;
+    }
+    .warning-icon {
+      color: var(--mat-sys-error);
+      font-size: 18px;
+      width: 18px;
+      height: 18px;
+    }
+    .warning-hint {
+      color: var(--mat-sys-error);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 12px;
+    }
+    .hint-icon {
+      font-size: 16px;
+      width: 16px;
+      height: 16px;
     }
   `],
 })
@@ -266,6 +302,14 @@ export class PolicyDialogComponent implements OnInit {
 
   removeResource(stmtIndex: number, resource: string): void {
     this.stmtResources[stmtIndex] = this.stmtResources[stmtIndex].filter(r => r !== resource);
+  }
+
+  getResourceError(resource: string): string | null {
+    return validateResource(resource);
+  }
+
+  hasInvalidResources(stmtIndex: number): boolean {
+    return this.stmtResources[stmtIndex].some(r => validateResource(r) !== null);
   }
 
   save(): void {
