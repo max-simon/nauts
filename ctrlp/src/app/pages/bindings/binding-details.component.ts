@@ -25,7 +25,7 @@ import { BindingEntry } from '../../models/binding.model';
                   @if (danglingPolicies.has(policyId)) {
                     <mat-icon matChipAvatar class="warning-icon">warning</mat-icon>
                   }
-                  {{ policyId }}
+                  {{ getPolicyDisplayName(policyId) }}
                 </mat-chip>
               }
             </mat-chip-set>
@@ -77,6 +77,11 @@ import { BindingEntry } from '../../models/binding.model';
 export class BindingDetailsComponent {
   @Input() entry: BindingEntry | null = null;
   @Input() danglingPolicies = new Set<string>();
+  @Input() policyMap = new Map<string, string>(); // id -> name
   @Output() edit = new EventEmitter<void>();
   @Output() delete = new EventEmitter<void>();
+
+  getPolicyDisplayName(policyId: string): string {
+    return this.policyMap.get(policyId) || policyId;
+  }
 }

@@ -1,32 +1,77 @@
 import { Injectable } from '@angular/core';
 import { Policy, PolicyEntry } from '../models/policy.model';
 import { KvStoreService } from './kv-store.service';
-import { policyKey, policyPrefix, parsePolicyKey } from './kv-keys';
+import { policyKey, parsePolicyKey } from './kv-keys';
+import { BehaviorSubject, Observable } from 'rxjs';
 
 @Injectable({ providedIn: 'root' })
 export class PolicyService {
+  private policiesMap = new Map<string, PolicyEntry>(); // key -> PolicyEntry
+  private policiesSubject = new BehaviorSubject<PolicyEntry[]>([]);
+  private initialized = false;
+  private stopWatcher?: () => void;
+
   constructor(private kv: KvStoreService) {}
 
-  async listPolicies(account: string): Promise<PolicyEntry[]> {
-    const entries = await this.kv.list<Policy>(policyPrefix(account));
-    return entries.map(e => ({ policy: e.value, revision: e.revision }));
-  }
+  async initialize(): Promise<void> {
+    if (this.initialized) return;
 
-  async listGlobalPolicies(): Promise<PolicyEntry[]> {
-    return this.listPolicies('*');
-  }
-
-  async listAllPolicies(): Promise<PolicyEntry[]> {
+    // Load all policies from KV
     const entries = await this.kv.listAll<Policy>();
-    return entries
-      .filter(e => parsePolicyKey(e.key) !== null)
-      .map(e => ({ policy: e.value, revision: e.revision }));
+    for (const entry of entries) {
+      const parsed = parsePolicyKey(entry.key);
+      if (parsed) {
+        this.policiesMap.set(entry.key, { policy: entry.value, revision: entry.revision });
+      }
+    }
+    this.emitPolicies();
+
+    // Start watching for changes
+    this.stopWatcher = await this.kv.watch<Policy>((entry, operation) => {
+      if (operation === 'PUT' && entry) {
+        const parsed = parsePolicyKey(entry.key);
+        if (parsed) {
+          this.policiesMap.set(entry.key, { policy: entry.value, revision: entry.revision });
+          this.emitPolicies();
+        }
+      } else if (operation === 'DEL' && entry) {
+        this.policiesMap.delete(entry.key);
+        this.emitPolicies();
+      }
+    });
+
+    this.initialized = true;
   }
 
-  async getPolicy(account: string, id: string): Promise<PolicyEntry | null> {
-    const entry = await this.kv.get<Policy>(policyKey(account, id));
-    if (!entry) return null;
-    return { policy: entry.value, revision: entry.revision };
+  destroy(): void {
+    if (this.stopWatcher) {
+      this.stopWatcher();
+    }
+  }
+
+  private emitPolicies(): void {
+    this.policiesSubject.next(Array.from(this.policiesMap.values()));
+  }
+
+  getPolicies$(): Observable<PolicyEntry[]> {
+    return this.policiesSubject.asObservable();
+  }
+
+  listPolicies(account: string): PolicyEntry[] {
+    return Array.from(this.policiesMap.values()).filter(e => e.policy.account === account);
+  }
+
+  listGlobalPolicies(): PolicyEntry[] {
+    return this.listPolicies('_global');
+  }
+
+  listAllPolicies(): PolicyEntry[] {
+    return Array.from(this.policiesMap.values());
+  }
+
+  getPolicy(account: string, id: string): PolicyEntry | null {
+    const key = policyKey(account, id);
+    return this.policiesMap.get(key) || null;
   }
 
   async createPolicy(policy: Policy): Promise<number> {

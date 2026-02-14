@@ -1,28 +1,73 @@
 import { Injectable } from '@angular/core';
 import { Binding, BindingEntry } from '../models/binding.model';
 import { KvStoreService } from './kv-store.service';
-import { bindingKey, bindingPrefix, parseBindingKey } from './kv-keys';
+import { bindingKey, parseBindingKey } from './kv-keys';
+import { BehaviorSubject, Observable } from 'rxjs';
 
 @Injectable({ providedIn: 'root' })
 export class BindingService {
+  private bindingsMap = new Map<string, BindingEntry>(); // key -> BindingEntry
+  private bindingsSubject = new BehaviorSubject<BindingEntry[]>([]);
+  private initialized = false;
+  private stopWatcher?: () => void;
+
   constructor(private kv: KvStoreService) {}
 
-  async listBindings(account: string): Promise<BindingEntry[]> {
-    const entries = await this.kv.list<Binding>(bindingPrefix(account));
-    return entries.map(e => ({ binding: e.value, revision: e.revision }));
-  }
+  async initialize(): Promise<void> {
+    if (this.initialized) return;
 
-  async listAllBindings(): Promise<BindingEntry[]> {
+    // Load all bindings from KV
     const entries = await this.kv.listAll<Binding>();
-    return entries
-      .filter(e => parseBindingKey(e.key) !== null)
-      .map(e => ({ binding: e.value, revision: e.revision }));
+    for (const entry of entries) {
+      const parsed = parseBindingKey(entry.key);
+      if (parsed) {
+        this.bindingsMap.set(entry.key, { binding: entry.value, revision: entry.revision });
+      }
+    }
+    this.emitBindings();
+
+    // Start watching for changes
+    this.stopWatcher = await this.kv.watch<Binding>((entry, operation) => {
+      if (operation === 'PUT' && entry) {
+        const parsed = parseBindingKey(entry.key);
+        if (parsed) {
+          this.bindingsMap.set(entry.key, { binding: entry.value, revision: entry.revision });
+          this.emitBindings();
+        }
+      } else if (operation === 'DEL' && entry) {
+        this.bindingsMap.delete(entry.key);
+        this.emitBindings();
+      }
+    });
+
+    this.initialized = true;
   }
 
-  async getBinding(account: string, role: string): Promise<BindingEntry | null> {
-    const entry = await this.kv.get<Binding>(bindingKey(account, role));
-    if (!entry) return null;
-    return { binding: entry.value, revision: entry.revision };
+  destroy(): void {
+    if (this.stopWatcher) {
+      this.stopWatcher();
+    }
+  }
+
+  private emitBindings(): void {
+    this.bindingsSubject.next(Array.from(this.bindingsMap.values()));
+  }
+
+  getBindings$(): Observable<BindingEntry[]> {
+    return this.bindingsSubject.asObservable();
+  }
+
+  listBindings(account: string): BindingEntry[] {
+    return Array.from(this.bindingsMap.values()).filter(e => e.binding.account === account);
+  }
+
+  listAllBindings(): BindingEntry[] {
+    return Array.from(this.bindingsMap.values());
+  }
+
+  getBinding(account: string, role: string): BindingEntry | null {
+    const key = bindingKey(account, role);
+    return this.bindingsMap.get(key) || null;
   }
 
   async createBinding(binding: Binding): Promise<number> {

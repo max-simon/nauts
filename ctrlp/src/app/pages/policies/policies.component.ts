@@ -1,4 +1,4 @@
-import { Component, inject, OnInit } from '@angular/core';
+import { Component, inject, OnInit, OnDestroy } from '@angular/core';
 import { MatTableModule } from '@angular/material/table';
 import { MatSortModule, Sort } from '@angular/material/sort';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -168,7 +168,7 @@ import { ConflictError } from '../../services/kv-store.service';
     .full-width { width: 100%; }
   `],
 })
-export class PoliciesComponent implements OnInit {
+export class PoliciesComponent implements OnInit, OnDestroy {
   private policyService = inject(PolicyService);
   private accountService = inject(AccountService);
   private configService = inject(ConfigService);
@@ -185,36 +185,54 @@ export class PoliciesComponent implements OnInit {
   entries: PolicyEntry[] = [];
   filteredEntries: PolicyEntry[] = [];
   selectedEntry: PolicyEntry | null = null;
+  
+  private allPolicies: PolicyEntry[] = [];
+  private policySubscription?: ReturnType<typeof setTimeout>;
 
   async ngOnInit(): Promise<void> {
     this.selectedAccount = this.configService.ui.defaultAccount;
+    this.loading = true;
+    
     try {
       this.accounts = await this.accountService.discoverAccounts();
       if (!this.selectedAccount && this.accounts.length > 0) {
         this.selectedAccount = this.accounts[0];
       }
-      await this.loadPolicies();
+
+      // Initialize service
+      await this.policyService.initialize();
+
+      // Subscribe to policy updates
+      this.policySubscription = this.policyService.getPolicies$().subscribe(policies => {
+        this.allPolicies = policies;
+        this.loadPolicies();
+      }) as unknown as ReturnType<typeof setTimeout>;
+      
     } catch (err) {
       this.handleError(err);
-    }
-  }
-
-  async loadPolicies(): Promise<void> {
-    this.loading = true;
-    try {
-      this.entries = this.selectedAccount
-        ? await this.policyService.listPolicies(this.selectedAccount)
-        : await this.policyService.listAllPolicies();
-      this.applyFilter();
-
-      // Re-select if still exists
-      if (this.selectedEntry) {
-        const found = this.entries.find(e => e.policy.id === this.selectedEntry!.policy.id);
-        this.selectedEntry = found || null;
-      }
     } finally {
       this.loading = false;
     }
+  }
+
+  ngOnDestroy(): void {
+    if (this.policySubscription) {
+      (this.policySubscription as unknown as { unsubscribe: () => void }).unsubscribe();
+    }
+  }
+
+  loadPolicies(): void {
+    this.entries = this.selectedAccount
+      ? this.policyService.listPolicies(this.selectedAccount)
+      : this.policyService.listAllPolicies();
+      
+    this.applyFilter();
+
+      // Re-select if still exists
+      if (this.selectedEntry) {
+        const found = this.entries.find(e => e.policy.id === this.selectedEntry!.policy.id && e.policy.account === this.selectedEntry!.policy.account);
+        this.selectedEntry = found || null;
+      }
   }
 
   applyFilter(): void {
@@ -262,7 +280,7 @@ export class PoliciesComponent implements OnInit {
         try {
           await this.policyService.createPolicy(result);
           this.snackBar.open('Policy created', 'Dismiss', { duration: 3000 });
-          await this.loadPolicies();
+          // Data will be updated automatically via watcher
         } catch (err) {
           this.handleError(err);
         }
@@ -293,7 +311,7 @@ export class PoliciesComponent implements OnInit {
             this.selectedEntry.revision,
           );
           this.snackBar.open('Policy updated', 'Dismiss', { duration: 3000 });
-          await this.loadPolicies();
+          // Data will be updated automatically via watcher
         } catch (err) {
           this.handleError(err);
         }
@@ -321,7 +339,7 @@ export class PoliciesComponent implements OnInit {
           );
           this.snackBar.open('Policy deleted', 'Dismiss', { duration: 3000 });
           this.selectedEntry = null;
-          await this.loadPolicies();
+          // Data will be updated automatically via watcher
         } catch (err) {
           this.handleError(err);
         }

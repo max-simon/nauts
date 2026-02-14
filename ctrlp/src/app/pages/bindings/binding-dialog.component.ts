@@ -16,7 +16,7 @@ export interface BindingDialogData {
   binding?: Binding;
   accounts: string[];
   currentAccount: string;
-  availablePolicies: string[];
+  allPolicyEntries: import('../../models/policy.model').PolicyEntry[];
 }
 
 @Component({
@@ -63,7 +63,7 @@ export interface BindingDialogData {
           <mat-chip-grid #policiesChipGrid>
             @for (policy of policies; track policy) {
               <mat-chip-row (removed)="removePolicy(policy)">
-                {{ policy }}
+                {{ getPolicyDisplayName(policy) }}
                 <button matChipRemove><mat-icon>cancel</mat-icon></button>
               </mat-chip-row>
             }
@@ -77,13 +77,13 @@ export interface BindingDialogData {
           }
         </mat-form-field>
 
-        @if (data.availablePolicies.length > 0) {
+        @if (availablePolicies.length > 0) {
           <div class="available-policies">
             <span class="hint">Available policies:</span>
-            @for (p of data.availablePolicies; track p) {
-              <button mat-button type="button" class="policy-suggestion" (click)="addPolicyById(p)"
-                      [disabled]="policies.includes(p)">
-                {{ p }}
+            @for (p of availablePolicies; track p.policy.id) {
+              <button mat-button type="button" class="policy-suggestion" (click)="addPolicyById(p.policy.id)"
+                      [disabled]="policies.includes(p.policy.id)">
+                {{ p.policy.name }}
               </button>
             }
           </div>
@@ -130,11 +130,16 @@ export class BindingDialogComponent implements OnInit {
   form!: FormGroup;
   filteredAccounts: string[] = [];
   policies: string[] = [];
+  availablePolicies: import('../../models/policy.model').PolicyEntry[] = [];
+  policyMap = new Map<string, string>(); // id -> name
 
   ngOnInit(): void {
     const binding = this.data.binding;
     this.policies = binding?.policies ? [...binding.policies] : [];
-    this.filteredAccounts = this.data.accounts;
+    this.filteredAccounts = [...this.data.accounts]; // Initialize with all accounts
+
+    // Build policy map for all policies
+    this.policyMap = new Map(this.data.allPolicyEntries.map(p => [p.policy.id, p.policy.name]));
 
     this.form = this.fb.group({
       role: [{ value: binding?.role || '', disabled: this.data.mode === 'edit' }, Validators.required],
@@ -142,10 +147,30 @@ export class BindingDialogComponent implements OnInit {
       policies: [this.policies],
     });
 
+    // Filter available policies based on initial account
+    this.updateAvailablePolicies(binding?.account || this.data.currentAccount);
+
+    // Subscribe to account changes to update policy proposals and filtered accounts
     this.form.get('account')?.valueChanges.subscribe(val => {
-      const q = (val || '').toLowerCase();
-      this.filteredAccounts = this.data.accounts.filter(a => a.toLowerCase().includes(q));
+      const accountValue = (val || '').trim();
+      
+      // Update available policies when a valid account is selected
+      if (accountValue && this.data.accounts.includes(accountValue)) {
+        this.updateAvailablePolicies(accountValue);
+        // Reset to show all accounts after selection so dropdown works properly
+        this.filteredAccounts = [...this.data.accounts];
+      } else {
+        // Filter account dropdown based on typed value (partial match)
+        const q = accountValue.toLowerCase();
+        this.filteredAccounts = this.data.accounts.filter(a => a.toLowerCase().includes(q));
+      }
     });
+  }
+
+  private updateAvailablePolicies(account: string): void {
+    this.availablePolicies = this.data.allPolicyEntries.filter(p => 
+      p.policy.account === account || p.policy.account === '_global'
+    );
   }
 
   addPolicy(event: MatChipInputEvent): void {
@@ -167,6 +192,10 @@ export class BindingDialogComponent implements OnInit {
   removePolicy(policy: string): void {
     this.policies = this.policies.filter(p => p !== policy);
     this.form.get('policies')?.setValue(this.policies);
+  }
+
+  getPolicyDisplayName(policyId: string): string {
+    return this.policyMap.get(policyId) || policyId;
   }
 
   isValid(): boolean {

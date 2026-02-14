@@ -124,4 +124,26 @@ export class KvStoreService {
       throw err;
     }
   }
+
+  async watch<T>(callback: (entry: KvEntry<T> | null, operation: 'PUT' | 'DEL') => void): Promise<() => void> {
+    const kv = await this.nats.getKvBucket();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const watcher: any = await kv.watch({ ignoreDeletes: false, includeHistory: false });
+    
+    (async () => {
+      try {
+        for await (const entry of watcher) {
+          if (entry.operation === 'PUT') {
+            callback(this.decode<T>(entry), 'PUT');
+          } else if (entry.operation === 'DEL' || entry.operation === 'PURGE') {
+            callback({ key: entry.key, value: null as T, revision: entry.revision }, 'DEL');
+          }
+        }
+      } catch (err) {
+        console.error('Watch error:', err);
+      }
+    })();
+
+    return () => watcher.stop();
+  }
 }

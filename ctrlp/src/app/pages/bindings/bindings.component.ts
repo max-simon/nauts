@@ -1,4 +1,4 @@
-import { Component, inject, OnInit } from '@angular/core';
+import { Component, inject, OnInit, OnDestroy } from '@angular/core';
 import { MatTableModule } from '@angular/material/table';
 import { MatSortModule, Sort } from '@angular/material/sort';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -110,6 +110,7 @@ import { ConflictError } from '../../services/kv-store.service';
           <app-binding-details
             [entry]="selectedEntry"
             [danglingPolicies]="danglingPolicies"
+            [policyMap]="policyMap"
             (edit)="openEditDialog()"
             (delete)="confirmDelete()">
           </app-binding-details>
@@ -168,7 +169,7 @@ import { ConflictError } from '../../services/kv-store.service';
     .full-width { width: 100%; }
   `],
 })
-export class BindingsComponent implements OnInit {
+export class BindingsComponent implements OnInit, OnDestroy {
   private bindingService = inject(BindingService);
   private policyService = inject(PolicyService);
   private accountService = inject(AccountService);
@@ -188,48 +189,81 @@ export class BindingsComponent implements OnInit {
   filteredEntries: BindingEntry[] = [];
   selectedEntry: BindingEntry | null = null;
   availablePolicies: string[] = [];
+  availablePolicyEntries: import('../../models/policy.model').PolicyEntry[] = [];
+  policyMap = new Map<string, string>(); // id -> name
   danglingPolicies = new Set<string>();
+  
+  private allBindings: BindingEntry[] = [];
+  private allPolicies: import('../../models/policy.model').PolicyEntry[] = [];
+  private bindingSubscription?: ReturnType<typeof setTimeout>;
+  private policySubscription?: ReturnType<typeof setTimeout>;
 
   async ngOnInit(): Promise<void> {
     this.selectedAccount = this.configService.ui.defaultAccount;
+    this.loading = true;
+    
     try {
       this.accounts = await this.accountService.discoverAccounts();
       if (!this.selectedAccount && this.accounts.length > 0) {
         this.selectedAccount = this.accounts[0];
       }
-      await this.loadBindings();
+
+      // Initialize services
+      await Promise.all([
+        this.bindingService.initialize(),
+        this.policyService.initialize(),
+      ]);
+
+      // Subscribe to binding updates
+      this.bindingSubscription = this.bindingService.getBindings$().subscribe(bindings => {
+        this.allBindings = bindings;
+        this.loadBindings();
+      }) as unknown as ReturnType<typeof setTimeout>;
+
+      // Subscribe to policy updates
+      this.policySubscription = this.policyService.getPolicies$().subscribe(policies => {
+        this.allPolicies = policies;
+        this.availablePolicyEntries = policies;
+        this.availablePolicies = policies.map(p => p.policy.id);
+        this.policyMap = new Map(policies.map(p => [p.policy.id, p.policy.name]));
+        this.loadBindings();
+      }) as unknown as ReturnType<typeof setTimeout>;
+      
     } catch (err) {
       this.handleError(err);
+    } finally {
+      this.loading = false;
     }
   }
 
-  async loadBindings(): Promise<void> {
-    this.loading = true;
-    try {
-      const [bindings, policies] = await Promise.all([
-        this.selectedAccount
-          ? this.bindingService.listBindings(this.selectedAccount)
-          : this.bindingService.listAllBindings(),
-        this.selectedAccount
-          ? this.policyService.listPolicies(this.selectedAccount)
-          : this.policyService.listAllPolicies(),
-      ]);
-      this.entries = bindings;
-      this.availablePolicies = policies.map(p => p.policy.id);
+  ngOnDestroy(): void {
+    if (this.bindingSubscription) {
+      (this.bindingSubscription as unknown as { unsubscribe: () => void }).unsubscribe();
+    }
+    if (this.policySubscription) {
+      (this.policySubscription as unknown as { unsubscribe: () => void }).unsubscribe();
+    }
+  }
+
+  loadBindings(): void {
+    this.entries = this.selectedAccount
+      ? this.bindingService.listBindings(this.selectedAccount)
+      : this.bindingService.listAllBindings();
+      this.entries = this.selectedAccount
+      ? this.bindingService.listBindings(this.selectedAccount)
+      : this.bindingService.listAllBindings();
+      
       this.applyFilter();
       this.updateDanglingPolicies();
 
       // Re-select if still exists
       if (this.selectedEntry) {
-        const found = this.entries.find(e => e.binding.role === this.selectedEntry!.binding.role);
+        const found = this.entries.find(e => e.binding.role === this.selectedEntry!.binding.role && e.binding.account === this.selectedEntry!.binding.account);
         this.selectedEntry = found || null;
         if (this.selectedEntry) {
           this.updateDanglingPolicies();
         }
       }
-    } finally {
-      this.loading = false;
-    }
   }
 
   applyFilter(): void {
@@ -280,7 +314,7 @@ export class BindingsComponent implements OnInit {
         mode: 'create',
         accounts: this.accounts,
         currentAccount: this.selectedAccount,
-        availablePolicies: this.availablePolicies,
+        allPolicyEntries: this.availablePolicyEntries,
       } as BindingDialogData,
     });
 
@@ -289,7 +323,7 @@ export class BindingsComponent implements OnInit {
         try {
           await this.bindingService.createBinding(result);
           this.snackBar.open('Binding created', 'Dismiss', { duration: 3000 });
-          await this.loadBindings();
+          // Data will be updated automatically via watcher
         } catch (err) {
           this.handleError(err);
         }
@@ -307,7 +341,7 @@ export class BindingsComponent implements OnInit {
         binding: { ...this.selectedEntry.binding },
         accounts: this.accounts,
         currentAccount: this.selectedAccount,
-        availablePolicies: this.availablePolicies,
+        allPolicyEntries: this.availablePolicyEntries,
       } as BindingDialogData,
     });
 
@@ -321,7 +355,7 @@ export class BindingsComponent implements OnInit {
             this.selectedEntry.revision,
           );
           this.snackBar.open('Binding updated', 'Dismiss', { duration: 3000 });
-          await this.loadBindings();
+          // Data will be updated automatically via watcher
         } catch (err) {
           this.handleError(err);
         }
