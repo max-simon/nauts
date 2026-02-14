@@ -1,0 +1,10 @@
+{
+  "nats": {
+    "url": "ws://localhost:9222",
+    "bucket": "nauts-policies"
+  },
+  "ui": {
+    "defaultAccount": "APP",
+    "showGlobalPolicies": true
+  }
+}
