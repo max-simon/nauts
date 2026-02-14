@@ -54,8 +54,8 @@ import { ConflictError } from '../../services/kv-store.service';
             <mat-label>Policy</mat-label>
             <mat-select [(value)]="policyFilter" (selectionChange)="applyFilter()">
               <mat-option value="">All</mat-option>
-              @for (p of availablePolicies; track p) {
-                <mat-option [value]="p">{{ p }}</mat-option>
+              @for (p of availablePolicyEntries; track p.policy.id) {
+                <mat-option [value]="p.policy.id">{{ p.policy.name }} ({{ p.policy.account }})</mat-option>
               }
             </mat-select>
           </mat-form-field>
@@ -81,7 +81,13 @@ import { ConflictError } from '../../services/kv-store.service';
 
             <ng-container matColumnDef="policies">
               <th mat-header-cell *matHeaderCellDef>Policies</th>
-              <td mat-cell *matCellDef="let entry">{{ entry.binding.policies.length }}</td>
+              <td mat-cell *matCellDef="let entry" class="policies-cell">
+                <span class="policy-count"
+                      [class.valid]="!hasDanglingPolicies(entry)"
+                      [class.invalid]="hasDanglingPolicies(entry)">
+                  {{ entry.binding.policies.length }}
+                </span>
+              </td>
             </ng-container>
 
             <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
@@ -121,13 +127,15 @@ import { ConflictError } from '../../services/kv-store.service';
     .list-panel {
       flex: 1;
       min-width: 0;
+      max-width: 50%;
       position: relative;
       display: flex;
       flex-direction: column;
     }
     .details-panel {
-      width: 400px;
-      flex-shrink: 0;
+      flex: 1;
+      min-width: 0;
+      max-width: 50%;
     }
     .toolbar {
       display: flex;
@@ -159,6 +167,26 @@ import { ConflictError } from '../../services/kv-store.service';
       right: 16px;
     }
     .full-width { width: 100%; }
+    .policies-cell {
+      vertical-align: middle;
+    }
+    .policy-count {
+      display: inline-block;
+      min-width: 24px;
+      padding: 4px 8px;
+      border-radius: 12px;
+      text-align: center;
+      font-weight: 500;
+      font-size: 13px;
+    }
+    .policy-count.valid {
+      background: #81c784;
+      color: white;
+    }
+    .policy-count.invalid {
+      background: var(--mat-sys-error-container);
+      color: var(--mat-sys-on-error-container);
+    }
   `],
 })
 export class BindingsComponent implements OnInit, OnDestroy {
@@ -320,6 +348,17 @@ export class BindingsComponent implements OnInit, OnDestroy {
         }
       }
     }
+  }
+
+  hasDanglingPolicies(entry: BindingEntry): boolean {
+    const account = entry.binding.account;
+    const accountPolicyIds = new Set(
+      this.allPolicies
+        .filter(p => p.policy.account === account || p.policy.account === '_global')
+        .map(p => p.policy.id)
+    );
+
+    return entry.binding.policies.some(policyId => !accountPolicyIds.has(policyId));
   }
 
   openCreateDialog(): void {
