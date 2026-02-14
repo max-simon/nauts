@@ -143,16 +143,19 @@ func NewFilePolicyProvider(cfg FilePolicyProviderConfig) (*FilePolicyProvider, e
 ```json
 [
   { "role": "readonly", "account": "APP", "policies": ["read-access"] },
-  { "role": "admin", "account": "APP", "policies": ["read-access", "write-access"] }
+  { "role": "admin", "account": "APP", "policies": ["read-access", "write-access", "_global:base-permissions"] }
 ]
 ```
+
+Policy IDs prefixed with `_global:` reference global policies (account=`*`). The prefix is stripped and the lookup uses the global scope.
 
 **`GetPoliciesForRole` algorithm:**
 1. Build key `account.role` from parameters
 2. Look up binding by key → `ErrRoleNotFound` if missing
 3. Collect unique, sorted policy IDs from binding
-4. Resolve each policy ID via `GetPolicy`; skip `ErrPolicyNotFound`
-5. Return resolved policy list
+4. Resolve each policy ID via `GetPolicy`; if the ID starts with `_global:`, `GetPolicy` strips the prefix and looks up the policy in the global scope (account=`*`)
+5. Skip `ErrPolicyNotFound`
+6. Return resolved policy list
 
 ### Sentinel Errors
 

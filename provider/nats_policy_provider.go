@@ -147,7 +147,14 @@ func (p *NatsPolicyProvider) Stop() error {
 }
 
 // GetPolicy retrieves a policy by account and ID from the KV bucket.
+// If the id starts with "_global:", the prefix is stripped and the policy
+// is looked up as a global policy (account="*").
 func (p *NatsPolicyProvider) GetPolicy(ctx context.Context, account string, id string) (*policy.Policy, error) {
+	if strings.HasPrefix(id, globalAccountPrefix+":") {
+		id = strings.TrimPrefix(id, globalAccountPrefix+":")
+		account = "*"
+	}
+
 	key := kvPolicyKey(account, id)
 
 	// Check cache

@@ -110,6 +110,73 @@ func TestNewFilePolicyProvider(t *testing.T) {
 	}
 }
 
+func TestFilePolicyProvider_GetPoliciesForRole_GlobalPolicy(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	policiesContent := `[
+  {
+    "id": "app-read",
+    "account": "APP",
+    "name": "App Read",
+    "statements": [
+      { "effect": "allow", "actions": ["nats.sub"], "resources": ["nats:public.>"] }
+    ]
+  },
+  {
+    "id": "base-permissions",
+    "account": "*",
+    "name": "Base Permissions",
+    "statements": [
+      { "effect": "allow", "actions": ["nats.sub"], "resources": ["nats:status.>"] }
+    ]
+  }
+]`
+	policiesPath := filepath.Join(tmpDir, "policies.json")
+	if err := os.WriteFile(policiesPath, []byte(policiesContent), 0644); err != nil {
+		t.Fatalf("failed to write policies file: %v", err)
+	}
+
+	bindingsContent := `[
+  {
+    "role": "mixed",
+    "account": "APP",
+    "policies": ["app-read", "_global:base-permissions"]
+  }
+]`
+	bindingsPath := filepath.Join(tmpDir, "bindings.json")
+	if err := os.WriteFile(bindingsPath, []byte(bindingsContent), 0644); err != nil {
+		t.Fatalf("failed to write bindings file: %v", err)
+	}
+
+	fp, err := NewFilePolicyProvider(FilePolicyProviderConfig{
+		PoliciesPath: policiesPath,
+		BindingsPath: bindingsPath,
+	})
+	if err != nil {
+		t.Fatalf("NewFilePolicyProvider() error = %v", err)
+	}
+
+	ctx := context.Background()
+	policies, err := fp.GetPoliciesForRole(ctx, identity.Role{Account: "APP", Name: "mixed"})
+	if err != nil {
+		t.Fatalf("GetPoliciesForRole() error = %v", err)
+	}
+	if len(policies) != 2 {
+		t.Fatalf("GetPoliciesForRole() returned %d policies, want 2", len(policies))
+	}
+
+	ids := map[string]bool{}
+	for _, p := range policies {
+		ids[p.ID] = true
+	}
+	if !ids["app-read"] {
+		t.Error("expected app-read policy to be present")
+	}
+	if !ids["base-permissions"] {
+		t.Error("expected base-permissions policy to be present")
+	}
+}
+
 func TestFilePolicyProvider_GetPolicy_NotFound(t *testing.T) {
 	fp := &FilePolicyProvider{
 		policies: make(map[string]*policy.Policy),

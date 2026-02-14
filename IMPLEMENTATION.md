@@ -184,6 +184,7 @@ type Binding struct {
 
 - **No global bindings**: bindings are resolved by exact `(account, role)` match
 - **Composite key**: `(Account, Role)` is unique (often represented as `account.role`)
+- **Global policy references**: policy IDs prefixed with `_global:` are resolved as global policies (account=`*`). For example, `"_global:base-permissions"` resolves to the global policy `base-permissions` instead of looking it up in the binding's account scope
 
 ## Account Providers
 

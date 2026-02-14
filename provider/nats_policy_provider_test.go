@@ -600,6 +600,82 @@ func TestNatsPolicyProvider_Stop(t *testing.T) {
 	}
 }
 
+func TestNatsPolicyProvider_GetPoliciesForRole_GlobalPolicy(t *testing.T) {
+	srv := startTestNatsServer(t)
+	bucket := "test-global-policy-ref"
+	kv := createTestBucket(t, srv.url(), bucket)
+
+	// Seed a global policy at _global.policy.base-permissions
+	seedPolicy(t, kv, "*", "base-permissions", &policy.Policy{
+		ID:      "base-permissions",
+		Account: "*",
+		Name:    "Base Permissions",
+		Statements: []policy.Statement{
+			{Effect: "allow", Actions: []policy.Action{"nats.sub"}, Resources: []string{"nats:status.>"}},
+		},
+	})
+
+	// Seed an account-scoped policy at APP.policy.app-read
+	seedPolicy(t, kv, "APP", "app-read", &policy.Policy{
+		ID:      "app-read",
+		Account: "APP",
+		Name:    "App Read",
+		Statements: []policy.Statement{
+			{Effect: "allow", Actions: []policy.Action{"nats.sub"}, Resources: []string{"nats:public.>"}},
+		},
+	})
+
+	// Seed a binding that references both an account policy and a global policy via _global: prefix
+	seedBinding(t, kv, "APP", "mixed", &binding{
+		Role:     "mixed",
+		Account:  "APP",
+		Policies: []string{"app-read", "_global:base-permissions"},
+	})
+
+	provider, err := NewNatsPolicyProvider(NatsPolicyProviderConfig{
+		Bucket:  bucket,
+		NatsURL: srv.url(),
+	})
+	if err != nil {
+		t.Fatalf("creating provider: %v", err)
+	}
+	defer provider.Stop()
+
+	policies, err := provider.GetPoliciesForRole(context.Background(), identity.Role{
+		Account: "APP",
+		Name:    "mixed",
+	})
+	if err != nil {
+		t.Fatalf("GetPoliciesForRole() error = %v", err)
+	}
+	if len(policies) != 2 {
+		t.Fatalf("GetPoliciesForRole() returned %d policies, want 2", len(policies))
+	}
+
+	// Sorted by ID: "_global:base-permissions" sorts before "app-read"
+	// but after prefix stripping, the IDs used for sorting in the binding are
+	// the original binding policy IDs: "_global:base-permissions" and "app-read"
+	// "_global:base-permissions" < "app-read" lexicographically
+	if policies[0].ID != "app-read" && policies[0].ID != "base-permissions" {
+		t.Errorf("policies[0].ID = %q, want %q or %q", policies[0].ID, "app-read", "base-permissions")
+	}
+	if policies[1].ID != "app-read" && policies[1].ID != "base-permissions" {
+		t.Errorf("policies[1].ID = %q, want %q or %q", policies[1].ID, "app-read", "base-permissions")
+	}
+
+	// Verify both policies are present
+	ids := map[string]bool{}
+	for _, p := range policies {
+		ids[p.ID] = true
+	}
+	if !ids["app-read"] {
+		t.Error("expected app-read policy to be present")
+	}
+	if !ids["base-permissions"] {
+		t.Error("expected base-permissions policy to be present")
+	}
+}
+
 func TestNatsPolicyProvider_ValidationErrors(t *testing.T) {
 	t.Run("missing bucket", func(t *testing.T) {
 		_, err := NewNatsPolicyProvider(NatsPolicyProviderConfig{
