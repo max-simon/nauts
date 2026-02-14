@@ -7,6 +7,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { ConnectionBannerComponent } from './shared/connection-banner.component';
 import { NatsService } from './services/nats.service';
+import { NavigationService } from './services/navigation.service';
 import { Subscription } from 'rxjs';
 import { filter, map, skip } from 'rxjs/operators';
 
@@ -43,11 +44,11 @@ import { filter, map, skip } from 'rxjs/operators';
         <mat-sidenav-container class="sidenav-container">
           <mat-sidenav #sidenav mode="side" opened>
             <mat-nav-list>
-              <a mat-list-item routerLink="/policies" routerLinkActive="active-link">
+              <a mat-list-item [routerLink]="getPoliciesLink()" routerLinkActive="active-link">
                 <mat-icon matListItemIcon>policy</mat-icon>
                 <span matListItemTitle>Policies</span>
               </a>
-              <a mat-list-item routerLink="/bindings" routerLinkActive="active-link">
+              <a mat-list-item [routerLink]="getBindingsLink()" routerLinkActive="active-link">
                 <mat-icon matListItemIcon>link</mat-icon>
                 <span matListItemTitle>Bindings</span>
               </a>
@@ -90,11 +91,20 @@ import { filter, map, skip } from 'rxjs/operators';
 export class AppComponent implements OnInit, OnDestroy {
   private router = inject(Router);
   private nats = inject(NatsService);
+  private navigationService = inject(NavigationService);
   private subs: Subscription[] = [];
 
   showShell = false;
+  currentAccount = '';
 
   ngOnInit(): void {
+    // Track current account
+    this.subs.push(
+      this.navigationService.getCurrentAccount$().subscribe(account => {
+        this.currentAccount = account;
+      })
+    );
+
     // Track current route to show/hide shell
     this.subs.push(
       this.router.events.pipe(
@@ -114,6 +124,14 @@ export class AppComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.subs.forEach(s => s.unsubscribe());
+  }
+
+  getPoliciesLink(): string[] {
+    return this.currentAccount ? ['/policies', this.currentAccount] : ['/policies'];
+  }
+
+  getBindingsLink(): string[] {
+    return this.currentAccount ? ['/bindings', this.currentAccount] : ['/bindings'];
   }
 
   logout(): void {

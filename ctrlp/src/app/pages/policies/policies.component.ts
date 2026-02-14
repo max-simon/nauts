@@ -1,4 +1,5 @@
 import { Component, inject, OnInit, OnDestroy } from '@angular/core';
+import { Router, ActivatedRoute } from '@angular/router';
 import { MatTableModule } from '@angular/material/table';
 import { MatSortModule, Sort } from '@angular/material/sort';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -13,6 +14,7 @@ import { FormsModule } from '@angular/forms';
 import { PolicyService } from '../../services/policy.service';
 import { AccountService } from '../../services/account.service';
 import { ConfigService } from '../../services/config.service';
+import { NavigationService } from '../../services/navigation.service';
 import { PolicyEntry } from '../../models/policy.model';
 import { PolicyDetailsComponent } from './policy-details.component';
 import { PolicyDialogComponent, PolicyDialogData } from './policy-dialog.component';
@@ -44,7 +46,7 @@ import { ConflictError } from '../../services/kv-store.service';
         <div class="toolbar">
           <mat-form-field appearance="outline" class="filter-field">
             <mat-label>Account</mat-label>
-            <mat-select [(value)]="selectedAccount" (selectionChange)="loadPolicies()">
+            <mat-select [(value)]="selectedAccount" (selectionChange)="onAccountChange()">
               <mat-option value="">All Accounts</mat-option>
               @for (account of accounts; track account) {
                 <mat-option [value]="account">{{ account }}</mat-option>
@@ -172,8 +174,11 @@ export class PoliciesComponent implements OnInit, OnDestroy {
   private policyService = inject(PolicyService);
   private accountService = inject(AccountService);
   private configService = inject(ConfigService);
+  private navigationService = inject(NavigationService);
   private dialog = inject(MatDialog);
   private snackBar = inject(MatSnackBar);
+  private router = inject(Router);
+  private route = inject(ActivatedRoute);
 
   displayedColumns = ['name', 'id', 'account', 'statements'];
 
@@ -190,17 +195,34 @@ export class PoliciesComponent implements OnInit, OnDestroy {
   private policySubscription?: ReturnType<typeof setTimeout>;
 
   async ngOnInit(): Promise<void> {
-    this.selectedAccount = this.configService.ui.defaultAccount;
     this.loading = true;
     
     try {
       this.accounts = await this.accountService.discoverAccounts();
-      if (!this.selectedAccount && this.accounts.length > 0) {
-        this.selectedAccount = this.accounts[0];
-      }
 
-      // Initialize service
-      await this.policyService.initialize();
+      // Initialize services
+      await Promise.all([
+        this.policyService.initialize(),
+      ]);
+
+      // Subscribe to route params to get account and policy ID
+      this.route.params.subscribe(params => {
+        const accountParam = params['account'];
+        const idParam = params['id'];
+        
+        // Set selected account from route, default to empty (all accounts)
+        this.selectedAccount = accountParam || '';
+        
+        this.loadPolicies();
+        
+        // If ID param is present, select that policy
+        if (idParam && accountParam) {
+          const policy = this.policyService.getPolicy(accountParam, idParam);
+          if (policy) {
+            this.selectedEntry = policy;
+          }
+        }
+      });
 
       // Subscribe to policy updates
       this.policySubscription = this.policyService.getPolicies$().subscribe(policies => {
@@ -228,24 +250,32 @@ export class PoliciesComponent implements OnInit, OnDestroy {
       
     this.applyFilter();
 
-      // Re-select if still exists
-      if (this.selectedEntry) {
-        const found = this.entries.find(e => e.policy.id === this.selectedEntry!.policy.id && e.policy.account === this.selectedEntry!.policy.account);
-        this.selectedEntry = found || null;
-      }
+    // Re-select if still exists
+    if (this.selectedEntry) {
+      const found = this.entries.find(e => e.policy.id === this.selectedEntry!.policy.id && e.policy.account === this.selectedEntry!.policy.account);
+      this.selectedEntry = found || null;
+    }
+  }
+
+  onAccountChange(): void {
+    this.selectedEntry = null;
+    this.navigationService.setCurrentAccount(this.selectedAccount);
+    if (this.selectedAccount) {
+      this.router.navigate(['/policies', this.selectedAccount]);
+    } else {
+      this.router.navigate(['/policies']);
+    }
   }
 
   applyFilter(): void {
     const q = this.searchQuery.toLowerCase();
-    this.filteredEntries = this.entries.filter(e =>
-      e.policy.name.toLowerCase().includes(q) ||
-      e.policy.id.toLowerCase().includes(q)
-    );
+    this.filteredEntries = this.entries.filter(e => {
+      return e.policy.name.toLowerCase().includes(q) || e.policy.id.toLowerCase().includes(q);
+    });
   }
 
   sortData(sort: Sort): void {
     if (!sort.active || sort.direction === '') {
-      this.filteredEntries = [...this.entries];
       this.applyFilter();
       return;
     }
@@ -262,7 +292,19 @@ export class PoliciesComponent implements OnInit, OnDestroy {
   }
 
   selectEntry(entry: PolicyEntry): void {
-    this.selectedEntry = this.selectedEntry?.policy.id === entry.policy.id ? null : entry;
+    if (this.selectedEntry?.policy.id === entry.policy.id && this.selectedEntry?.policy.account === entry.policy.account) {
+      this.selectedEntry = null;
+      // Navigate back to account view
+      if (entry.policy.account) {
+        this.router.navigate(['/policies', entry.policy.account]);
+      } else {
+        this.router.navigate(['/policies']);
+      }
+    } else {
+      this.selectedEntry = entry;
+      // Navigate to detail view
+      this.router.navigate(['/policies', entry.policy.account, entry.policy.id]);
+    }
   }
 
   openCreateDialog(): void {

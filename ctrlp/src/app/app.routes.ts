@@ -8,5 +8,9 @@ export const routes: Routes = [
   { path: 'login', component: LoginComponent },
   { path: '', redirectTo: 'policies', pathMatch: 'full' },
   { path: 'policies', component: PoliciesComponent, canActivate: [authGuard] },
+  { path: 'policies/:account', component: PoliciesComponent, canActivate: [authGuard] },
+  { path: 'policies/:account/:id', component: PoliciesComponent, canActivate: [authGuard] },
   { path: 'bindings', component: BindingsComponent, canActivate: [authGuard] },
+  { path: 'bindings/:account', component: BindingsComponent, canActivate: [authGuard] },
+  { path: 'bindings/:account/:role', component: BindingsComponent, canActivate: [authGuard] },
 ];

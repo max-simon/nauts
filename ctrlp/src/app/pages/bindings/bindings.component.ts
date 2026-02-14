@@ -1,4 +1,5 @@
 import { Component, inject, OnInit, OnDestroy } from '@angular/core';
+import { Router, ActivatedRoute } from '@angular/router';
 import { MatTableModule } from '@angular/material/table';
 import { MatSortModule, Sort } from '@angular/material/sort';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -14,6 +15,7 @@ import { BindingService } from '../../services/binding.service';
 import { PolicyService } from '../../services/policy.service';
 import { AccountService } from '../../services/account.service';
 import { ConfigService } from '../../services/config.service';
+import { NavigationService } from '../../services/navigation.service';
 import { BindingEntry } from '../../models/binding.model';
 import { BindingDetailsComponent } from './binding-details.component';
 import { BindingDialogComponent, BindingDialogData } from './binding-dialog.component';
@@ -45,7 +47,7 @@ import { ConflictError } from '../../services/kv-store.service';
         <div class="toolbar">
           <mat-form-field appearance="outline" class="filter-field">
             <mat-label>Account</mat-label>
-            <mat-select [(value)]="selectedAccount" (selectionChange)="loadBindings()">
+            <mat-select [(value)]="selectedAccount" (selectionChange)="onAccountChange()">
               <mat-option value="">All Accounts</mat-option>
               @for (account of accounts; track account) {
                 <mat-option [value]="account">{{ account }}</mat-option>
@@ -174,8 +176,11 @@ export class BindingsComponent implements OnInit, OnDestroy {
   private policyService = inject(PolicyService);
   private accountService = inject(AccountService);
   private configService = inject(ConfigService);
+  private navigationService = inject(NavigationService);
   private dialog = inject(MatDialog);
   private snackBar = inject(MatSnackBar);
+  private router = inject(Router);
+  private route = inject(ActivatedRoute);
 
   displayedColumns = ['role', 'account', 'policies'];
 
@@ -199,20 +204,36 @@ export class BindingsComponent implements OnInit, OnDestroy {
   private policySubscription?: ReturnType<typeof setTimeout>;
 
   async ngOnInit(): Promise<void> {
-    this.selectedAccount = this.configService.ui.defaultAccount;
     this.loading = true;
     
     try {
       this.accounts = await this.accountService.discoverAccounts();
-      if (!this.selectedAccount && this.accounts.length > 0) {
-        this.selectedAccount = this.accounts[0];
-      }
 
       // Initialize services
       await Promise.all([
         this.bindingService.initialize(),
         this.policyService.initialize(),
       ]);
+
+      // Subscribe to route params to get account and role
+      this.route.params.subscribe(params => {
+        const accountParam = params['account'];
+        const roleParam = params['role'];
+        
+        // Set selected account from route, default to empty (all accounts)
+        this.selectedAccount = accountParam || '';
+        
+        this.loadBindings();
+        
+        // If role param is present, select that binding
+        if (roleParam && accountParam) {
+          const binding = this.bindingService.getBinding(accountParam, roleParam);
+          if (binding) {
+            this.selectedEntry = binding;
+            this.updateDanglingPolicies();
+          }
+        }
+      });
 
       // Subscribe to binding updates
       this.bindingSubscription = this.bindingService.getBindings$().subscribe(bindings => {
@@ -266,6 +287,16 @@ export class BindingsComponent implements OnInit, OnDestroy {
       }
   }
 
+  onAccountChange(): void {
+    this.selectedEntry = null;
+    this.navigationService.setCurrentAccount(this.selectedAccount);
+    if (this.selectedAccount) {
+      this.router.navigate(['/bindings', this.selectedAccount]);
+    } else {
+      this.router.navigate(['/bindings']);
+    }
+  }
+
   applyFilter(): void {
     const roleQ = this.roleFilter.toLowerCase();
     this.filteredEntries = this.entries.filter(e => {
@@ -292,8 +323,20 @@ export class BindingsComponent implements OnInit, OnDestroy {
   }
 
   selectEntry(entry: BindingEntry): void {
-    this.selectedEntry = this.selectedEntry?.binding.role === entry.binding.role ? null : entry;
-    this.updateDanglingPolicies();
+    if (this.selectedEntry?.binding.role === entry.binding.role && this.selectedEntry?.binding.account === entry.binding.account) {
+      this.selectedEntry = null;
+      // Navigate back to account view
+      if (entry.binding.account) {
+        this.router.navigate(['/bindings', entry.binding.account]);
+      } else {
+        this.router.navigate(['/bindings']);
+      }
+    } else {
+      this.selectedEntry = entry;
+      this.updateDanglingPolicies();
+      // Navigate to detail view
+      this.router.navigate(['/bindings', entry.binding.account, entry.binding.role]);
+    }
   }
 
   private updateDanglingPolicies(): void {
