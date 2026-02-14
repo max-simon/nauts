@@ -45,29 +45,6 @@ import { ConfigService } from '../../services/config.service';
             </mat-form-field>
 
             <mat-tab-group [(selectedIndex)]="authTabIndex" class="auth-tabs">
-              <mat-tab label="None"></mat-tab>
-
-              <mat-tab label="Token">
-                <div class="tab-content">
-                  <mat-form-field appearance="outline" class="full-width">
-                    <mat-label>Token</mat-label>
-                    <input matInput [(ngModel)]="token">
-                  </mat-form-field>
-                </div>
-              </mat-tab>
-
-              <mat-tab label="User / Password">
-                <div class="tab-content">
-                  <mat-form-field appearance="outline" class="full-width">
-                    <mat-label>Username</mat-label>
-                    <input matInput [(ngModel)]="username">
-                  </mat-form-field>
-                  <mat-form-field appearance="outline" class="full-width">
-                    <mat-label>Password</mat-label>
-                    <input matInput type="password" [(ngModel)]="password">
-                  </mat-form-field>
-                </div>
-              </mat-tab>
 
               <mat-tab label="NKey">
                 <div class="tab-content">
@@ -200,21 +177,12 @@ export class LoginComponent {
       this.url = saved.url;
       this.bucket = saved.bucket;
       switch (saved.auth.type) {
-        case 'token':
-          this.authTabIndex = 1;
-          this.token = saved.auth.token;
-          break;
-        case 'userpass':
-          this.authTabIndex = 2;
-          this.username = saved.auth.username;
-          this.password = saved.auth.password;
-          break;
         case 'nkey':
-          this.authTabIndex = 3;
+          this.authTabIndex = 1;
           this.nkeySeed = saved.auth.seed;
           break;
         case 'creds':
-          this.authTabIndex = 4;
+          this.authTabIndex = 2;
           this.credsContents = saved.auth.contents;
           break;
       }
@@ -289,12 +257,8 @@ export class LoginComponent {
   private buildAuthMethod(): AuthMethod {
     switch (this.authTabIndex) {
       case 1:
-        return { type: 'token', token: this.token };
-      case 2:
-        return { type: 'userpass', username: this.username, password: this.password };
-      case 3:
         return { type: 'nkey', seed: this.nkeySeed };
-      case 4:
+      case 2:
         return { type: 'creds', contents: this.credsContents };
       default:
         return { type: 'none' };

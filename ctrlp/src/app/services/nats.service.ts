@@ -86,15 +86,6 @@ export class NatsService {
       const encoder = new TextEncoder();
 
       switch (params.auth.type) {
-        case 'token':
-          opts['authenticator'] = tokenAuthenticator(params.auth.token);
-          break;
-        case 'userpass':
-          opts['authenticator'] = usernamePasswordAuthenticator(
-            params.auth.username,
-            params.auth.password,
-          );
-          break;
         case 'nkey':
           opts['authenticator'] = nkeyAuthenticator(encoder.encode(params.auth.seed));
           break;

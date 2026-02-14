@@ -13,7 +13,7 @@ import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatChipsModule } from '@angular/material/chips';
 import { FormsModule } from '@angular/forms';
-import { PolicyService } from '../../services/policy.service';
+import { PolicyStoreService } from '../../services/policy-store.service';
 import { AccountService } from '../../services/account.service';
 import { ConfigService } from '../../services/config.service';
 import { NavigationService } from '../../services/navigation.service';
@@ -206,7 +206,7 @@ import { validatePolicyResources } from '../../validators/resource.validator';
   `],
 })
 export class PoliciesComponent implements OnInit, OnDestroy {
-  private policyService = inject(PolicyService);
+  private policyService = inject(PolicyStoreService);
   private accountService = inject(AccountService);
   private configService = inject(ConfigService);
   private navigationService = inject(NavigationService);
@@ -235,10 +235,8 @@ export class PoliciesComponent implements OnInit, OnDestroy {
     try {
       this.accounts = await this.accountService.discoverAccounts();
 
-      // Initialize services
-      await Promise.all([
-        this.policyService.initialize(),
-      ]);
+      // Initialize store
+      await this.policyService.initialize();
 
       // Subscribe to route params to get account and policy ID
       this.route.params.subscribe(params => {

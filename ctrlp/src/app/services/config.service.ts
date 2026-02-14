@@ -19,10 +19,6 @@ export class ConfigService {
     return this.config.nats;
   }
 
-  get ui() {
-    return this.config.ui;
-  }
-
   get isLoaded(): boolean {
     return !!this.config;
   }

@@ -11,8 +11,7 @@ import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { FormsModule } from '@angular/forms';
-import { BindingService } from '../../services/binding.service';
-import { PolicyService } from '../../services/policy.service';
+import { PolicyStoreService } from '../../services/policy-store.service';
 import { AccountService } from '../../services/account.service';
 import { ConfigService } from '../../services/config.service';
 import { NavigationService } from '../../services/navigation.service';
@@ -172,8 +171,7 @@ import { ConflictError } from '../../services/kv-store.service';
   `],
 })
 export class BindingsComponent implements OnInit, OnDestroy {
-  private bindingService = inject(BindingService);
-  private policyService = inject(PolicyService);
+  private store = inject(PolicyStoreService);
   private accountService = inject(AccountService);
   private configService = inject(ConfigService);
   private navigationService = inject(NavigationService);
@@ -209,11 +207,8 @@ export class BindingsComponent implements OnInit, OnDestroy {
     try {
       this.accounts = await this.accountService.discoverAccounts();
 
-      // Initialize services
-      await Promise.all([
-        this.bindingService.initialize(),
-        this.policyService.initialize(),
-      ]);
+      // Initialize store
+      await this.store.initialize();
 
       // Subscribe to route params to get account and role
       this.route.params.subscribe(params => {
@@ -227,7 +222,7 @@ export class BindingsComponent implements OnInit, OnDestroy {
         
         // If role param is present, select that binding
         if (roleParam && accountParam) {
-          const binding = this.bindingService.getBinding(accountParam, roleParam);
+          const binding = this.store.getBinding(accountParam, roleParam);
           if (binding) {
             this.selectedEntry = binding;
             this.updateDanglingPolicies();
@@ -236,13 +231,13 @@ export class BindingsComponent implements OnInit, OnDestroy {
       });
 
       // Subscribe to binding updates
-      this.bindingSubscription = this.bindingService.getBindings$().subscribe(bindings => {
+      this.bindingSubscription = this.store.getBindings$().subscribe(bindings => {
         this.allBindings = bindings;
         this.loadBindings();
       }) as unknown as ReturnType<typeof setTimeout>;
 
       // Subscribe to policy updates
-      this.policySubscription = this.policyService.getPolicies$().subscribe(policies => {
+      this.policySubscription = this.store.getPolicies$().subscribe(policies => {
         this.allPolicies = policies;
         this.availablePolicyEntries = policies;
         this.availablePolicies = policies.map(p => p.policy.id);
@@ -268,11 +263,8 @@ export class BindingsComponent implements OnInit, OnDestroy {
 
   loadBindings(): void {
     this.entries = this.selectedAccount
-      ? this.bindingService.listBindings(this.selectedAccount)
-      : this.bindingService.listAllBindings();
-      this.entries = this.selectedAccount
-      ? this.bindingService.listBindings(this.selectedAccount)
-      : this.bindingService.listAllBindings();
+      ? this.store.listBindings(this.selectedAccount)
+      : this.store.listAllBindings();
       
       this.applyFilter();
       this.updateDanglingPolicies();
@@ -364,7 +356,7 @@ export class BindingsComponent implements OnInit, OnDestroy {
     dialogRef.afterClosed().subscribe(async (result) => {
       if (result) {
         try {
-          await this.bindingService.createBinding(result);
+          await this.store.createBinding(result);
           this.snackBar.open('Binding created', 'Dismiss', { duration: 3000 });
           // Data will be updated automatically via watcher
         } catch (err) {
@@ -391,7 +383,7 @@ export class BindingsComponent implements OnInit, OnDestroy {
     dialogRef.afterClosed().subscribe(async (result) => {
       if (result && this.selectedEntry) {
         try {
-          await this.bindingService.updateBinding(
+          await this.store.updateBinding(
             this.selectedEntry.binding.account,
             this.selectedEntry.binding.role,
             result,
@@ -419,7 +411,7 @@ export class BindingsComponent implements OnInit, OnDestroy {
     dialogRef.afterClosed().subscribe(async (confirmed) => {
       if (confirmed && this.selectedEntry) {
         try {
-          await this.bindingService.deleteBinding(
+          await this.store.deleteBinding(
             this.selectedEntry.binding.account,
             this.selectedEntry.binding.role,
             this.selectedEntry.revision,

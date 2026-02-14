@@ -5,8 +5,4 @@ export interface AppConfig {
     credentials?: string;
     nkey?: string;
   };
-  ui: {
-    defaultAccount: string;
-    showGlobalPolicies: boolean;
-  };
 }

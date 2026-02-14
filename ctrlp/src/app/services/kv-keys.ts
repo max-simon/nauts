@@ -6,16 +6,10 @@ export function policyKey(account: string, id: string): string {
 }
 
 export function bindingKey(account: string, role: string): string {
-  const prefix = account === '*' ? GLOBAL_PREFIX : account;
-  return `${prefix}.binding.${role}`;
-}
-
-export function globalPolicyKey(id: string): string {
-  return `${GLOBAL_PREFIX}.policy.${id}`;
-}
-
-export function globalBindingKey(role: string): string {
-  return `${GLOBAL_PREFIX}.binding.${role}`;
+  if(account === "*") {
+    throw new Error("Bindings can not be global");
+  }
+  return `${account}.binding.${role}`;
 }
 
 export function policyPrefix(account: string): string {
@@ -24,8 +18,10 @@ export function policyPrefix(account: string): string {
 }
 
 export function bindingPrefix(account: string): string {
-  const prefix = account === '*' ? GLOBAL_PREFIX : account;
-  return `${prefix}.binding.`;
+  if(account === "*") {
+    throw new Error("Bindings can not be global");
+  }
+  return `${account}.binding.`;
 }
 
 export function parsePolicyKey(key: string): { account: string; id: string } | null {
@@ -41,7 +37,7 @@ export function parseBindingKey(key: string): { account: string; role: string } 
   const match = key.match(/^(.+)\.binding\.(.+)$/);
   if (!match) return null;
   return {
-    account: match[1] === GLOBAL_PREFIX ? '*' : match[1],
+    account: match[1],
     role: match[2],
   };
 }
