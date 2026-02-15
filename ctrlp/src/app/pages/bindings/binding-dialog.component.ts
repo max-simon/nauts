@@ -1,5 +1,5 @@
 import { Component, inject, OnInit } from '@angular/core';
-import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { FormBuilder, FormGroup, ReactiveFormsModule, Validators, FormsModule } from '@angular/forms';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
@@ -22,6 +22,7 @@ export interface BindingDialogData {
   standalone: true,
   imports: [
     ReactiveFormsModule,
+    FormsModule,
     MatDialogModule,
     MatFormFieldModule,
     MatInputModule,
@@ -33,7 +34,22 @@ export interface BindingDialogData {
   template: `
     <h2 mat-dialog-title>{{ data.mode === 'create' ? 'Create Binding' : 'Edit Binding' }}</h2>
     <mat-dialog-content>
-      <form [formGroup]="form" class="binding-form">
+      @if (jsonMode) {
+        <div class="json-editor">
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>JSON</mat-label>
+            <textarea matInput
+                      [(ngModel)]="jsonText"
+                      rows="15"
+                      class="json-textarea"
+                      spellcheck="false"></textarea>
+            @if (jsonError) {
+              <mat-error>{{ jsonError }}</mat-error>
+            }
+          </mat-form-field>
+        </div>
+      } @else {
+        <form [formGroup]="form" class="binding-form">
         <mat-form-field appearance="outline" class="full-width">
           <mat-label>Role</mat-label>
           <input matInput formControlName="role" placeholder="Role name">
@@ -77,11 +93,15 @@ export interface BindingDialogData {
             <mat-error>At least one policy is required</mat-error>
           }
         </mat-form-field>
-      </form>
+        </form>
+      }
     </mat-dialog-content>
     <mat-dialog-actions align="end">
       <button mat-button mat-dialog-close>Cancel</button>
-      <button mat-flat-button (click)="save()" [disabled]="!form.valid">
+      <button mat-button (click)="toggleJsonMode()">
+        {{ jsonMode ? 'Edit as Form' : 'Edit as JSON' }}
+      </button>
+      <button mat-flat-button (click)="save()" [disabled]="jsonMode ? !jsonText.trim() : !form.valid">
         {{ data.mode === 'create' ? 'Create' : 'Save' }}
       </button>
     </mat-dialog-actions>
@@ -94,6 +114,14 @@ export interface BindingDialogData {
       gap: 4px;
     }
     .full-width { width: 100%; }
+    .json-editor {
+      min-width: 480px;
+    }
+    .json-textarea {
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      line-height: 1.5;
+    }
   `],
 })
 export class BindingDialogComponent implements OnInit {
@@ -105,6 +133,11 @@ export class BindingDialogComponent implements OnInit {
   filteredAccounts: string[] = [];
   accountSpecificPolicies: import('../../models/policy.model').PolicyEntry[] = [];
   globalPolicies: import('../../models/policy.model').PolicyEntry[] = [];
+
+  // JSON editing mode
+  jsonMode = false;
+  jsonText = '';
+  jsonError = '';
 
   ngOnInit(): void {
     const binding = this.data.binding;
@@ -144,16 +177,62 @@ export class BindingDialogComponent implements OnInit {
     this.globalPolicies = this.data.allPolicyEntries.filter(p => p.policy.account === '_global');
   }
 
-  save(): void {
-    if (!this.form.valid) return;
+  toggleJsonMode(): void {
+    if (!this.jsonMode) {
+      // Switching to JSON mode - convert form to JSON
+      const binding = this.buildBindingFromForm();
+      this.jsonText = JSON.stringify(binding, null, 2);
+      this.jsonError = '';
+    } else {
+      // Switching back to form mode - validate and parse JSON
+      try {
+        const binding = JSON.parse(this.jsonText);
+        this.loadBindingIntoForm(binding);
+        this.jsonError = '';
+      } catch (err) {
+        this.jsonError = err instanceof Error ? err.message : 'Invalid JSON';
+        return; // Don't switch modes if JSON is invalid
+      }
+    }
+    this.jsonMode = !this.jsonMode;
+  }
 
+  private buildBindingFromForm(): Binding {
     const raw = this.form.getRawValue();
-    const binding: Binding = {
+    return {
       role: raw.role,
       account: raw.account,
       policies: raw.policies,
     };
+  }
 
-    this.dialogRef.close(binding);
+  private loadBindingIntoForm(binding: Binding): void {
+    this.form.patchValue({
+      role: binding.role,
+      account: binding.account,
+      policies: binding.policies || [],
+    });
+
+    // Update available policies based on account
+    if (binding.account) {
+      this.updateAvailablePolicies(binding.account);
+    }
+  }
+
+  save(): void {
+    if (this.jsonMode) {
+      // Save from JSON
+      try {
+        const binding = JSON.parse(this.jsonText);
+        this.dialogRef.close(binding);
+      } catch (err) {
+        this.jsonError = err instanceof Error ? err.message : 'Invalid JSON';
+      }
+    } else {
+      // Save from form
+      if (!this.form.valid) return;
+      const binding = this.buildBindingFromForm();
+      this.dialogRef.close(binding);
+    }
   }
 }

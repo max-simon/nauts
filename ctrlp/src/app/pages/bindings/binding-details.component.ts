@@ -1,5 +1,6 @@
-import { Component, EventEmitter, Input, Output, OnChanges, inject } from '@angular/core';
-import { RouterLink } from '@angular/router';
+import { Component, EventEmitter, Input, Output, OnChanges, OnInit, OnDestroy, inject } from '@angular/core';
+import { RouterLink, ActivatedRoute } from '@angular/router';
+import { Subscription } from 'rxjs';
 import { MatCardModule } from '@angular/material/card';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatButtonModule } from '@angular/material/button';
@@ -29,6 +30,13 @@ import { PolicyStoreService } from '../../services/policy-store.service';
           </mat-card-subtitle>
         </mat-card-header>
         <mat-card-content>
+          @if (hasKeyMismatch()) {
+            <div class="key-mismatch-warning">
+              <mat-icon>warning</mat-icon>
+              <span>{{ getKeyMismatchMessage() }}</span>
+            </div>
+          }
+
           <mat-accordion multi>
             <mat-expansion-panel [expanded]="true">
               <mat-expansion-panel-header>
@@ -99,6 +107,22 @@ import { PolicyStoreService } from '../../services/policy-store.service';
     .metadata-value {
       color: var(--mat-sys-on-surface);
     }
+    .key-mismatch-warning {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 16px;
+      margin-bottom: 16px;
+      background: var(--mat-sys-error-container);
+      color: var(--mat-sys-on-error-container);
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    .key-mismatch-warning mat-icon {
+      font-size: 20px;
+      width: 20px;
+      height: 20px;
+    }
     mat-accordion {
       display: flex;
       flex-direction: column;
@@ -149,8 +173,9 @@ import { PolicyStoreService } from '../../services/policy-store.service';
     }
   `],
 })
-export class BindingDetailsComponent implements OnChanges {
+export class BindingDetailsComponent implements OnChanges, OnInit, OnDestroy {
   private policyStore = inject(PolicyStoreService);
+  private route = inject(ActivatedRoute);
 
   @Input() entry: BindingEntry | null = null;
   @Input() danglingPolicies = new Set<string>();
@@ -160,6 +185,22 @@ export class BindingDetailsComponent implements OnChanges {
 
   compiledStatements: Array<{ effect: string; actions: string[]; resources: string[] }> = [];
   statementPolicyInfos: PolicyInfo[] = [];
+  routeAccount = '';
+  routeRole = '';
+
+  private routeSubscription?: Subscription;
+
+  ngOnInit(): void {
+    // Subscribe to route params to get account and role from KV key
+    this.routeSubscription = this.route.params.subscribe(params => {
+      this.routeAccount = params['account'] || '';
+      this.routeRole = params['role'] || '';
+    });
+  }
+
+  ngOnDestroy(): void {
+    this.routeSubscription?.unsubscribe();
+  }
 
   ngOnChanges(): void {
     this.compileStatements();
@@ -183,6 +224,34 @@ export class BindingDetailsComponent implements OnChanges {
       ? this.entry.binding.account
       : policyAccount;
     return ['/policies', routeAccount, policyId];
+  }
+
+  hasKeyMismatch(): boolean {
+    if (!this.entry || !this.routeAccount || !this.routeRole) return false;
+
+    // Check if the binding's account matches the account in the route (KV key)
+    const accountMismatch = this.entry.binding.account !== this.routeAccount;
+
+    // Check if the binding's role matches the role in the route (KV key)
+    const roleMismatch = this.entry.binding.role !== this.routeRole;
+
+    return accountMismatch || roleMismatch;
+  }
+
+  getKeyMismatchMessage(): string {
+    if (!this.entry || !this.routeAccount || !this.routeRole) return '';
+
+    const messages: string[] = [];
+
+    if (this.entry.binding.account !== this.routeAccount) {
+      messages.push(`Account mismatch: binding has "${this.entry.binding.account}" but KV key uses "${this.routeAccount}"`);
+    }
+
+    if (this.entry.binding.role !== this.routeRole) {
+      messages.push(`Role mismatch: binding has "${this.entry.binding.role}" but KV key uses "${this.routeRole}"`);
+    }
+
+    return messages.join('. ');
   }
 
   private compileStatements(): void {

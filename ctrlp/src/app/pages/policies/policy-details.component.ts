@@ -44,6 +44,13 @@ import { Subscription } from 'rxjs';
             </div>
           }
 
+          @if (hasKeyMismatch()) {
+            <div class="key-mismatch-warning">
+              <mat-icon>warning</mat-icon>
+              <span>{{ getKeyMismatchMessage() }}</span>
+            </div>
+          }
+
           <mat-accordion multi>
             <mat-expansion-panel [expanded]="true">
               <mat-expansion-panel-header>
@@ -97,6 +104,22 @@ import { Subscription } from 'rxjs';
       font-size: 14px;
     }
     .global-warning mat-icon {
+      font-size: 20px;
+      width: 20px;
+      height: 20px;
+    }
+    .key-mismatch-warning {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 16px;
+      margin-bottom: 16px;
+      background: var(--mat-sys-error-container);
+      color: var(--mat-sys-on-error-container);
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    .key-mismatch-warning mat-icon {
       font-size: 20px;
       width: 20px;
       height: 20px;
@@ -162,13 +185,15 @@ export class PolicyDetailsComponent implements OnChanges, OnInit, OnDestroy {
   resourceErrors = new Map<string, string>();
   relatedBindings: BindingEntry[] = [];
   currentAccount = '';
+  currentPolicyId = '';
 
   private routeSubscription?: Subscription;
 
   ngOnInit(): void {
-    // Subscribe to route params to get current account
+    // Subscribe to route params to get current account and policy ID
     this.routeSubscription = this.route.params.subscribe(params => {
       this.currentAccount = params['account'] || '';
+      this.currentPolicyId = params['id'] || '';
       this.loadRelatedBindings();
     });
   }
@@ -212,6 +237,34 @@ export class PolicyDetailsComponent implements OnChanges, OnInit, OnDestroy {
 
   getCurrentAccountBindingCount(): number {
     return this.relatedBindings.filter(b => !this.isBindingFromOtherAccount(b)).length;
+  }
+
+  hasKeyMismatch(): boolean {
+    if (!this.entry || !this.currentAccount || !this.currentPolicyId) return false;
+
+    // Check if the policy's account matches the account in the route (KV key)
+    const accountMismatch = this.entry.policy.account !== this.currentAccount;
+
+    // Check if the policy's ID matches the ID in the route (KV key)
+    const idMismatch = this.entry.policy.id !== this.currentPolicyId;
+
+    return accountMismatch || idMismatch;
+  }
+
+  getKeyMismatchMessage(): string {
+    if (!this.entry || !this.currentAccount || !this.currentPolicyId) return '';
+
+    const messages: string[] = [];
+
+    if (this.entry.policy.account !== this.currentAccount) {
+      messages.push(`Account mismatch: policy has "${this.entry.policy.account}" but KV key uses "${this.currentAccount}"`);
+    }
+
+    if (this.entry.policy.id !== this.currentPolicyId) {
+      messages.push(`ID mismatch: policy has "${this.entry.policy.id}" but KV key uses "${this.currentPolicyId}"`);
+    }
+
+    return messages.join('. ');
   }
 
   getResourceError(resource: string): string | null {

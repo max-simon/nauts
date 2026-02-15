@@ -7,12 +7,15 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatSelectModule } from '@angular/material/select';
+import { MatDividerModule } from '@angular/material/divider';
 import { FormsModule } from '@angular/forms';
 import { ConnectionBannerComponent } from './shared/connection-banner.component';
+import { BucketExportDialogComponent } from './shared/bucket-export-dialog.component';
 import { NatsService } from './services/nats.service';
 import { NavigationService } from './services/navigation.service';
 import { AccountService } from './services/account.service';
 import { PolicyStoreService } from './services/policy-store.service';
+import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { Subscription } from 'rxjs';
 import { filter, map, skip, debounceTime } from 'rxjs/operators';
 
@@ -30,6 +33,8 @@ import { filter, map, skip, debounceTime } from 'rxjs/operators';
     MatButtonModule,
     MatFormFieldModule,
     MatSelectModule,
+    MatDialogModule,
+    MatDividerModule,
     FormsModule,
     ConnectionBannerComponent,
   ],
@@ -41,37 +46,51 @@ import { filter, map, skip, debounceTime } from 'rxjs/operators';
             <mat-icon>menu</mat-icon>
           </button>
           <span class="app-title">nauts Control Plane</span>
-          <span class="spacer"></span>
-          <button mat-icon-button (click)="logout()">
-            <mat-icon>logout</mat-icon>
-          </button>
         </mat-toolbar>
 
         <app-connection-banner></app-connection-banner>
 
         <mat-sidenav-container class="sidenav-container">
           <mat-sidenav #sidenav mode="side" opened>
-            <div class="account-selector">
-              <mat-form-field appearance="outline" class="account-field">
-                <mat-label>Account</mat-label>
-                <mat-select [(value)]="currentAccount" (selectionChange)="onAccountChange()">
-                  <mat-option value="">All Accounts</mat-option>
-                  @for (account of accounts; track account) {
-                    <mat-option [value]="account">{{ account }}</mat-option>
-                  }
-                </mat-select>
-              </mat-form-field>
+            <div class="sidenav-content">
+              <div class="sidenav-top">
+                <div class="account-selector">
+                  <mat-form-field appearance="outline" class="account-field">
+                    <mat-label>Account</mat-label>
+                    <mat-select [(value)]="currentAccount" (selectionChange)="onAccountChange()">
+                      <mat-option value="">All Accounts</mat-option>
+                      @for (account of accounts; track account) {
+                        <mat-option [value]="account">{{ account }}</mat-option>
+                      }
+                    </mat-select>
+                  </mat-form-field>
+                </div>
+                <mat-nav-list>
+                  <a mat-list-item [routerLink]="getPoliciesLink()" routerLinkActive="active-link">
+                    <mat-icon matListItemIcon>policy</mat-icon>
+                    <span matListItemTitle>Policies</span>
+                  </a>
+                  <a mat-list-item [routerLink]="getBindingsLink()" routerLinkActive="active-link">
+                    <mat-icon matListItemIcon>link</mat-icon>
+                    <span matListItemTitle>Bindings</span>
+                  </a>
+                </mat-nav-list>
+              </div>
+
+              <div class="sidenav-bottom">
+                <mat-divider></mat-divider>
+                <mat-nav-list>
+                  <a mat-list-item (click)="openBucketExportDialog()">
+                    <mat-icon matListItemIcon>import_export</mat-icon>
+                    <span matListItemTitle>Import/Export</span>
+                  </a>
+                  <a mat-list-item (click)="logout()">
+                    <mat-icon matListItemIcon>logout</mat-icon>
+                    <span matListItemTitle>Logout</span>
+                  </a>
+                </mat-nav-list>
+              </div>
             </div>
-            <mat-nav-list>
-              <a mat-list-item [routerLink]="getPoliciesLink()" routerLinkActive="active-link">
-                <mat-icon matListItemIcon>policy</mat-icon>
-                <span matListItemTitle>Policies</span>
-              </a>
-              <a mat-list-item [routerLink]="getBindingsLink()" routerLinkActive="active-link">
-                <mat-icon matListItemIcon>link</mat-icon>
-                <span matListItemTitle>Bindings</span>
-              </a>
-            </mat-nav-list>
           </mat-sidenav>
 
           <mat-sidenav-content>
@@ -102,6 +121,17 @@ import { filter, map, skip, debounceTime } from 'rxjs/operators';
     mat-sidenav {
       width: 200px;
     }
+    .sidenav-content {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+    .sidenav-top {
+      flex: 1;
+    }
+    .sidenav-bottom {
+      margin-top: auto;
+    }
     .active-link {
       background: var(--mat-sys-secondary-container);
     }
@@ -120,6 +150,7 @@ export class AppComponent implements OnInit, OnDestroy {
   private navigationService = inject(NavigationService);
   private accountService = inject(AccountService);
   private policyStore = inject(PolicyStoreService);
+  private dialog = inject(MatDialog);
   private subs: Subscription[] = [];
 
   showShell = false;
@@ -208,6 +239,20 @@ export class AppComponent implements OnInit, OnDestroy {
 
   getBindingsLink(): string[] {
     return this.currentAccount ? ['/bindings', this.currentAccount] : ['/bindings'];
+  }
+
+  openBucketExportDialog(): void {
+    const dialogRef = this.dialog.open(BucketExportDialogComponent, {
+      width: '800px',
+      maxHeight: '90vh',
+    });
+
+    dialogRef.afterClosed().subscribe(async (result) => {
+      if (result?.imported) {
+        // Reload accounts after import
+        await this.loadAccounts();
+      }
+    });
   }
 
   logout(): void {

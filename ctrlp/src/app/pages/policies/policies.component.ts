@@ -202,9 +202,9 @@ import { validatePolicyResources } from '../../validators/resource.validator';
       background: var(--mat-sys-secondary-container);
     }
     .fab-create {
-      position: absolute;
-      bottom: 16px;
-      right: 16px;
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
     }
     .full-width { width: 100%; }
   `],
@@ -412,13 +412,28 @@ export class PoliciesComponent implements OnInit, OnDestroy {
     dialogRef.afterClosed().subscribe(async (result) => {
       if (result && this.selectedEntry) {
         try {
-          await this.policyService.updatePolicy(
-            this.selectedEntry.policy.account,
-            this.selectedEntry.policy.id,
-            result,
-            this.selectedEntry.revision,
-          );
-          this.snackBar.open('Policy updated', 'Dismiss', { duration: 3000 });
+          const oldAccount = this.selectedEntry.policy.account;
+          const newAccount = result.account;
+
+          // If account changed, delete old policy and create new one
+          if (oldAccount !== newAccount) {
+            await this.policyService.deletePolicy(
+              oldAccount,
+              this.selectedEntry.policy.id,
+              this.selectedEntry.revision,
+            );
+            await this.policyService.createPolicy(result);
+            this.snackBar.open('Policy moved to new account', 'Dismiss', { duration: 3000 });
+          } else {
+            // Account unchanged, just update
+            await this.policyService.updatePolicy(
+              this.selectedEntry.policy.account,
+              this.selectedEntry.policy.id,
+              result,
+              this.selectedEntry.revision,
+            );
+            this.snackBar.open('Policy updated', 'Dismiss', { duration: 3000 });
+          }
           // Data will be updated automatically via watcher
         } catch (err) {
           this.handleError(err);

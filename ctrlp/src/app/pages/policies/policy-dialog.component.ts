@@ -1,5 +1,5 @@
 import { Component, inject, OnInit } from '@angular/core';
-import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { FormBuilder, FormGroup, ReactiveFormsModule, Validators, FormsModule } from '@angular/forms';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
@@ -33,6 +33,7 @@ export interface PolicyDialogData {
   standalone: true,
   imports: [
     ReactiveFormsModule,
+    FormsModule,
     MatDialogModule,
     MatFormFieldModule,
     MatInputModule,
@@ -48,7 +49,22 @@ export interface PolicyDialogData {
   template: `
     <h2 mat-dialog-title>{{ data.mode === 'create' ? 'Create Policy' : 'Edit Policy' }}</h2>
     <mat-dialog-content>
-      <form [formGroup]="form" class="policy-form">
+      @if (jsonMode) {
+        <div class="json-editor">
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>JSON</mat-label>
+            <textarea matInput
+                      [(ngModel)]="jsonText"
+                      rows="20"
+                      class="json-textarea"
+                      spellcheck="false"></textarea>
+            @if (jsonError) {
+              <mat-error>{{ jsonError }}</mat-error>
+            }
+          </mat-form-field>
+        </div>
+      } @else {
+        <form [formGroup]="form" class="policy-form">
         <mat-form-field appearance="outline" class="full-width">
           <mat-label>Name</mat-label>
           <input matInput formControlName="name" placeholder="Policy name">
@@ -150,11 +166,15 @@ export interface PolicyDialogData {
             <mat-divider></mat-divider>
           }
         }
-      </form>
+        </form>
+      }
     </mat-dialog-content>
     <mat-dialog-actions align="end">
       <button mat-button mat-dialog-close>Cancel</button>
-      <button mat-flat-button (click)="save()" [disabled]="!isValid()">
+      <button mat-button (click)="toggleJsonMode()">
+        {{ jsonMode ? 'Edit as Form' : 'Edit as JSON' }}
+      </button>
+      <button mat-flat-button (click)="save()" [disabled]="jsonMode ? !jsonText.trim() : !isValid()">
         {{ data.mode === 'create' ? 'Create' : 'Save' }}
       </button>
     </mat-dialog-actions>
@@ -214,6 +234,14 @@ export interface PolicyDialogData {
       width: 16px;
       height: 16px;
     }
+    .json-editor {
+      min-width: 480px;
+    }
+    .json-textarea {
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      line-height: 1.5;
+    }
   `],
 })
 export class PolicyDialogComponent implements OnInit {
@@ -228,6 +256,11 @@ export class PolicyDialogComponent implements OnInit {
   actionInputValue = '';
   stmtActions: string[][] = [];
   stmtResources: string[][] = [];
+
+  // JSON editing mode
+  jsonMode = false;
+  jsonText = '';
+  jsonError = '';
 
   ngOnInit(): void {
     const policy = this.data.policy;
@@ -337,11 +370,29 @@ export class PolicyDialogComponent implements OnInit {
     return this.stmtResources[stmtIndex].some(r => validateResource(r) !== null);
   }
 
-  save(): void {
-    if (!this.isValid()) return;
+  toggleJsonMode(): void {
+    if (!this.jsonMode) {
+      // Switching to JSON mode - convert form to JSON
+      const policy = this.buildPolicyFromForm();
+      this.jsonText = JSON.stringify(policy, null, 2);
+      this.jsonError = '';
+    } else {
+      // Switching back to form mode - validate and parse JSON
+      try {
+        const policy = JSON.parse(this.jsonText);
+        this.loadPolicyIntoForm(policy);
+        this.jsonError = '';
+      } catch (err) {
+        this.jsonError = err instanceof Error ? err.message : 'Invalid JSON';
+        return; // Don't switch modes if JSON is invalid
+      }
+    }
+    this.jsonMode = !this.jsonMode;
+  }
 
+  private buildPolicyFromForm(): Policy {
     const raw = this.form.getRawValue();
-    const policy: Policy = {
+    return {
       id: this.data.policy?.id || '',
       account: raw.account,
       name: raw.name,
@@ -351,7 +402,37 @@ export class PolicyDialogComponent implements OnInit {
         resources: this.stmtResources[i],
       })),
     };
+  }
 
-    this.dialogRef.close(policy);
+  private loadPolicyIntoForm(policy: Policy): void {
+    this.form.patchValue({
+      name: policy.name,
+      isGlobal: policy.account === '_global',
+      account: policy.account,
+    });
+
+    this.stmtActions = policy.statements.map(s => [...(s.actions || [])]);
+    this.stmtResources = policy.statements.map(s => [...(s.resources || [])]);
+  }
+
+  save(): void {
+    if (this.jsonMode) {
+      // Save from JSON
+      try {
+        const policy = JSON.parse(this.jsonText);
+        // Preserve the original ID if editing
+        if (this.data.policy?.id) {
+          policy.id = this.data.policy.id;
+        }
+        this.dialogRef.close(policy);
+      } catch (err) {
+        this.jsonError = err instanceof Error ? err.message : 'Invalid JSON';
+      }
+    } else {
+      // Save from form
+      if (!this.isValid()) return;
+      const policy = this.buildPolicyFromForm();
+      this.dialogRef.close(policy);
+    }
   }
 }

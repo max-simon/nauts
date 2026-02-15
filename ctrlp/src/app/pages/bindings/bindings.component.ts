@@ -55,7 +55,9 @@ import { ConflictError } from '../../services/kv-store.service';
             <mat-select [(value)]="policyFilter" (selectionChange)="applyFilter()">
               <mat-option value="">All</mat-option>
               @for (p of availablePolicyEntries; track p.policy.id) {
-                <mat-option [value]="p.policy.id">{{ p.policy.name }} ({{ p.policy.account }})</mat-option>
+                <mat-option [value]="p.policy.id">
+                  {{ p.policy.name }} (<span [class.global-account-text]="p.policy.account === '_global'">{{ p.policy.account === '_global' ? 'global' : p.policy.account }}</span>)
+                </mat-option>
               }
             </mat-select>
           </mat-form-field>
@@ -162,9 +164,9 @@ import { ConflictError } from '../../services/kv-store.service';
       background: var(--mat-sys-secondary-container);
     }
     .fab-create {
-      position: absolute;
-      bottom: 16px;
-      right: 16px;
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
     }
     .full-width { width: 100%; }
     .policies-cell {
@@ -186,6 +188,9 @@ import { ConflictError } from '../../services/kv-store.service';
     .policy-count.invalid {
       background: var(--mat-sys-error-container);
       color: var(--mat-sys-on-error-container);
+    }
+    .global-account-text {
+      font-style: italic;
     }
   `],
 })
@@ -237,6 +242,7 @@ export class BindingsComponent implements OnInit, OnDestroy {
         this.navigationService.setCurrentAccount(this.selectedAccount);
 
         this.loadBindings();
+        this.updateAvailablePolicies();
 
         // If role param is present, select that binding
         if (roleParam && accountParam) {
@@ -257,9 +263,8 @@ export class BindingsComponent implements OnInit, OnDestroy {
       // Subscribe to policy updates
       this.policySubscription = this.store.getPolicies$().subscribe(policies => {
         this.allPolicies = policies;
-        this.availablePolicyEntries = policies;
-        this.availablePolicies = policies.map(p => p.policy.id);
         this.policyMap = new Map(policies.map(p => [p.policy.id, p.policy.name]));
+        this.updateAvailablePolicies();
         this.loadBindings();
       }) as unknown as ReturnType<typeof setTimeout>;
       
@@ -283,7 +288,7 @@ export class BindingsComponent implements OnInit, OnDestroy {
     this.entries = this.selectedAccount
       ? this.store.listBindings(this.selectedAccount)
       : this.store.listAllBindings();
-      
+
       this.applyFilter();
       this.updateDanglingPolicies();
 
@@ -295,6 +300,19 @@ export class BindingsComponent implements OnInit, OnDestroy {
           this.updateDanglingPolicies();
         }
       }
+  }
+
+  updateAvailablePolicies(): void {
+    if (this.selectedAccount) {
+      // Filter to show only policies for the selected account or global policies
+      this.availablePolicyEntries = this.allPolicies.filter(p =>
+        p.policy.account === this.selectedAccount || p.policy.account === '_global'
+      );
+    } else {
+      // Show all policies when no account is selected
+      this.availablePolicyEntries = this.allPolicies;
+    }
+    this.availablePolicies = this.availablePolicyEntries.map(p => p.policy.id);
   }
 
   applyFilter(): void {
