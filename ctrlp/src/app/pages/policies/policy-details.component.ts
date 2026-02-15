@@ -1,5 +1,5 @@
-import { Component, EventEmitter, Input, Output, OnChanges, inject } from '@angular/core';
-import { RouterLink } from '@angular/router';
+import { Component, EventEmitter, Input, Output, OnChanges, OnInit, OnDestroy, inject } from '@angular/core';
+import { RouterLink, ActivatedRoute } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -10,6 +10,7 @@ import { PolicyEntry } from '../../models/policy.model';
 import { BindingEntry } from '../../models/binding.model';
 import { PolicyStoreService } from '../../services/policy-store.service';
 import { validatePolicyResources } from '../../validators/resource.validator';
+import { Subscription } from 'rxjs';
 
 @Component({
   selector: 'app-policy-details',
@@ -54,11 +55,13 @@ import { validatePolicyResources } from '../../validators/resource.validator';
             @if (relatedBindings.length > 0) {
               <mat-expansion-panel [expanded]="false">
                 <mat-expansion-panel-header>
-                  <mat-panel-title>Bindings ({{ relatedBindings.length }})</mat-panel-title>
+                  <mat-panel-title>Bindings ({{ getCurrentAccountBindingCount() }})</mat-panel-title>
                 </mat-expansion-panel-header>
                 <div class="bindings-list">
                   @for (binding of relatedBindings; track binding.binding.role) {
-                    <a [routerLink]="['/bindings', binding.binding.account, binding.binding.role]" class="binding-link">
+                    <a [routerLink]="['/bindings', binding.binding.account, binding.binding.role]"
+                       class="binding-link"
+                       [class.other-account]="isBindingFromOtherAccount(binding)">
                       {{ binding.binding.role }} ({{ binding.binding.account }})
                     </a>
                   }
@@ -142,10 +145,15 @@ import { validatePolicyResources } from '../../validators/resource.validator';
     .binding-link:hover {
       text-decoration: underline;
     }
+    .binding-link.other-account {
+      color: var(--mat-sys-on-surface-variant);
+      font-style: italic;
+    }
   `],
 })
-export class PolicyDetailsComponent implements OnChanges {
+export class PolicyDetailsComponent implements OnChanges, OnInit, OnDestroy {
   private policyStore = inject(PolicyStoreService);
+  private route = inject(ActivatedRoute);
 
   @Input() entry: PolicyEntry | null = null;
   @Output() edit = new EventEmitter<void>();
@@ -153,6 +161,21 @@ export class PolicyDetailsComponent implements OnChanges {
 
   resourceErrors = new Map<string, string>();
   relatedBindings: BindingEntry[] = [];
+  currentAccount = '';
+
+  private routeSubscription?: Subscription;
+
+  ngOnInit(): void {
+    // Subscribe to route params to get current account
+    this.routeSubscription = this.route.params.subscribe(params => {
+      this.currentAccount = params['account'] || '';
+      this.loadRelatedBindings();
+    });
+  }
+
+  ngOnDestroy(): void {
+    this.routeSubscription?.unsubscribe();
+  }
 
   ngOnChanges(): void {
     if (this.entry) {
@@ -170,7 +193,25 @@ export class PolicyDetailsComponent implements OnChanges {
       return;
     }
 
-    this.relatedBindings = this.policyStore.getBindingsForPolicy(this.entry.policy.id);
+    // Get all bindings for this policy
+    const allBindings = this.policyStore.getBindingsForPolicy(this.entry.policy.id);
+
+    // Sort: current account bindings first, then other accounts
+    this.relatedBindings = allBindings.sort((a, b) => {
+      const aIsOther = this.isBindingFromOtherAccount(a);
+      const bIsOther = this.isBindingFromOtherAccount(b);
+
+      if (aIsOther === bIsOther) return 0;
+      return aIsOther ? 1 : -1;
+    });
+  }
+
+  isBindingFromOtherAccount(binding: BindingEntry): boolean {
+    return !!this.currentAccount && binding.binding.account !== this.currentAccount;
+  }
+
+  getCurrentAccountBindingCount(): number {
+    return this.relatedBindings.filter(b => !this.isBindingFromOtherAccount(b)).length;
   }
 
   getResourceError(resource: string): string | null {
