@@ -210,7 +210,7 @@ The nauts control plane is a web-based UI for managing policies and bindings sto
 ![Policies Page](./docs/screenshots/policies.png)
 *Policy management with 50/50 list and details view*
 
-![Bindings Page](./docs/screenshots/bindings.png)
+![Bindings Page](./docs/screenshots/binding.png)
 *Binding management showing compiled permissions*
 
 ![Simulator Page](./docs/screenshots/simulator.png)
