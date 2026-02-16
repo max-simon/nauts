@@ -169,6 +169,13 @@ export class NatsService {
     return this.kvBucket;
   }
 
+  getConnection(): any {
+    if (!this.connection) {
+      throw new Error('NATS not connected');
+    }
+    return this.connection;
+  }
+
   async disconnect(): Promise<void> {
     const conn = this.connection;
     this.connection = null;

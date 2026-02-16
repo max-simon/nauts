@@ -1,0 +1,34 @@
+{
+  "account": {
+    "type": "static",
+    "static": {
+      "publicKey": "ABC7DYWNAA3EW7SJTH3JJMIS6LLB6INY72YCWIOF2ZFSST5WBVMNJRED",
+      "privateKeyPath": "./account-AUTH.nk",
+      "accounts": [
+        "AUTH"
+      ]
+    }
+  },
+  "policy": {
+    "type": "nats",
+    "nats": {
+      "bucket": "nauts-policies",
+      "natsUrl": "nats://localhost:4222",
+      "natsNkey": "./user-auth.nk"
+    }
+  },
+  "auth": {
+    "file": [
+      {
+        "id": "intro-file",
+        "accounts": ["APP"],
+        "userPath": "./users.json"
+      }
+    ]
+  },
+  "server": {
+    "natsUrl": "nats://localhost:4222",
+    "natsNkey": "./user-auth.nk",
+    "xkeySeedFile": "./server-xkey.nk"
+  }
+}

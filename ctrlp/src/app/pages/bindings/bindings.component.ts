@@ -361,7 +361,9 @@ export class BindingsComponent implements OnInit, OnDestroy {
     this.danglingPolicies = new Set<string>();
     if (this.selectedEntry) {
       for (const policyId of this.selectedEntry.binding.policies) {
-        if (!this.availablePolicies.includes(policyId)) {
+        // Strip "_global:" prefix before checking
+        const cleanPolicyId = policyId.startsWith('_global:') ? policyId.substring(8) : policyId;
+        if (!this.availablePolicies.includes(cleanPolicyId)) {
           this.danglingPolicies.add(policyId);
         }
       }
@@ -376,7 +378,11 @@ export class BindingsComponent implements OnInit, OnDestroy {
         .map(p => p.policy.id)
     );
 
-    return entry.binding.policies.some(policyId => !accountPolicyIds.has(policyId));
+    return entry.binding.policies.some(policyId => {
+      // Strip "_global:" prefix before checking
+      const cleanPolicyId = policyId.startsWith('_global:') ? policyId.substring(8) : policyId;
+      return !accountPolicyIds.has(cleanPolicyId);
+    });
   }
 
   openCreateDialog(): void {

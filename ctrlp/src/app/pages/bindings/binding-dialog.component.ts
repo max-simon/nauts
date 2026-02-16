@@ -141,7 +141,10 @@ export class BindingDialogComponent implements OnInit {
 
   ngOnInit(): void {
     const binding = this.data.binding;
-    const policies = binding?.policies ? [...binding.policies] : [];
+    // Strip "_global:" prefix from policy IDs for form
+    const policies = binding?.policies
+      ? binding.policies.map(policyId => policyId.startsWith('_global:') ? policyId.substring(8) : policyId)
+      : [];
     this.filteredAccounts = [...this.data.accounts]; // Initialize with all accounts
 
     this.form = this.fb.group({
@@ -199,18 +202,33 @@ export class BindingDialogComponent implements OnInit {
 
   private buildBindingFromForm(): Binding {
     const raw = this.form.getRawValue();
+
+    // Add "_global:" prefix to global policy IDs
+    const policies = (raw.policies || []).map((policyId: string) => {
+      const policyEntry = this.data.allPolicyEntries.find(p => p.policy.id === policyId);
+      if (policyEntry && policyEntry.policy.account === '_global') {
+        return `_global:${policyId}`;
+      }
+      return policyId;
+    });
+
     return {
       role: raw.role,
       account: raw.account,
-      policies: raw.policies,
+      policies: policies,
     };
   }
 
   private loadBindingIntoForm(binding: Binding): void {
+    // Strip "_global:" prefix from policy IDs for display in form
+    const policies = (binding.policies || []).map(policyId =>
+      policyId.startsWith('_global:') ? policyId.substring(8) : policyId
+    );
+
     this.form.patchValue({
       role: binding.role,
       account: binding.account,
-      policies: binding.policies || [],
+      policies: policies,
     });
 
     // Update available policies based on account

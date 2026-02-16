@@ -243,7 +243,7 @@ export class PolicyDetailsComponent implements OnChanges, OnInit, OnDestroy {
     if (!this.entry || !this.currentAccount || !this.currentPolicyId) return false;
 
     // Check if the policy's account matches the account in the route (KV key)
-    const accountMismatch = this.entry.policy.account !== this.currentAccount;
+    const accountMismatch = this.entry.policy.account !== this.currentAccount && this.entry.policy.account !== "_global";
 
     // Check if the policy's ID matches the ID in the route (KV key)
     const idMismatch = this.entry.policy.id !== this.currentPolicyId;

@@ -129,8 +129,10 @@ export class PolicyStoreService {
   }
 
   getBindingsForPolicy(policyId: string): BindingEntry[] {
+    // For global policies, bindings store them with "_global:" prefix
+    const prefixedId = `_global:${policyId}`;
     return Array.from(this.bindingsMap.values())
-      .filter(b => b.binding.policies.includes(policyId));
+      .filter(b => b.binding.policies.includes(policyId) || b.binding.policies.includes(prefixedId));
   }
 
   // --- Binding methods ---

@@ -209,11 +209,14 @@ export class BindingDetailsComponent implements OnChanges, OnInit, OnDestroy {
   getPolicyForId(policyId: string) {
     if (!this.entry) return null;
 
+    // Strip "_global:" prefix if present
+    const cleanPolicyId = policyId.startsWith('_global:') ? policyId.substring(8) : policyId;
+
     const account = this.entry.binding.account;
     const allPolicies = this.policyStore.listAllPolicies();
 
     return allPolicies.find(p =>
-      p.policy.id === policyId &&
+      p.policy.id === cleanPolicyId &&
       (p.policy.account === account || p.policy.account === '_global')
     ) || null;
   }

@@ -74,6 +74,10 @@ import { filter, map, skip, debounceTime } from 'rxjs/operators';
                     <mat-icon matListItemIcon>link</mat-icon>
                     <span matListItemTitle>Bindings</span>
                   </a>
+                  <a mat-list-item routerLink="/simulator" routerLinkActive="active-link">
+                    <mat-icon matListItemIcon>science</mat-icon>
+                    <span matListItemTitle>Simulator</span>
+                  </a>
                 </mat-nav-list>
               </div>
 
