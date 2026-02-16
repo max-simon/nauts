@@ -26,7 +26,7 @@ func TestKvPolicyKey(t *testing.T) {
 		want    string
 	}{
 		{"APP", "read-access", "APP.policy.read-access"},
-		{"*", "base-permissions", "_global.policy.base-permissions"},
+		{"_global", "base-permissions", "_global.policy.base-permissions"},
 		{"CORP", "admin", "CORP.policy.admin"},
 	}
 	for _, tt := range tests {
@@ -45,46 +45,12 @@ func TestKvBindingKey(t *testing.T) {
 	}{
 		{"APP", "readonly", "APP.binding.readonly"},
 		{"APP", "admin", "APP.binding.admin"},
-		{"*", "default", "_global.binding.default"},
+		{"_global", "default", "_global.binding.default"},
 	}
 	for _, tt := range tests {
 		got := kvBindingKey(tt.account, tt.role)
 		if got != tt.want {
 			t.Errorf("kvBindingKey(%q, %q) = %q, want %q", tt.account, tt.role, got, tt.want)
-		}
-	}
-}
-
-func TestAccountToKVPrefix(t *testing.T) {
-	tests := []struct {
-		account string
-		want    string
-	}{
-		{"*", "_global"},
-		{"APP", "APP"},
-		{"_global", "_global"},
-	}
-	for _, tt := range tests {
-		got := accountToKVPrefix(tt.account)
-		if got != tt.want {
-			t.Errorf("accountToKVPrefix(%q) = %q, want %q", tt.account, got, tt.want)
-		}
-	}
-}
-
-func TestAccountFromKVPrefix(t *testing.T) {
-	tests := []struct {
-		prefix string
-		want   string
-	}{
-		{"_global", "*"},
-		{"APP", "APP"},
-		{"CORP", "CORP"},
-	}
-	for _, tt := range tests {
-		got := accountFromKVPrefix(tt.prefix)
-		if got != tt.want {
-			t.Errorf("accountFromKVPrefix(%q) = %q, want %q", tt.prefix, got, tt.want)
 		}
 	}
 }
@@ -97,7 +63,7 @@ func TestParsePolicyKey(t *testing.T) {
 		wantOK      bool
 	}{
 		{"APP.policy.read-access", "APP", "read-access", true},
-		{"_global.policy.base", "*", "base", true},
+		{"_global.policy.base", "_global", "base", true},
 		{"APP.binding.admin", "", "", false},
 		{"invalid", "", "", false},
 		{"APP.policy.", "", "", false},
@@ -299,13 +265,13 @@ func TestNatsPolicyProvider_GetPolicy_Global(t *testing.T) {
 
 	globalPolicy := &policy.Policy{
 		ID:      "base-permissions",
-		Account: "*",
+		Account: "_global",
 		Name:    "Base Permissions",
 		Statements: []policy.Statement{
 			{Effect: "allow", Actions: []policy.Action{"nats.sub"}, Resources: []string{"nats:public.>"}},
 		},
 	}
-	seedPolicy(t, kv, "*", "base-permissions", globalPolicy)
+	seedPolicy(t, kv, "_global", "base-permissions", globalPolicy)
 
 	provider, err := NewNatsPolicyProvider(NatsPolicyProviderConfig{
 		Bucket:  bucket,
@@ -316,7 +282,7 @@ func TestNatsPolicyProvider_GetPolicy_Global(t *testing.T) {
 	}
 	defer provider.Stop()
 
-	pol, err := provider.GetPolicy(context.Background(), "*", "base-permissions")
+	pol, err := provider.GetPolicy(context.Background(), "_global", "base-permissions")
 	if err != nil {
 		t.Fatalf("GetPolicy() error = %v", err)
 	}
@@ -455,8 +421,8 @@ func TestNatsPolicyProvider_GetPolicies(t *testing.T) {
 		Statements: []policy.Statement{{Effect: "allow", Actions: []policy.Action{"nats.pub"}, Resources: []string{"nats:data.>"}}},
 	})
 	// Seed global policy
-	seedPolicy(t, kv, "*", "global-base", &policy.Policy{
-		ID: "global-base", Account: "*", Name: "Global Base",
+	seedPolicy(t, kv, "_global", "global-base", &policy.Policy{
+		ID: "global-base", Account: "_global", Name: "Global Base",
 		Statements: []policy.Statement{{Effect: "allow", Actions: []policy.Action{"nats.sub"}, Resources: []string{"nats:status.>"}}},
 	})
 	// Seed OTHER account policy (should not appear)
@@ -606,9 +572,9 @@ func TestNatsPolicyProvider_GetPoliciesForRole_GlobalPolicy(t *testing.T) {
 	kv := createTestBucket(t, srv.url(), bucket)
 
 	// Seed a global policy at _global.policy.base-permissions
-	seedPolicy(t, kv, "*", "base-permissions", &policy.Policy{
+	seedPolicy(t, kv, "_global", "base-permissions", &policy.Policy{
 		ID:      "base-permissions",
-		Account: "*",
+		Account: "_global",
 		Name:    "Base Permissions",
 		Statements: []policy.Statement{
 			{Effect: "allow", Actions: []policy.Action{"nats.sub"}, Resources: []string{"nats:status.>"}},
