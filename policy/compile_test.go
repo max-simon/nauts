@@ -430,7 +430,7 @@ func TestCompile_NilContexts(t *testing.T) {
 	policies := []*Policy{
 		{
 			ID:      "simple-policy",
-			Account: "*",
+			Account: "_global",
 			Statements: []Statement{
 				{
 					Effect:    EffectAllow,
@@ -487,7 +487,7 @@ func TestCompile_SkipsMismatchedAccount(t *testing.T) {
 		},
 		{
 			ID:      "global",
-			Account: "*",
+			Account: "_global",
 			Statements: []Statement{
 				{Effect: EffectAllow, Actions: []Action{ActionNATSPub}, Resources: []string{"nats:shared"}},
 			},
