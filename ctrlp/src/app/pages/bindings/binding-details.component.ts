@@ -10,6 +10,7 @@ import { MatExpansionModule } from '@angular/material/expansion';
 import { StatementsViewComponent, PolicyInfo } from '../../shared/statements-view.component';
 import { BindingEntry } from '../../models/binding.model';
 import { PolicyStoreService } from '../../services/policy-store.service';
+import { stripGlobalPrefix } from '../../services/kv-keys';
 
 @Component({
   selector: 'app-binding-details',
@@ -209,9 +210,7 @@ export class BindingDetailsComponent implements OnChanges, OnInit, OnDestroy {
   getPolicyForId(policyId: string) {
     if (!this.entry) return null;
 
-    // Strip "_global:" prefix if present
-    const cleanPolicyId = policyId.startsWith('_global:') ? policyId.substring(8) : policyId;
-
+    const cleanPolicyId = stripGlobalPrefix(policyId);
     const account = this.entry.binding.account;
     const allPolicies = this.policyStore.listAllPolicies();
 

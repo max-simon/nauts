@@ -1,4 +1,20 @@
 const GLOBAL_PREFIX = '_global';
+const GLOBAL_POLICY_PREFIX = '_global:';
+
+// Global policy prefix utilities
+export function stripGlobalPrefix(policyId: string): string {
+  return policyId.startsWith(GLOBAL_POLICY_PREFIX)
+    ? policyId.substring(GLOBAL_POLICY_PREFIX.length)
+    : policyId;
+}
+
+export function addGlobalPrefix(policyId: string): string {
+  return `${GLOBAL_POLICY_PREFIX}${policyId}`;
+}
+
+export function hasGlobalPrefix(policyId: string): boolean {
+  return policyId.startsWith(GLOBAL_POLICY_PREFIX);
+}
 
 export function policyKey(account: string, id: string): string {
   const prefix = account === '*' ? GLOBAL_PREFIX : account;

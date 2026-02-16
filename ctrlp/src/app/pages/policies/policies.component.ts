@@ -230,7 +230,7 @@ export class PoliciesComponent implements OnInit, OnDestroy {
   selectedEntry: PolicyEntry | null = null;
   
   private allPolicies: PolicyEntry[] = [];
-  private policySubscription?: ReturnType<typeof setTimeout>;
+  private policySubscription?: import('rxjs').Subscription;
 
   async ngOnInit(): Promise<void> {
     this.loading = true;
@@ -265,7 +265,7 @@ export class PoliciesComponent implements OnInit, OnDestroy {
       this.policySubscription = this.policyService.getPolicies$().subscribe(policies => {
         this.allPolicies = policies;
         this.loadPolicies();
-      }) as unknown as ReturnType<typeof setTimeout>;
+      });
 
     } catch (err) {
       this.handleError(err);
@@ -275,9 +275,7 @@ export class PoliciesComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
-    if (this.policySubscription) {
-      (this.policySubscription as unknown as { unsubscribe: () => void }).unsubscribe();
-    }
+    this.policySubscription?.unsubscribe();
   }
 
   loadPolicies(): void {

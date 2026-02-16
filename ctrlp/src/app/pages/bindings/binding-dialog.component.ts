@@ -8,6 +8,7 @@ import { MatAutocompleteModule } from '@angular/material/autocomplete';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { Binding } from '../../models/binding.model';
+import { stripGlobalPrefix, addGlobalPrefix } from '../../services/kv-keys';
 
 export interface BindingDialogData {
   mode: 'create' | 'edit';
@@ -143,7 +144,7 @@ export class BindingDialogComponent implements OnInit {
     const binding = this.data.binding;
     // Strip "_global:" prefix from policy IDs for form
     const policies = binding?.policies
-      ? binding.policies.map(policyId => policyId.startsWith('_global:') ? policyId.substring(8) : policyId)
+      ? binding.policies.map(stripGlobalPrefix)
       : [];
     this.filteredAccounts = [...this.data.accounts]; // Initialize with all accounts
 
@@ -207,7 +208,7 @@ export class BindingDialogComponent implements OnInit {
     const policies = (raw.policies || []).map((policyId: string) => {
       const policyEntry = this.data.allPolicyEntries.find(p => p.policy.id === policyId);
       if (policyEntry && policyEntry.policy.account === '_global') {
-        return `_global:${policyId}`;
+        return addGlobalPrefix(policyId);
       }
       return policyId;
     });
@@ -221,9 +222,7 @@ export class BindingDialogComponent implements OnInit {
 
   private loadBindingIntoForm(binding: Binding): void {
     // Strip "_global:" prefix from policy IDs for display in form
-    const policies = (binding.policies || []).map(policyId =>
-      policyId.startsWith('_global:') ? policyId.substring(8) : policyId
-    );
+    const policies = (binding.policies || []).map(stripGlobalPrefix);
 
     this.form.patchValue({
       role: binding.role,

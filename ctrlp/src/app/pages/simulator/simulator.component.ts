@@ -13,6 +13,7 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { NatsService } from '../../services/nats.service';
 import { PolicyStoreService } from '../../services/policy-store.service';
 import { NavigationService } from '../../services/navigation.service';
+import { stripGlobalPrefix } from '../../services/kv-keys';
 
 interface Role {
   account: string;
@@ -611,9 +612,7 @@ export class SimulatorComponent implements OnInit {
     const policies: Array<{ id: string; name: string; account: string }> = [];
 
     for (const policyId of binding.binding.policies) {
-      // Strip "_global:" prefix if present
-      const cleanPolicyId = policyId.startsWith('_global:') ? policyId.substring(8) : policyId;
-
+      const cleanPolicyId = stripGlobalPrefix(policyId);
       const allPolicies = this.policyStore.listAllPolicies();
       const policyEntry = allPolicies.find(p =>
         p.policy.id === cleanPolicyId &&

@@ -21,6 +21,7 @@ import { BindingDialogComponent, BindingDialogData } from './binding-dialog.comp
 import { ConfirmDialogComponent, ConfirmDialogData } from '../../shared/confirm-dialog.component';
 import { EmptyStateComponent } from '../../shared/empty-state.component';
 import { ConflictError } from '../../services/kv-store.service';
+import { stripGlobalPrefix } from '../../services/kv-keys';
 
 @Component({
   selector: 'app-bindings',
@@ -220,8 +221,8 @@ export class BindingsComponent implements OnInit, OnDestroy {
   
   private allBindings: BindingEntry[] = [];
   private allPolicies: import('../../models/policy.model').PolicyEntry[] = [];
-  private bindingSubscription?: ReturnType<typeof setTimeout>;
-  private policySubscription?: ReturnType<typeof setTimeout>;
+  private bindingSubscription?: import('rxjs').Subscription;
+  private policySubscription?: import('rxjs').Subscription;
 
   async ngOnInit(): Promise<void> {
     this.loading = true;
@@ -258,7 +259,7 @@ export class BindingsComponent implements OnInit, OnDestroy {
       this.bindingSubscription = this.store.getBindings$().subscribe(bindings => {
         this.allBindings = bindings;
         this.loadBindings();
-      }) as unknown as ReturnType<typeof setTimeout>;
+      });
 
       // Subscribe to policy updates
       this.policySubscription = this.store.getPolicies$().subscribe(policies => {
@@ -266,7 +267,7 @@ export class BindingsComponent implements OnInit, OnDestroy {
         this.policyMap = new Map(policies.map(p => [p.policy.id, p.policy.name]));
         this.updateAvailablePolicies();
         this.loadBindings();
-      }) as unknown as ReturnType<typeof setTimeout>;
+      });
       
     } catch (err) {
       this.handleError(err);
@@ -276,12 +277,8 @@ export class BindingsComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
-    if (this.bindingSubscription) {
-      (this.bindingSubscription as unknown as { unsubscribe: () => void }).unsubscribe();
-    }
-    if (this.policySubscription) {
-      (this.policySubscription as unknown as { unsubscribe: () => void }).unsubscribe();
-    }
+    this.bindingSubscription?.unsubscribe();
+    this.policySubscription?.unsubscribe();
   }
 
   loadBindings(): void {
@@ -361,8 +358,7 @@ export class BindingsComponent implements OnInit, OnDestroy {
     this.danglingPolicies = new Set<string>();
     if (this.selectedEntry) {
       for (const policyId of this.selectedEntry.binding.policies) {
-        // Strip "_global:" prefix before checking
-        const cleanPolicyId = policyId.startsWith('_global:') ? policyId.substring(8) : policyId;
+        const cleanPolicyId = stripGlobalPrefix(policyId);
         if (!this.availablePolicies.includes(cleanPolicyId)) {
           this.danglingPolicies.add(policyId);
         }
@@ -379,8 +375,7 @@ export class BindingsComponent implements OnInit, OnDestroy {
     );
 
     return entry.binding.policies.some(policyId => {
-      // Strip "_global:" prefix before checking
-      const cleanPolicyId = policyId.startsWith('_global:') ? policyId.substring(8) : policyId;
+      const cleanPolicyId = stripGlobalPrefix(policyId);
       return !accountPolicyIds.has(cleanPolicyId);
     });
   }
