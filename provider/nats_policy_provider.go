@@ -147,14 +147,7 @@ func (p *NatsPolicyProvider) Stop() error {
 }
 
 // GetPolicy retrieves a policy by account and ID from the KV bucket.
-// If the id starts with "_global:", the prefix is stripped and the policy
-// is looked up as a global policy (account="_global").
 func (p *NatsPolicyProvider) GetPolicy(ctx context.Context, account string, id string) (*policy.Policy, error) {
-	if strings.HasPrefix(id, globalAccountPrefix+":") {
-		id = strings.TrimPrefix(id, globalAccountPrefix+":")
-		account = "_global"
-	}
-
 	key := kvPolicyKey(account, id)
 
 	// Check cache
@@ -184,6 +177,8 @@ func (p *NatsPolicyProvider) GetPolicy(ctx context.Context, account string, id s
 }
 
 // GetPoliciesForRole returns all policies attached to a role.
+// If the id starts with "_global:", the prefix is stripped and the policy
+// is looked up as a global policy (account="_global").
 func (p *NatsPolicyProvider) GetPoliciesForRole(ctx context.Context, role identity.Role) ([]*policy.Policy, error) {
 	role.Name = strings.TrimSpace(role.Name)
 	if role.Name == "" {
@@ -217,7 +212,13 @@ func (p *NatsPolicyProvider) GetPoliciesForRole(ctx context.Context, role identi
 
 	result := make([]*policy.Policy, 0, len(policyIDs))
 	for _, id := range policyIDs {
-		pol, err := p.GetPolicy(ctx, role.Account, id)
+		policyAccount := role.Account
+		// if policy id has prefix `_global:`, pull from global account
+		if strings.HasPrefix(id, globalAccountPrefix+":") {
+			id = strings.TrimPrefix(id, globalAccountPrefix+":")
+			policyAccount = globalAccountPrefix
+		}
+		pol, err := p.GetPolicy(ctx, policyAccount, id)
 		if err != nil {
 			if errors.Is(err, ErrPolicyNotFound) {
 				continue
