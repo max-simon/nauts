@@ -1,0 +1,6 @@
+{
+  "nats": {
+    "url": "ws://localhost:9222",
+    "bucket": "nauts-policies"
+  }
+}

@@ -147,14 +147,7 @@ func (p *NatsPolicyProvider) Stop() error {
 }
 
 // GetPolicy retrieves a policy by account and ID from the KV bucket.
-// If the id starts with "_global:", the prefix is stripped and the policy
-// is looked up as a global policy (account="*").
 func (p *NatsPolicyProvider) GetPolicy(ctx context.Context, account string, id string) (*policy.Policy, error) {
-	if strings.HasPrefix(id, globalAccountPrefix+":") {
-		id = strings.TrimPrefix(id, globalAccountPrefix+":")
-		account = "*"
-	}
-
 	key := kvPolicyKey(account, id)
 
 	// Check cache
@@ -184,6 +177,8 @@ func (p *NatsPolicyProvider) GetPolicy(ctx context.Context, account string, id s
 }
 
 // GetPoliciesForRole returns all policies attached to a role.
+// If the id starts with "_global:", the prefix is stripped and the policy
+// is looked up as a global policy (account="_global").
 func (p *NatsPolicyProvider) GetPoliciesForRole(ctx context.Context, role identity.Role) ([]*policy.Policy, error) {
 	role.Name = strings.TrimSpace(role.Name)
 	if role.Name == "" {
@@ -217,7 +212,13 @@ func (p *NatsPolicyProvider) GetPoliciesForRole(ctx context.Context, role identi
 
 	result := make([]*policy.Policy, 0, len(policyIDs))
 	for _, id := range policyIDs {
-		pol, err := p.GetPolicy(ctx, role.Account, id)
+		policyAccount := role.Account
+		// if policy id has prefix `_global:`, pull from global account
+		if strings.HasPrefix(id, globalAccountPrefix+":") {
+			id = strings.TrimPrefix(id, globalAccountPrefix+":")
+			policyAccount = globalAccountPrefix
+		}
+		pol, err := p.GetPolicy(ctx, policyAccount, id)
 		if err != nil {
 			if errors.Is(err, ErrPolicyNotFound) {
 				continue
@@ -235,9 +236,8 @@ func (p *NatsPolicyProvider) GetPolicies(ctx context.Context, account string) ([
 	account = strings.TrimSpace(account)
 
 	// Build filters to find matching keys
-	kvAccount := accountToKVPrefix(account)
-	filters := []string{kvAccount + ".policy.>"}
-	if kvAccount != globalAccountPrefix {
+	filters := []string{account + ".policy.>"}
+	if account != globalAccountPrefix {
 		filters = append(filters, globalAccountPrefix+".policy.>")
 	}
 
@@ -360,31 +360,13 @@ func (p *NatsPolicyProvider) watchLoop() {
 
 // kvPolicyKey builds the KV key for a policy.
 // Global policies (account="*") use "_global" as the account prefix.
-func kvPolicyKey(account, id string) string {
-	return accountToKVPrefix(account) + ".policy." + id
+func kvPolicyKey(account string, id string) string {
+	return account + ".policy." + id
 }
 
 // kvBindingKey builds the KV key for a binding.
-func kvBindingKey(account, role string) string {
-	return accountToKVPrefix(account) + ".binding." + role
-}
-
-// accountToKVPrefix converts an account name to the KV key prefix.
-// The global account "*" is mapped to "_global".
-func accountToKVPrefix(account string) string {
-	if account == "*" {
-		return globalAccountPrefix
-	}
-	return account
-}
-
-// accountFromKVPrefix converts a KV key prefix back to an account name.
-// "_global" is mapped back to "*".
-func accountFromKVPrefix(prefix string) string {
-	if prefix == globalAccountPrefix {
-		return "*"
-	}
-	return prefix
+func kvBindingKey(account string, role string) string {
+	return account + ".binding." + role
 }
 
 // parsePolicyKey extracts account and policy ID from a KV key.
@@ -395,5 +377,5 @@ func parsePolicyKey(key string) (account, id string, ok bool) {
 	if len(parts) != 3 || parts[1] != "policy" || parts[2] == "" {
 		return "", "", false
 	}
-	return accountFromKVPrefix(parts[0]), parts[2], true
+	return parts[0], parts[2], true
 }

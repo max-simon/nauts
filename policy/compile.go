@@ -46,7 +46,7 @@ func Compile(policies []*Policy, ctx *PolicyContext, perms *NatsPermissions) Com
 		case ctx.Account == "":
 			result.Warnings = append(result.Warnings, "policy skipped (missing account.id): "+pol.ID)
 			continue
-		case pol.Account == "*":
+		case pol.Account == "_global":
 			// ok
 		case pol.Account == ctx.Account:
 			// ok

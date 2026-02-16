@@ -1,0 +1,72 @@
+{
+  "_global.policy.366bdea3-2725-47ae-b203-5801eaf44c6a": {
+    "id": "366bdea3-2725-47ae-b203-5801eaf44c6a",
+    "account": "_global",
+    "name": "allow-user-postbox",
+    "statements": [
+      {
+        "effect": "allow",
+        "actions": [
+          "nats.pub",
+          "nats.sub"
+        ],
+        "resources": [
+          "nats:user.{{ user.id}}"
+        ]
+      }
+    ]
+  },
+  "APP.policy.8a001a4c-de55-4ba5-999c-c383dd7f6511": {
+    "id": "8a001a4c-de55-4ba5-999c-c383dd7f6511",
+    "account": "APP",
+    "name": "allow-manage-js-USECASE",
+    "statements": [
+      {
+        "effect": "allow",
+        "actions": [
+          "js.manage"
+        ],
+        "resources": [
+          "js:USECASE"
+        ]
+      }
+    ]
+  },
+  "APP.policy.58f8266a-2dfa-43ba-a41c-304956f66538": {
+    "id": "58f8266a-2dfa-43ba-a41c-304956f66538",
+    "account": "APP",
+    "name": "allow-consume-js-USECASE",
+    "statements": [
+      {
+        "effect": "allow",
+        "actions": [
+          "js.consume"
+        ],
+        "resources": [
+          "js:USECASE"
+        ]
+      }
+    ]
+  },
+  "APP.binding.user": {
+    "role": "user",
+    "account": "APP",
+    "policies": [
+      "_global:366bdea3-2725-47ae-b203-5801eaf44c6a"
+    ]
+  },
+  "APP.binding.usecase-admin": {
+    "role": "usecase-admin",
+    "account": "APP",
+    "policies": [
+      "8a001a4c-de55-4ba5-999c-c383dd7f6511"
+    ]
+  },
+  "APP.binding.usecase-worker": {
+    "role": "usecase-worker",
+    "account": "APP",
+    "policies": [
+      "58f8266a-2dfa-43ba-a41c-304956f66538"
+    ]
+  }
+}

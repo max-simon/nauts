@@ -39,12 +39,21 @@ nauts/
 │   ├── debug.go            # DebugService (permission compilation)
 │   ├── config.go           # Config, LoadConfig, NewAuthControllerWithConfig
 │   └── errors.go           # AuthError
-└── e2e/                    # End-to-end tests
-    ├── policy-static/      # Policy engine test setup
-    ├── common/             # Shared test resources
-    ├── env.go              # Test harness
-    ├── policy_*_test.go    # Policy tests (NATS, JetStream, KV)
-    └── connection_test.go  # Legacy connection tests
+├── e2e/                    # End-to-end tests
+│   ├── policy-static/      # Policy engine test setup
+│   ├── common/             # Shared test resources
+│   ├── env.go              # Test harness
+│   ├── policy_*_test.go    # Policy tests (NATS, JetStream, KV)
+│   └── connection_test.go  # Legacy connection tests
+└── ctrlp/                  # Control plane (Angular SPA)
+    ├── src/app/            # Application code
+    │   ├── pages/          # Main pages (policies, bindings, simulator, login)
+    │   ├── services/       # NATS, KV, policy store services
+    │   ├── models/         # TypeScript models
+    │   ├── guards/         # Route guards
+    │   └── shared/         # Shared components
+    ├── nats/               # NATS/nauts configuration for development
+    └── dist/               # Production build output
 ```
 
 ## Components Diagram
@@ -431,11 +440,111 @@ test/
 | alice | `{"account":"APP","token":"alice:secret"}` | readonly | APP | Subscribe to `public.>` |
 | bob | `{"account":"APP","token":"bob:secret"}` | full | APP | Pub/Sub to `public.>` |
 
+## Control Plane (Angular SPA)
+
+The control plane is a browser-based web UI for managing policies and bindings in NATS KV. Located in `ctrlp/`, it's a standalone Angular application that connects directly to NATS via WebSocket.
+
+### Architecture
+
+```
+Browser (Angular SPA)
+  │
+  ├─ WebSocket ────────► NATS Server
+  │                         │
+  │                         ├─ JetStream KV (nauts-policies)
+  │                         │    ├─ APP.policy.<id>
+  │                         │    ├─ APP.binding.<role>
+  │                         │    └─ _global.policy.<id>
+  │                         │
+  └─ nauts.debug ────────► Auth Service
+                              └─ Permission Compilation
+```
+
+### Key Services
+
+**NatsService** (`src/app/services/nats.service.ts`):
+- WebSocket connection to NATS server
+- NKey or credentials-based authentication
+- Request/reply pattern support
+- Connection state management
+
+**KvStoreService** (`src/app/services/kv-store.service.ts`):
+- Generic typed KV operations (get, put, delete, create, listAll, watch)
+- Optimistic concurrency with revision tracking
+- Type-safe interface for KV entries
+
+**PolicyStoreService** (`src/app/services/policy-store.service.ts`):
+- In-memory cache of policies and bindings
+- Reactive BehaviorSubject streams for UI updates
+- KV watcher for real-time synchronization
+- CRUD operations with revision management
+- Global policy reference handling
+
+**NavigationService** (`src/app/services/navigation.service.ts`):
+- Account selection state
+- Sidebar navigation state
+- Shared state across components
+
+### Pages
+
+**Policies Page** (`src/app/pages/policies/`):
+- `policies.component.ts` - List view with account filtering
+- `policy-details.component.ts` - Details panel showing statements and related bindings
+- `policy-dialog.component.ts` - Create/edit dialog with form and JSON modes
+- 50/50 split layout: list (left) and details (right)
+- Key mismatch validation warnings
+
+**Bindings Page** (`src/app/pages/bindings/`):
+- `bindings.component.ts` - List view with policy and role filtering
+- `binding-details.component.ts` - Details panel with compiled statements view
+- `binding-dialog.component.ts` - Create/edit dialog with form and JSON modes
+- 50/50 split layout: list (left) and details (right)
+- Shows aggregated permissions from all policies
+- Hyperlinks to related policies
+
+**Simulator Page** (`src/app/pages/simulator/`):
+- `simulator.component.ts` - Permission testing interface
+- Sends requests to `nauts.debug` NATS subject
+- 50/50 grid: input form (left) and results (right)
+- Shows compiled publish/subscribe permissions
+- Role-to-policy navigation
+- LocalStorage persistence
+
+**Login Page** (`src/app/pages/login/`):
+- `login.component.ts` - Authentication interface
+- NKey or credentials input
+- Session management
+
+### Global Policy Convention
+
+The control plane implements the `_global:` prefix convention for global policy references:
+
+**In bindings (storage format):**
+```json
+{
+  "role": "admin",
+  "account": "APP",
+  "policies": ["app-policy", "_global:global-policy"]
+}
+```
+
+**Implementation:**
+- `buildBindingFromForm()` adds `_global:` prefix when policy's account is `_global`
+- `loadBindingIntoForm()` strips `_global:` prefix for form display
+- `getPolicyForId()` handles both prefixed and non-prefixed lookups
+- `getBindingsForPolicy()` searches for both variants
+
+See [specs/2026-02-12-control-plane.md](./specs/2026-02-12-control-plane.md) for complete specification.
+
+---
+
 ## Future Enhancements
 
 - **Explicit deny rules**: Support `effect: "deny"` with evaluation order
 - **Resource limits**: Connection limits in policies (`maxSubscriptions`, `maxPayload`)
-- **Policy simulation API**: Dry-run endpoint to test permissions
 - **Per-user inbox scoping**: Replace `_INBOX.>` with user-specific prefixes
-- **NATS KV Role/Policy Provider**: Dynamic configuration from NATS KV
-- **Control Plane**: Management API for policies, roles, and accounts
+- **Control Plane enhancements**:
+  - Audit logging and change history
+  - Real-time collaboration with presence awareness
+  - Policy validation and linting
+  - Permission preview before applying changes

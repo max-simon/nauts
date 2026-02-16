@@ -97,7 +97,7 @@ Start with the system overview, then work through standalone components before d
 ### Additional Specifications (Draft/Proposed)
 
 - **[aws-sigv4-authentication](2026-02-08-aws-sigv4-authentication.md)** — AWS IAM role-based authentication provider (Draft)
-- **[control-plane](2026-02-11-control-plane.md)** — Angular web UI for policy and binding management in NATS KV (Draft)
+- **[control-plane](2026-02-12-control-plane.md)** — Angular web UI for policy and binding management in NATS KV (Draft)
 
 ### For code agents
 
