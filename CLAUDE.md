@@ -18,6 +18,7 @@ This file provides context to Claude Code for working on the nauts project.
   - [identity-authentication](./specs/2026-02-06-identity-authentication.md) - User, AuthProvider, Manager
   - [providers](./specs/2026-02-06-providers.md) - AccountProvider, PolicyProvider
   - [auth-controller-callout](./specs/2026-02-06-auth-controller-callout.md) - AuthController, CalloutService
+  - [control-plane](./specs/2026-02-12-control-plane.md) - Angular UI for policy/binding management
 - [e2e/](./e2e/README.md) - End-to-End tests and test configurations
 
 ## Project Overview
@@ -26,7 +27,7 @@ nauts (**N**ATS **Aut**hentication **S**ervice) is a framework for scalable, hum
 
 - **Policy specification and compilation engine**: Translates high-level policies to low-level NATS permissions
 - **Authentication service**: NATS auth callout implementation
-- **Control plane**: Management API for policies, roles, and accounts (future)
+- **Control plane**: Web UI for managing policies and bindings stored in NATS KV
 
 See [README.md](./README.md) for architecture and [POLICY.md](./POLICY.md) for policy specification.
 
@@ -90,10 +91,185 @@ nauts/
 │   ├── policy-static/      # Policy engine test setup
 │   ├── connection-operator/# Operator Mode config & setup
 │   └── connection-static/  # Static Mode config & setup
+├── ctrlp/                  # Control plane (Angular SPA)
+│   ├── src/
+│   │   ├── app/
+│   │   │   ├── pages/      # Main pages (policies, bindings, simulator, login)
+│   │   │   ├── services/   # NATS, KV, policy store, navigation services
+│   │   │   ├── models/     # TypeScript interfaces for Policy, Binding, etc.
+│   │   │   ├── guards/     # Auth guard for route protection
+│   │   │   └── shared/     # Shared components (statements view, dialogs)
+│   │   └── environments/   # Environment configuration
+│   ├── nats/               # NATS server and auth service configuration
+│   │   ├── nats-server.conf # NATS server config with WebSocket
+│   │   ├── nauts.json      # nauts auth service config
+│   │   └── *.nk            # NKey files for authentication
+│   └── dist/               # Production build output
 └── docs/                   # Additional documentation
 ```
 
-## Development Commands
+## Control Plane (Angular SPA)
+
+The control plane is a browser-based UI for managing policies and bindings in NATS KV.
+
+### Tech Stack
+
+- **Framework**: Angular 18+ (standalone components)
+- **UI Library**: Angular Material with Material Design 3
+- **NATS Client**: nats.ws (browser-compatible WebSocket client)
+- **State Management**: RxJS observables with in-memory caching
+- **Routing**: Angular Router with auth guards
+
+### Key Services
+
+**NatsService** (`services/nats.service.ts`):
+- Manages WebSocket connection to NATS server
+- Handles authentication (NKey or credentials)
+- Provides request/reply pattern support
+- Exposes connection state observables
+
+**KvStoreService** (`services/kv-store.service.ts`):
+- Generic typed interface for JetStream KV operations
+- Methods: get, put, delete, create, listAll, watch
+- Handles optimistic concurrency with revision tracking
+- Supports KV entry watchers for real-time updates
+
+**PolicyStoreService** (`services/policy-store.service.ts`):
+- In-memory cache of policies and bindings
+- Reactive data streams (BehaviorSubject) for UI updates
+- Automatic cache invalidation via KV watcher
+- CRUD operations with revision management
+- Global policy reference handling (`_global:` prefix)
+- Methods:
+  - `listPolicies(account)`, `listGlobalPolicies()`, `getPolicy(account, id)`
+  - `createPolicy(policy)`, `updatePolicy(...)`, `deletePolicy(...)`
+  - `listBindings(account)`, `getBinding(account, role)`
+  - `createBinding(binding)`, `updateBinding(...)`, `deleteBinding(...)`
+  - `getBindingsForPolicy(policyId)` - handles `_global:` prefix matching
+
+**NavigationService** (`services/navigation.service.ts`):
+- Account selection state management
+- Sidebar open/close state
+- Shared state across components
+
+### Global Policy Convention
+
+When bindings reference global policies (policies with `account="_global"`), they must use the `_global:` prefix:
+
+**Storage format** (in KV):
+```json
+{
+  "role": "admin",
+  "account": "APP",
+  "policies": ["app-policy-id", "_global:global-policy-id"]
+}
+```
+
+**Implementation details:**
+- UI strips `_global:` prefix when displaying policy names in dropdowns
+- `buildBindingFromForm()` adds `_global:` prefix when saving bindings with global policies
+- `loadBindingIntoForm()` strips `_global:` prefix when loading bindings for editing
+- `getPolicyForId()` strips prefix before looking up policy in store
+- `getBindingsForPolicy()` searches for both prefixed and non-prefixed IDs
+
+### Pages
+
+**Policies Page** (`pages/policies/`):
+- 50/50 split: list view (left) and details panel (right)
+- Account-scoped filtering with global policy support
+- Create/edit dialogs with dual mode (form and JSON)
+- Statement editor with action/resource arrays
+- Shows related bindings count and links
+- Key mismatch validation warnings
+
+**Bindings Page** (`pages/bindings/`):
+- 50/50 split: list view (left) and details panel (right)
+- Policy dropdown filtered by account (shows account + global policies)
+- Compiled statements view (aggregated permissions from all policies)
+- Create/edit dialogs with dual mode (form and JSON)
+- Role-to-policy navigation with hyperlinks
+- Key mismatch validation warnings
+
+**Simulator Page** (`pages/simulator/`):
+- 50/50 grid: form (left) and results (right)
+- Sends requests to `nauts.debug` NATS subject
+- Input: user name, target account, roles
+- Output: compiled permissions (pub/sub subjects), role/policy links, raw JSON
+- State persistence in localStorage (survives page reload)
+
+**Login Page** (`pages/login/`):
+- NKey or credentials-based authentication
+- Saves auth state for session
+
+### Development Commands
+
+**Install dependencies:**
+```bash
+cd ctrlp
+npm install
+```
+
+**Run development server:**
+```bash
+npm start
+# Navigate to http://localhost:4200
+```
+
+**Build for production:**
+```bash
+npm run build
+# Output: dist/ctrlp
+```
+
+**Serve production build:**
+```bash
+npx http-server dist/ctrlp
+```
+
+### Configuration
+
+Create `ctrlp/src/environments/environment.ts`:
+```typescript
+export const environment = {
+  production: false,
+  nats: {
+    servers: ['ws://localhost:9222'],
+    bucket: 'nauts-policies',
+    credentials: './nats/user-auth.creds'  // or nkey: 'SUABC...'
+  }
+};
+```
+
+### Setup for Development
+
+1. **Start NATS server with WebSocket:**
+```bash
+cd ctrlp/nats
+nats-server -c nats-server.conf
+```
+
+2. **Create KV bucket:**
+```bash
+nats kv add nauts-policies --history 10
+```
+
+3. **Start auth service (optional, for simulator):**
+```bash
+cd ../..
+./bin/nauts -c ctrlp/nats/nauts.json --enable-debug-svc
+```
+
+4. **Start control plane:**
+```bash
+cd ctrlp
+npm start
+```
+
+See [specs/2026-02-12-control-plane.md](./specs/2026-02-12-control-plane.md) for detailed specification.
+
+---
+
+## Go Service Development Commands
 
 ### Build
 

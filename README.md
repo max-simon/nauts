@@ -192,10 +192,178 @@ Authenticates AWS workloads using IAM role identity via SigV4-signed requests to
 }
 ```
 
+## Control Plane
+
+The nauts control plane is a web-based UI for managing policies and bindings stored in NATS KV. It provides a modern, intuitive interface for policy administration and permission testing.
+
+### Features
+
+- **Policy Management**: Create, edit, and delete policies with a visual editor
+- **Binding Management**: Map roles to policies with account scoping
+- **Permission Simulator**: Test permission compilation in real-time
+- **Global Policies**: Share policies across accounts with `_global:` references
+- **Bucket Import/Export**: Backup and restore your entire policy database
+- **Real-time Updates**: Changes are immediately visible via KV watchers
+
+### Screenshots
+
+![Policies Page](./docs/screenshots/policies.png)
+*Policy management with 50/50 list and details view*
+
+![Bindings Page](./docs/screenshots/bindings.png)
+*Binding management showing compiled permissions*
+
+![Simulator Page](./docs/screenshots/simulator.png)
+*Permission simulator for testing auth decisions*
+
+### Setup
+
+**Prerequisites:**
+- NATS server with JetStream enabled and WebSocket support
+- Node.js 18+ and npm
+
+**1. Configure NATS Server**
+
+Enable WebSocket and JetStream in your NATS server configuration:
+
+```conf
+# nats-server.conf
+server_name: nauts-server
+
+jetstream {
+  store_dir: /tmp/nats
+}
+
+websocket {
+  port: 9222
+  no_tls: true
+}
+
+# Enable auth account for control plane
+accounts {
+  AUTH {
+    jetstream: enabled
+    users: [
+      {
+        nkey: UA...,  # Control plane user
+        permissions: {
+          publish: ">"
+          subscribe: ">"
+        }
+      }
+    ]
+  }
+}
+```
+
+**2. Create KV Bucket**
+
+Create the policies bucket using NATS CLI:
+
+```bash
+nats kv add nauts-policies --history 10
+```
+
+**3. Configure Control Plane**
+
+Create `ctrlp/src/environments/environment.ts`:
+
+```typescript
+export const environment = {
+  production: false,
+  nats: {
+    servers: ['ws://localhost:9222'],
+    bucket: 'nauts-policies',
+    // Use credentials file or NKey
+    credentials: './user-auth.creds'  // or
+    // nkey: 'SUABC...'
+  }
+};
+```
+
+**4. Install and Run**
+
+```bash
+cd ctrlp
+npm install
+npm start
+```
+
+Navigate to `http://localhost:4200`
+
+### Usage
+
+**Creating a Policy:**
+
+1. Select target account in sidebar
+2. Click the + FAB button on Policies page
+3. Define policy with actions and resources:
+   ```json
+   {
+     "id": "read-orders",
+     "account": "APP",
+     "name": "Read Orders Stream",
+     "statements": [{
+       "effect": "allow",
+       "actions": ["js.consume"],
+       "resources": ["js:ORDERS"]
+     }]
+   }
+   ```
+4. Save (automatically generates UUID for `id` if not provided)
+
+**Creating a Binding:**
+
+1. Select target account in sidebar
+2. Click the + FAB button on Bindings page
+3. Map role to policies:
+   ```json
+   {
+     "role": "order-reader",
+     "account": "APP",
+     "policies": ["read-orders", "_global:base-permissions"]
+   }
+   ```
+   Note: Use `_global:` prefix for global policy references
+
+**Testing with Simulator:**
+
+1. Go to Simulator page
+2. Enter user name (e.g., `alice`)
+3. Select target account (defaults to current account)
+4. Choose roles to test (e.g., `APP.order-reader`)
+5. Click Simulate
+6. View compiled permissions (publish/subscribe subjects)
+
+The simulator sends requests to the `nauts.debug` NATS subject. Make sure your auth service is running with `--enable-debug-svc` flag.
+
+### Architecture
+
+The control plane is a standalone Angular SPA that connects directly to NATS via WebSocket. It uses the same KV bucket and key schema as the `NatsPolicyProvider` in the auth service, ensuring changes are immediately visible to the running service.
+
+```
+Browser (Angular)
+  │
+  ├─ WebSocket ─────► NATS Server
+  │                      │
+  │                      ├─ KV Bucket (nauts-policies)
+  │                      │   ├─ APP.policy.read-orders
+  │                      │   ├─ APP.binding.order-reader
+  │                      │   └─ _global.policy.base-permissions
+  │                      │
+  └─ nauts.debug ─────► Auth Service (--enable-debug-svc)
+                           └─ Permission Compilation
+```
+
+See [specs/2026-02-12-control-plane.md](./specs/2026-02-12-control-plane.md) for detailed specification.
+
+---
+
 ## Documentation
 
 - [POLICY.md](./POLICY.md) - Detailed Policy and Action reference.
 - [IMPLEMENTATION.md](./IMPLEMENTATION.md) - Internal architecture and package details.
+- [specs/](./specs/README.md) - Component specifications.
 - [e2e/](./e2e/README.md) - End-to-End tests and setups.
 
 ## License

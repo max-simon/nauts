@@ -1,8 +1,9 @@
 # Specification: Control Plane for Policies & Bindings (Angular Web UI)
 
 **Date:** 2026-02-12
-**Status:** Draft
-**Package:** `control-plane` (Angular SPA)
+**Updated:** 2026-02-16
+**Status:** Implemented
+**Package:** `ctrlp/` (Angular SPA)
 **Dependencies:** NATS WebSocket, NATS KV (JetStream), `NatsPolicyProvider` key schema, Angular Material (M3)
 
 ---
@@ -38,18 +39,23 @@ The control plane is an Angular single-page application that connects to NATS vi
 
 ## Scope
 
-- Angular SPA with two primary pages: Policies and Bindings
-- WebSocket connection to NATS using browser-compatible client
+**Implemented Features:**
+- Angular SPA with three primary pages: **Policies**, **Bindings**, and **Simulator**
+- WebSocket connection to NATS using browser-compatible client (nats.ws)
 - CRUD operations for policies and bindings stored in NATS KV
 - Account-level filtering and search by name/id
-- Details panel that opens on selection
+- 50/50 split layout with list on left and details panel on right
 - Optimistic concurrency using KV revisions
+- **Simulator page** for testing permission compilation via NATS debug service
+- **Compiled statements view** showing aggregated permissions from multiple policies
+- **Bucket import/export** for backup and restore of entire KV bucket
+- **Global policy support** with `_global:` prefix convention
+- **Key mismatch validation** warnings for policies and bindings
 
 **Out of scope:**
 - Server-side proxy or API layer
 - Authentication and authorization for the control plane (delegated to NATS and deployment)
 - Audit logging and change history
-- Policy compilation preview or simulation
 - Role or account management (only policies/bindings)
 
 ---
@@ -76,14 +82,33 @@ The control plane is an Angular single-page application that connects to NATS vi
 - **List view**: table of bindings scoped to the selected account
 - **Filters**:
   - Account selector (required)
-  - Policy filter (policies applied by binding)
+  - Policy filter (policies applied by binding, shows only relevant policies)
   - Role filter
 - **Details panel** (right side):
   - Binding metadata: `role`, `account`, `policies`
+  - Compiled statements showing aggregated permissions from all policies
+  - Related policies with hyperlinks
+  - Key mismatch warnings if binding data doesn't match KV key
 - **Actions**:
-  - Create binding
-  - Edit binding
+  - Create binding (supports both form and JSON editing)
+  - Edit binding (supports both form and JSON editing)
   - Delete binding
+
+### 3) Simulator Page
+
+- **Input form** (left side, 50% width):
+  - User name field
+  - Target account selector (defaults to currently selected account)
+  - Roles multi-select (shows roles as `account.role`)
+- **Results panel** (right side, 50% width):
+  - Compilation result status (success/error)
+  - Aggregated permissions (publish and subscribe subject lists)
+  - Roles & policies section with hyperlinks to binding and policy details
+  - Raw JSON response (expandable)
+- **Features**:
+  - Sends requests to `nauts.debug` NATS subject
+  - Persists simulation state in browser localStorage
+  - Shows real-time permission compilation results
 
 ---
 
@@ -148,6 +173,25 @@ Global policies use the `_global` account segment. Example:
 ```
 _global.policy.base-permissions
 ```
+
+### Global Policy References in Bindings
+
+When bindings reference global policies, they must use the `_global:` prefix in the policy ID:
+
+**Storage format:**
+```json
+{
+  "role": "admin",
+  "account": "APP",
+  "policies": ["app-admin", "_global:base-permissions"]
+}
+```
+
+The `_global:` prefix tells the `NatsPolicyProvider` to look up the policy with `account="*"` instead of the binding's account. The control plane automatically adds this prefix when saving bindings that reference global policies, and strips it when displaying policies in the UI.
+
+**Key lookup behavior:**
+- Without prefix: `APP.policy.base-permissions` (account-specific)
+- With prefix `_global:`: Strips prefix, looks up with `account="*"`
 
 ---
 
@@ -275,10 +319,87 @@ None.
 
 ---
 
+## Implementation Details
+
+### Layout & UI Structure
+
+**Responsive Design:**
+- Sidebar navigation for page switching
+- Top toolbar with account selector and user actions
+- 50/50 split layout on policies and bindings pages:
+  - Left: List view with search/filter controls
+  - Right: Details panel with full entity information
+- Simulator uses 50/50 grid: form left, results right
+- Fixed FAB buttons for create actions
+
+**Material Design Components:**
+- Tables with sorting for list views
+- Expansion panels for grouped content (statements, compiled permissions)
+- Dialogs for create/edit with dual mode (form and JSON)
+- Snackbars for transient notifications
+- Progress bars for loading states
+
+### Key Features
+
+**1. Compiled Statements View**
+- Bindings details page shows aggregated permissions from all policies
+- Statement-level details with source policy attribution
+- Hyperlinks to source policies
+
+**2. Global Policy Handling**
+- UI displays global policies with italic "global" text
+- Policy dropdown filters show relevant policies (account-specific + global)
+- Automatic `_global:` prefix handling in storage layer
+- Policy store service checks both prefixed and non-prefixed IDs
+
+**3. Bucket Import/Export**
+- Export entire KV bucket as JSON (key-value pairs)
+- Import with validation and conflict handling
+- Progress indicators and error reporting
+- Date-stamped export filenames
+
+**4. Key Mismatch Validation**
+- Compares entity data (account/role/ID) with KV key parts
+- Shows warning banner in details panel if mismatch detected
+- Helps identify data corruption or migration issues
+
+**5. Simulator Features**
+- Real-time permission compilation via `nauts.debug` subject
+- Request/response persistence in localStorage
+- Aggregated permission display (publish/subscribe)
+- Role-to-policy navigation with hyperlinks
+- Raw JSON response viewer
+
+### Angular Services
+
+**NatsService** (`services/nats.service.ts`):
+- WebSocket connection management
+- Request/reply pattern support
+- Connection state observables
+
+**KvStoreService** (`services/kv-store.service.ts`):
+- JetStream KV operations (get, put, delete, list, watch)
+- Generic typed interface
+- Optimistic concurrency with revision tracking
+
+**PolicyStoreService** (`services/policy-store.service.ts`):
+- In-memory cache of policies and bindings
+- Reactive data streams with RxJS
+- KV watcher for live updates
+- Policy/binding CRUD operations
+- Global policy reference handling
+
+**NavigationService** (`services/navigation.service.ts`):
+- Account selection state management
+- Sidebar navigation state
+- Shared state across components
+
+---
+
 ## Known Limitations / Future Work
 
 - **No server-side API**: All operations occur directly against NATS KV.
 - **No role/account management**: Only policies and bindings are editable.
 - **No history/versioning**: KV history is not surfaced in UI.
-- **No policy simulation**: UI does not compile or simulate permissions.
 - **No authentication UX**: Login/identity flows are deployment-specific.
+- **No real-time collaboration**: No presence awareness when multiple admins edit simultaneously.
